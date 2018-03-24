@@ -1,0 +1,121 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil
+import numpy as np
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+from astropy.io import ascii
+from astropy import wcs
+
+from astroquery.vizier import Vizier
+
+from astropy.io import fits
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-o","--outputDir",default="../output")
+    parser.add_option("-r","--ra",default=30.0,type=float)
+    parser.add_option("-d","--declination",default=45.0,type=float)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+# Parse command line
+opts = parse_commandline()
+ra = opts.ra
+dec = opts.declination
+outputDir = os.path.join(opts.outputDir,'%.5f_%.5f'%(ra,dec))
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+xsize, ysize = 1024, 1024
+pixel_scale = 1.0/3600.0 # 1.0 arcsec/pixel
+
+w = wcs.WCS(naxis=2)
+w.wcs.crpix = [xsize/2.0,ysize/2.0]
+w.wcs.cdelt = np.array([-pixel_scale, pixel_scale])
+w.wcs.crval = [ra,dec]
+w.wcs.cunit = ['deg','deg']
+w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+w.wcs.equinox = 2000.0
+
+result = ps1_query(ra, dec, 1.0, maxmag=18,
+               maxsources=10000)
+
+ras = np.array(result['RAJ2000'])
+decs = np.array(result['DEJ2000'])
+#radiff = (np.random.randn() * 10)/3600.0 # errors of 10 arcsec 
+#decdiff = (np.random.randn() * 10)/3600.0 # errors of 10 arcsec 
+#ras = ras + radiff 
+#decs = decs + decdiff 
+
+# Some pixel coordinates of interest.
+worldcrd = np.vstack((ras,decs)).T
+# Convert the same coordinates back to pixel coordinates.
+pixcrd = w.wcs_world2pix(worldcrd, 1)
+
+X, Y = pixcrd[:,0], pixcrd[:,1]
+idx = np.where((X > 0) & (X<xsize) & (Y > 0) & (Y<ysize))
+result, X, Y = result[idx], X[idx], Y[idx]
+
+filename = os.path.join(outputDir,'table.fits')
+tbl = Table([result['RAJ2000'], result['DEJ2000'], result["gmag"], X, Y], names=('RA', 'Declination', 'MAG','XIMAGE','YIMAGE'))
+tbl.write(filename, format='fits',overwrite=True)  
+
+solve_field_command = "solve-field %s --x-column XIMAGE --y-column YIMAGE --sort-ascending --sort-column MAG --width %d --height %d --no-plots --overwrite --ra %.5f --dec %.5f --radius %.5f"%(filename,xsize,ysize,ra,dec,20.0/60.0)
+os.system(solve_field_command)
+
+w.wcs.crpix = [xsize/2.0,ysize/2.0]
+w.wcs.cdelt = np.array([-pixel_scale, pixel_scale])
+w.wcs.crval = [ra,dec]
+w.wcs.cunit = ['deg','deg']
+w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+w.wcs.equinox = 2000.0
+
+wcsfile = os.path.join(outputDir,'table.wcs')
+hdulist = fits.open(wcsfile)
+wfit = wcs.WCS(hdulist[0].header) 
+
+rarel = np.abs(w.wcs.crval[0]-wfit.wcs.crval[0])/np.min([np.abs(w.wcs.crval[0]),np.abs(wfit.wcs.crpix[0])])
+decrel = np.abs(w.wcs.crval[1]-wfit.wcs.crval[1])/np.min([np.abs(w.wcs.crval[1]),np.abs(wfit.wcs.crval[1])])
+xdeltrel = np.abs(w.wcs.cdelt[0]-wfit.wcs.cd[0,0])/np.min([np.abs(w.wcs.cdelt[0]),np.abs(wfit.wcs.cd[0,0])])
+ydeltrel = np.abs(w.wcs.cdelt[1]-wfit.wcs.cd[1,1])/np.min([np.abs(w.wcs.cdelt[1]),np.abs(wfit.wcs.cd[1,1])])
+
+filename = os.path.join(outputDir,'performance.dat')
+fid = open(filename,'w')
+fid.write('%.5f %.5f %.5f %.5f\n'%(rarel, decrel, xdeltrel, ydeltrel))
+fid.close()

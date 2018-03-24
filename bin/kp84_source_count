@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil
+import numpy as np
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+from astropy.io import ascii
+from astropy import wcs
+
+from astroquery.vizier import Vizier
+
+from astropy.io import fits
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-o","--outputDir",default="../output_count")
+    parser.add_option("-r","--ra",default=30.0,type=float)
+    parser.add_option("-d","--declination",default=45.0,type=float)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+# Parse command line
+opts = parse_commandline()
+ra = opts.ra
+dec = opts.declination
+outputDir = os.path.join(opts.outputDir,'%.5f_%.5f'%(ra,dec))
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+result1 = ps1_query(ra, dec, 1.7/60.0, maxmag=16,
+               maxsources=10000)
+
+result2 = ps1_query(ra, dec, 3.4/60.0, maxmag=16,
+               maxsources=10000)
+
+filename = os.path.join(outputDir,'nsources.dat')
+fid = open(filename,'w')
+fid.write('%d %d\n'%(len(np.array(result1['RAJ2000'])),len(np.array(result2['RAJ2000']))))
+fid.close()
+

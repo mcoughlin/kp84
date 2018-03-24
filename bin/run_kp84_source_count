@@ -1,0 +1,54 @@
+
+import os, sys, glob
+import numpy as np
+from matplotlib import pyplot as plt
+
+np.random.seed(0)
+
+N = 1000
+
+ras = 360*np.random.rand(N,)
+decs = 180*np.random.rand(N,) - 90.0
+
+baseoutputDir = '../output_count'
+
+for ra, dec in zip(ras,decs):
+
+    filename = os.path.join(folder,'nsources.dat')
+    if os.path.isfile(filename): continue
+
+    system_command = "python kp84_source_count --ra %.5f --declination %.5f"%(ra,dec)
+    os.system(system_command)
+
+folders = glob.glob('%s/*_*'%baseoutputDir)
+data = []
+for folder in folders:
+    filename = os.path.join(folder,'nsources.dat')
+    if not os.path.isfile(filename): continue
+
+    data_out = np.loadtxt(filename)
+    data.append(data_out)
+data = np.array(data)
+
+outputDir = os.path.join(baseoutputDir,'combined')
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+plotName = os.path.join(outputDir,'hist.pdf')
+bins = np.logspace(0,2,15)
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+idx1 = np.isfinite(data[:,0])
+idx2 = np.isfinite(data[:,1])
+hist1, bin_edges = np.histogram(data[idx1,0],bins=bins)
+hist2, bin_edges = np.histogram(data[idx2,1],bins=bins)
+bins = (bin_edges[:-1]+bin_edges[1:])/2.0
+plt.step(bins, hist1, where='mid', label='3x3')
+plt.step(bins, hist2, where='mid', label='6x6')
+plt.xlabel('Number of sources')
+plt.ylabel('Counts')
+ax.set_xscale('log')
+leg = plt.legend()
+plt.savefig(plotName)
+plt.close()
+

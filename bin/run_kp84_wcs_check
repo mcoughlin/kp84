@@ -1,0 +1,57 @@
+
+import os, sys, glob
+import numpy as np
+from matplotlib import pyplot as plt
+
+np.random.seed(0)
+
+N = 500
+
+ras = 360*np.random.rand(N,)
+decs = 180*np.random.rand(N,) - 90.0
+
+baseoutputDir = '../output'
+
+for ra, dec in zip(ras,decs):
+    system_command = "python kp84_wcs_check --ra %.5f --declination %.5f"%(ra,dec)
+    os.system(system_command)
+
+folders = glob.glob('%s/*_*'%baseoutputDir)
+data = []
+for folder in folders:
+    filename = os.path.join(folder,'performance.dat')
+    if not os.path.isfile(filename): continue
+
+    data_out = np.loadtxt(filename)
+    data.append(data_out)
+data = np.array(data)
+data = 100*np.abs(data)
+
+outputDir = os.path.join(baseoutputDir,'combined')
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+plotName = os.path.join(outputDir,'hist.pdf')
+bins = np.logspace(-3,1,15)
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+idx1 = np.isfinite(data[:,0])
+idx2 = np.isfinite(data[:,1])
+idx3 = np.isfinite(data[:,2])
+idx4 = np.isfinite(data[:,3])
+hist1, bin_edges = np.histogram(data[idx1,0],bins=bins)
+hist2, bin_edges = np.histogram(data[idx2,1],bins=bins)
+hist3, bin_edges = np.histogram(data[idx3,2],bins=bins)
+hist4, bin_edges = np.histogram(data[idx4,3],bins=bins)
+bins = (bin_edges[:-1]+bin_edges[1:])/2.0
+plt.step(bins, hist1, where='mid', label='RA')
+plt.step(bins, hist2, where='mid', label='Declination')
+plt.step(bins, hist3, where='mid', label='delta X')
+plt.step(bins, hist4, where='mid', label='delta Y')
+plt.xlabel('Percent Relative Error')
+plt.ylabel('Counts')
+ax.set_xscale('log')
+leg = plt.legend()
+plt.savefig(plotName)
+plt.close()
+
