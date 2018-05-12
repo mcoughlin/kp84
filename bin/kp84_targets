@@ -1,0 +1,310 @@
+
+import os, sys, optparse, shutil
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+
+from astroplan import Observer
+from astroplan import FixedTarget
+from astroplan import ObservingBlock
+from astroplan.constraints import TimeConstraint
+from astroplan.constraints import AtNightConstraint, AirmassConstraint
+from astroplan.scheduling import Transitioner
+from astroplan.scheduling import SequentialScheduler
+from astroplan.scheduling import PriorityScheduler
+from astroplan.scheduling import Schedule
+from astroplan.plots import plot_schedule_airmass
+from astroplan import observability_table
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_observing")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=20, 
+               maxsources=10000): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 
+                             'phot_g_mean_mag','phot_r_mean_mag'], 
+                    column_filters={"phot_g_mean_mag": 
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag": 
+                                    ("<%f" % maxmag)}, 
+                    row_limit = maxsources) 
+ 
+    field = SkyCoord(ra=ra_deg, dec=dec_deg, 
+                           unit=(u.deg, u.deg), 
+                           frame='icrs')
+    return vquery.query_region(field, 
+                               width=("%fd" % rad_deg), 
+                               catalog="I/337/gaia")[0] 
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+
+def convert_to_hex(val, delimiter=':', force_sign=False):
+    """
+    Converts a numerical value into a hexidecimal string
+
+    Parameters:
+    ===========
+    - val:           float
+                     The decimal number to convert to hex.
+
+    - delimiter:     string
+                     The delimiter between hours, minutes, and seconds
+                     in the output hex string.
+
+    - force_sign:    boolean
+                     Include the sign of the string on the output,
+                     even if positive? Usually, you will set this to
+                     False for RA values and True for DEC
+
+    Returns:
+    ========
+    A hexadecimal representation of the input value.
+    """
+    s = np.sign(val)
+    s_factor = 1 if s > 0 else -1
+    val = np.abs(val)
+    degree = int(val)
+    minute = int((val  - degree)*60)
+    second = (val - degree - minute/60.0)*3600.
+    if degree == 0 and s_factor < 0:
+        return '-00{2:s}{0:02d}{2:s}{1:.2f}'.format(minute, second, delimiter)
+    elif force_sign or s_factor < 0:
+        deg_str = '{:+03d}'.format(degree * s_factor)
+    else:
+        deg_str = '{:02d}'.format(degree * s_factor)
+    return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
+
+# Parse command line
+opts = parse_commandline()
+
+outputDir = opts.outputDir
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+# When the orbital period is short enough that it is reasonable to do, I’d like to cover at least 1 orbit of each object (the periods are given in days). For objects with more than a 4 hour period, could it be possible to maybe alternate between several objects and get more sparse lightcurves over their entire orbits (having data points spread out over days or weeks is totally fine too)? I’ll leave deciding on the cadence up to you—honestly, I’ll be overjoyed at any lightcurves I get.
+
+# Hmm, so the sampling rate is an interesting question. Technically I’m not searching for periods, but rather confirming that they are real (and trying to get a better feel for the shape of the lightcurve). I’d be inclined to say I’d like to get at least 100 points per object, spread out as evenly over the orbital phase as possible? Perhaps as a reference, on Chimera we would get lightcurves with as fast a cadence as possible that still gave us an SNR if around 15 (so exposure time was adjusted based on brightness). Having a lot of epochs with fairly short exposures is generally preferred simply because this allows one to measure very subtle short lived features in the lightcurve, such as an ingress or egress out of an eclipse.
+
+location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
+                                       2096*u.m)
+kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
+
+targetfile = "../input/Targets.csv"
+targets = ascii.read(targetfile, format='csv', fast_reader=False)
+targets.sort('Period')
+targets["coord"] = SkyCoord(ra=targets["ra"]*u.deg, dec=targets["dec"]*u.deg)
+
+FixedTargets = []
+for target in targets:
+    tar = FixedTarget(coord=target["coord"], name=target["Name"])
+    FixedTargets.append(tar)
+targets["target"] = FixedTargets
+
+tstart = Time('2018-06-01 00:00')
+tend = Time('2018-06-08 00:00')
+global_constraints = [AirmassConstraint(max = 2, boolean_constraint = False),
+    AtNightConstraint.twilight_civil()]
+
+table = observability_table(global_constraints, kp, FixedTargets, 
+                            time_range=[tstart,tend])
+idx = np.where(~table["ever observable"])[0]
+targets.remove_rows(idx)
+print("Removed %d targets because not observable from %s-%s"%(len(idx),tstart,tend))
+
+idx = []
+for ii, target in enumerate(targets):
+    T = target["Period"]*24
+    if (T>4):
+        idx.append(ii)
+targets.remove_rows(idx)       
+print("Removed %d targets with periods greater than 4 hours"%(len(idx)))
+
+# Define the read-out time, exposure duration and number of exposures
+read_out = 10 * u.second
+n = 100
+blocks = []
+
+tall = np.arange(tstart.mjd,tend.mjd,0.001)
+mags = []
+for target in targets:
+    T = target["Period"]
+    mag = target["g"] + np.sin(2*np.pi*(tall-tall[0])/T)
+    mags.append(mag)
+targets["mags"] = mags
+
+nexp = []
+bandpasses = ['U','B','I']
+for ii, target in enumerate(targets):
+    T = target["Period"]*24
+    if (T>4): continue
+
+    mag = target["g"]
+    if mag<=16:
+        expt = 20
+    elif (mag<=17) and (mag>16):
+        expt = 30
+    elif (mag<=18) and (mag>17):
+        expt = 40
+    elif (mag<=19) and (mag>18):
+        expt = 50
+    else:
+        expt = 60
+    exp = expt*u.second
+
+    n = np.max([100,np.ceil(T*3600.0/expt)])
+    nexp.append(n)
+
+    for jj,bandpass in enumerate(bandpasses):
+        priority = jj+(ii-1)*len(bandpasses)
+        b = ObservingBlock.from_exposures(target["target"], priority, 
+                                      exp, n, read_out,
+                                      configuration = {'filter': bandpass})
+        blocks.append(b)
+targets["nexp"] = nexp
+
+# Initialize a transitioner object with the slew rate and/or the
+# duration of other transitions (e.g. filter changes)
+slew_rate = 2.0*u.deg/u.second
+transitioner = Transitioner(slew_rate,
+                            {'filter':{'default': 10*u.second}})
+
+# Initialize the sequential scheduler with the constraints and transitioner
+prior_scheduler = PriorityScheduler(constraints = global_constraints,
+                                    observer = kp,
+                                    transitioner = transitioner)
+# Initialize a Schedule object, to contain the new schedule
+priority_schedule = Schedule(tstart, tend)
+
+# Call the schedule with the observing blocks and schedule to schedule the blocks
+prior_scheduler(blocks, priority_schedule)
+
+data_out = {}
+tars = []
+periods = []
+for schedule in priority_schedule.to_table():
+    tar = schedule["target"]
+    if tar == "TransitionBlock": continue
+
+    idx = np.where(targets["Name"] == tar)[0] 
+    target = targets[idx]
+    filter = schedule["configuration"]["filter"]
+    obsstart, obsend = Time(schedule["start time (UTC)"]), Time(schedule["end time (UTC)"])
+    nexp = float(target["nexp"])
+    obs = np.linspace(obsstart.mjd,obsend.mjd,nexp)
+    mags = np.interp(obs,tall,np.array(target["mags"])[0])
+
+    if not tar in data_out:
+        tars.append(tar)
+        periods.append(target["Period"])
+        data_out[tar] = {}
+
+    data_out[tar][filter] = np.vstack((obs,mags)).T
+
+keys = [x for _,x in sorted(zip(periods,tars))]
+color1 = 'coral'
+color2 = 'cornflowerblue'
+color3 = 'palegreen'
+colors = [color2,color3,color1]
+
+plotName = "%s/panels.pdf"%(outputDir)
+plt.figure(figsize=(20,28))
+cnt = 0
+for key in keys:
+    idx = np.where(targets["Name"] == key)[0]
+    target = targets[idx]
+    mags = np.array(target["mags"])[0]
+
+    cnt = cnt+1
+    vals = "%d%d%d"%(len(keys),1,cnt)
+    if cnt == 1:
+        ax1 = plt.subplot(len(keys),1,cnt)
+    else:
+        ax2 = plt.subplot(len(keys),1,cnt,sharex=ax1,sharey=ax1)
+
+    plt.plot(tall,mags,'k-',linewidth=2,alpha=0.1)
+    for bandpass, color in zip(bandpasses,colors):
+        if bandpass not in data_out[key]: continue
+        data = data_out[key][bandpass]
+        plt.plot(data[:,0],data[:,1],'x',c=color,linewidth=2,label=bandpass)
+
+    plt.ylabel('%s'%key,fontsize=36,rotation=0,labelpad=40)
+    plt.xlim([tstart.mjd, tend.mjd])
+    plt.ylim([15.0,20.0])
+    plt.grid()
+    plt.yticks(fontsize=36)
+
+    if (not cnt == len(keys)) and (not cnt == 1):
+        plt.setp(ax2.get_xticklabels(), visible=False)
+    elif cnt == 1:
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        #l = plt.legend(loc="upper right",prop={'size':40},numpoints=1,shadow=True, fancybox=True)
+        l = plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
+                mode="expand", borderaxespad=0, ncol=3, prop={'size':48})
+    else:
+        plt.xticks(fontsize=36)
+
+ax1.set_zorder(1)
+ax2.set_xlabel(r'Time [mjd]',fontsize=48,labelpad=30)
+plt.savefig(plotName,bbox_inches='tight')
+plt.close()
+
+# plot the schedule with the airmass of the targets
+plt.figure(figsize = (28,6))
+plot_schedule_airmass(priority_schedule,show_night=True)
+plt.legend(loc = "upper right")
+#plt.show()
+plt.savefig(os.path.join(outputDir,'scheduler.pdf'))
+plt.close()
+
