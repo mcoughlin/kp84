@@ -168,8 +168,16 @@ for ii, target in enumerate(targets):
     T = target["Period"]*24
     if (T>4):
         idx.append(ii)
-targets.remove_rows(idx)       
-print("Removed %d targets with periods greater than 4 hours"%(len(idx)))
+#targets.remove_rows(idx)       
+#print("Removed %d targets with periods greater than 4 hours"%(len(idx)))
+
+idx = []
+for ii, target in enumerate(targets):
+    T = target["Period"]*24
+    if (T>8.0):
+        idx.append(ii)
+targets.remove_rows(idx)
+print("Removed %d targets with periods greater than 8 hours"%(len(idx)))
 
 # Define the read-out time, exposure duration and number of exposures
 read_out = 10 * u.second
@@ -184,11 +192,15 @@ for target in targets:
     mags.append(mag)
 targets["mags"] = mags
 
+priority = 0
 nexp = []
-bandpasses = ['U','B','I']
 for ii, target in enumerate(targets):
     T = target["Period"]*24
-    if (T>4): continue
+ 
+    if target["Name"] == "1819a":
+        bandpasses = ['U','B','I']
+    else:
+        bandpasses = ['B']    
 
     mag = target["g"]
     if mag<=16:
@@ -203,15 +215,24 @@ for ii, target in enumerate(targets):
         expt = 60
     exp = expt*u.second
 
-    n = np.max([100,np.ceil(T*3600.0/expt)])
-    nexp.append(n)
-
-    for jj,bandpass in enumerate(bandpasses):
-        priority = jj+(ii-1)*len(bandpasses)
-        b = ObservingBlock.from_exposures(target["target"], priority, 
+    if (T>4):
+        n = 10
+        for jj,bandpass in enumerate(bandpasses):
+            for kk in range(n):
+                b = ObservingBlock.from_exposures(target["target"],priority+kk,
+                                      exp, 10, read_out,
+                                      configuration = {'filter': bandpass})
+                blocks.append(b)
+    else:
+        n = int(np.ceil(T*3600.0/expt))
+        for jj,bandpass in enumerate(bandpasses):
+            priority = priority + 1
+            b = ObservingBlock.from_exposures(target["target"], priority, 
                                       exp, n, read_out,
                                       configuration = {'filter': bandpass})
-        blocks.append(b)
+            blocks.append(b)
+    nexp.append(n)
+
 targets["nexp"] = nexp
 
 # Initialize a transitioner object with the slew rate and/or the
@@ -239,7 +260,7 @@ for schedule in priority_schedule.to_table():
 
     idx = np.where(targets["Name"] == tar)[0] 
     target = targets[idx]
-    filter = schedule["configuration"]["filter"]
+    filt = schedule["configuration"]["filter"]
     obsstart, obsend = Time(schedule["start time (UTC)"]), Time(schedule["end time (UTC)"])
     nexp = float(target["nexp"])
     obs = np.linspace(obsstart.mjd,obsend.mjd,nexp)
@@ -249,8 +270,39 @@ for schedule in priority_schedule.to_table():
         tars.append(tar)
         periods.append(target["Period"])
         data_out[tar] = {}
+    if not filt in data_out[tar]:
+        data_out[tar][filt] = np.empty((0,2))
+    vals = np.vstack((obs,mags)).T
 
-    data_out[tar][filter] = np.vstack((obs,mags)).T
+    data_out[tar][filt] = np.vstack((data_out[tar][filt],vals))
+
+filename = os.path.join(outputDir,'schedule.csv')
+fid = open(filename,'w')
+for schedule in priority_schedule.to_table():
+    tar = schedule["target"]
+    if tar == "TransitionBlock": continue
+
+    idx = np.where(targets["Name"] == tar)[0]
+    target = targets[idx]
+    filt = schedule["configuration"]["filter"]
+    obsstart, obsend = Time(schedule["start time (UTC)"]), Time(schedule["end time (UTC)"])
+
+    mag = target["g"][0]
+    if mag<=16:
+        expt = 20
+    elif (mag<=17) and (mag>16):
+        expt = 30
+    elif (mag<=18) and (mag>17):
+        expt = 40
+    elif (mag<=19) and (mag>18):
+        expt = 50
+    else:
+        expt = 60
+    exp = expt*u.second
+
+    fid.write('%s %.5f %.5f %s %.5f %.5f %d\n'%(tar,target["ra"][0],target["dec"][0],filt,obsstart.mjd,obsend.mjd,expt))
+
+fid.close()
 
 keys = [x for _,x in sorted(zip(periods,tars))]
 color1 = 'coral'
@@ -265,6 +317,11 @@ for key in keys:
     idx = np.where(targets["Name"] == key)[0]
     target = targets[idx]
     mags = np.array(target["mags"])[0]
+
+    if target["Name"][0] == "1819a":
+        bandpasses = ['U','B','I']
+    else:
+        bandpasses = ['B']
 
     cnt = cnt+1
     vals = "%d%d%d"%(len(keys),1,cnt)
@@ -281,19 +338,71 @@ for key in keys:
 
     plt.ylabel('%s'%key,fontsize=36,rotation=0,labelpad=40)
     plt.xlim([tstart.mjd, tend.mjd])
-    plt.ylim([15.0,20.0])
+    #plt.ylim([15.0,20.0])
     plt.grid()
-    plt.yticks(fontsize=36)
+    #plt.yticks(fontsize=36)
+    plt.yticks([])
 
     if (not cnt == len(keys)) and (not cnt == 1):
         plt.setp(ax2.get_xticklabels(), visible=False)
     elif cnt == 1:
         plt.setp(ax1.get_xticklabels(), visible=False)
         #l = plt.legend(loc="upper right",prop={'size':40},numpoints=1,shadow=True, fancybox=True)
-        l = plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
-                mode="expand", borderaxespad=0, ncol=3, prop={'size':48})
+        #l = plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
+        #        mode="expand", borderaxespad=0, ncol=3, prop={'size':48})
     else:
         plt.xticks(fontsize=36)
+
+ax1.set_zorder(1)
+ax2.set_xlabel(r'Time [mjd]',fontsize=48,labelpad=30)
+plt.savefig(plotName,bbox_inches='tight')
+plt.close()
+
+plotName = "%s/panels_mod.pdf"%(outputDir)
+plt.figure(figsize=(20,28))
+cnt = 0
+for key in keys:
+    idx = np.where(targets["Name"] == key)[0]
+    target = targets[idx]
+    mags = np.array(target["mags"])[0]
+    T = target["Period"][0]
+
+    if target["Name"][0] == "1819a":
+        bandpasses = ['U','B','I']
+    else:
+        bandpasses = ['B']
+
+    cnt = cnt+1
+    vals = "%d%d%d"%(len(keys),1,cnt)
+    if cnt == 1:
+        ax1 = plt.subplot(len(keys),1,cnt)
+    else:
+        ax2 = plt.subplot(len(keys),1,cnt,sharey=ax1)
+
+    idx = np.argsort(np.mod(tall,T))
+    plt.plot(np.mod(tall,T)[idx],mags[idx],'k-',linewidth=2,alpha=0.1)
+    for bandpass, color in zip(bandpasses,colors):
+        if bandpass not in data_out[key]: continue
+        data = data_out[key][bandpass]
+        plt.plot(np.mod(data[:,0],T),data[:,1],'x',c=color,linewidth=2,label=bandpass)
+
+    plt.ylabel('%s'%key,fontsize=36,rotation=0,labelpad=40)
+    plt.xlim([0,T])
+    #plt.ylim([15.0,20.0])
+    plt.grid()
+    #plt.yticks(fontsize=36)
+    plt.yticks([])   
+
+    if (not cnt == len(keys)) and (not cnt == 1):
+        plt.setp(ax2.get_xticklabels(), visible=False)
+    elif cnt == 1:
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        #l = plt.legend(loc="upper right",prop={'size':40},numpoints=1,shadow=True, fancybox=True)
+        #l = plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
+        #        mode="expand", borderaxespad=0, ncol=3, prop={'size':48})
+    else:
+        #plt.xticks(fontsize=36)
+        plt.xticks([])
 
 ax1.set_zorder(1)
 ax2.set_xlabel(r'Time [mjd]',fontsize=48,labelpad=30)
