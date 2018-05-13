@@ -262,7 +262,12 @@ for schedule in priority_schedule.to_table():
     target = targets[idx]
     filt = schedule["configuration"]["filter"]
     obsstart, obsend = Time(schedule["start time (UTC)"]), Time(schedule["end time (UTC)"])
-    nexp = float(target["nexp"])
+
+    T = target["Period"][0]*24
+    if (T>4):
+        nexp = 10
+    else:
+        nexp = int(target["nexp"])
     obs = np.linspace(obsstart.mjd,obsend.mjd,nexp)
     mags = np.interp(obs,tall,np.array(target["mags"])[0])
 
