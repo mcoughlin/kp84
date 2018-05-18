@@ -50,9 +50,9 @@ def parse_commandline():
     """
     parser = optparse.OptionParser(usage=__doc__,version=__version__)
 
-    parser.add_option("-o","--outputDir",default="../output")
-    parser.add_option("-p","--plotDir",default="../plots")
-    parser.add_option("-m","--tempDir",default="../temp")
+    parser.add_option("-o","--outputDir",default="../output_gain")
+    parser.add_option("-p","--plotDir",default="../plots_gain")
+    parser.add_option("-m","--tempDir",default="../temp_gain")
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doTemperature",  action="store_true", default=False)
@@ -109,20 +109,34 @@ exposure_time = opts.duration*1000.0
 cam = Andor()
 cam.Detector.OutputAmp(1)
 
+if opts.doGain:
+print(cam.EM.gain)
+    print("Range of EM gains: %d-%d"%cam.EM.range)
+    cam.EM.gain = opts.gain
+
+print(cam.EM.mode)
+print(cam.EM.is_on)
+print(cam.EM.on)
+print(cam.EM.is_on)
+
+print(dir(cam.Temperature))
+print(stop)
+
 if opts.doTemperature:
     cam.Temperature.setpoint = T  # start cooling
     cam.Temperature.cooler = True
 
     status = cam.Temperature.read
+    stabilized = status["status"]
     current_temp = int(status["temperature"])
     last_temp = current_temp
     print("Starting temp: %d"%current_temp)
-    while not (np.abs(T-current_temp)<2):
+    while not stabilized == "DRV_TEMP_STABILIZED":
         status = cam.Temperature.read
+        stabilized = status["status"]
         current_temp = int(status["temperature"])
-        if not last_temp == current_temp:
-            print("Current temp: %d"%current_temp)
-        time.sleep(1)
+        print("Current temp: %d"%current_temp)
+        time.sleep(10)
         last_temp = current_temp
 
 if opts.doImages:
