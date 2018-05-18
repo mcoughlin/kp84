@@ -50,17 +50,19 @@ def parse_commandline():
     """
     parser = optparse.OptionParser(usage=__doc__,version=__version__)
 
-    parser.add_option("-o","--outputDir",default="../output_gain")
-    parser.add_option("-p","--plotDir",default="../plots_gain")
-    parser.add_option("-m","--tempDir",default="../temp_gain")
+    parser.add_option("-o","--outputDir",default="../output")
+    parser.add_option("-p","--plotDir",default="../plots")
+    parser.add_option("-m","--tempDir",default="../temp")
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doTemperature",  action="store_true", default=False)
     parser.add_option("--doImages",  action="store_true", default=False)
+    parser.add_option("--doGain",  action="store_true", default=False)
 
     parser.add_option("-t", "--temperature", help="Temperature.", default=-10,type=int)
     parser.add_option("-N", "--nimages", help="Number of images.", default=60,type=int)
     parser.add_option("-d", "--duration", help="Duration.", default=1.0,type=float)
+    parser.add_option("-g", "--gain", help="Gain.", default=2,type=int)
 
     parser.add_option("-v", "--verbose", action="store_true", default=False,
                       help="Run verbosely. (Default: False)")
@@ -92,13 +94,18 @@ warnings.filterwarnings("ignore")
 # Parse command line
 opts = parse_commandline()
 
-fitsdir = opts.outputDir
+if opts.doGain:
+    postfix = "%d"%opts.gain
+else:
+    postfix = "0"
+
+fitsdir = os.path.join(opts.outputDir,postfix)
 if not os.path.isdir(fitsdir):
     os.makedirs(fitsdir)
-plotdir = opts.plotDir
+plotdir = os.path.join(opts.plotDir,postfix)
 if not os.path.isdir(plotdir):
     os.makedirs(plotdir)
-tempdir = opts.tempDir
+tempdir = os.path.join(opts.tempDir,postfix)
 if not os.path.isdir(tempdir):
     os.makedirs(tempdir)
 
@@ -110,17 +117,12 @@ cam = Andor()
 cam.Detector.OutputAmp(1)
 
 if opts.doGain:
-print(cam.EM.gain)
+    print(cam.EM.gain)
     print("Range of EM gains: %d-%d"%cam.EM.range)
     cam.EM.gain = opts.gain
-
-print(cam.EM.mode)
-print(cam.EM.is_on)
-print(cam.EM.on)
-print(cam.EM.is_on)
-
-print(dir(cam.Temperature))
-print(stop)
+    cam.EM.on = True
+    print(cam.EM.is_on)
+    print(cam.EM.gain)
 
 if opts.doTemperature:
     cam.Temperature.setpoint = T  # start cooling
