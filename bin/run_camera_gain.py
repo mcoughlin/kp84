@@ -114,15 +114,14 @@ n_images = opts.nimages
 exposure_time = opts.duration*1000.0
 
 cam = Andor()
-cam.Detector.OutputAmp(1)
-
 if opts.doGain:
-    print(cam.EM.gain)
     print("Range of EM gains: %d-%d"%cam.EM.range)
+    cam.Detector.OutputAmp(0)
+    cam.EM.mode = 2
     cam.EM.gain = opts.gain
-    cam.EM.on = True
-    print(cam.EM.is_on)
-    print(cam.EM.gain)
+    cam.EM.on()
+else:
+    cam.Detector.OutputAmp(1) 
 
 if opts.doTemperature:
     cam.Temperature.setpoint = T  # start cooling
@@ -130,14 +129,14 @@ if opts.doTemperature:
 
     status = cam.Temperature.read
     stabilized = status["status"]
-    current_temp = int(status["temperature"])
+    current_temp = status["temperature"]
     last_temp = current_temp
     print("Starting temp: %d"%current_temp)
     while not stabilized == "DRV_TEMP_STABILIZED":
         status = cam.Temperature.read
         stabilized = status["status"]
-        current_temp = int(status["temperature"])
-        print("Current temp: %d"%current_temp)
+        current_temp = status["temperature"]
+        print("Current temp: %.2f"%current_temp)
         time.sleep(10)
         last_temp = current_temp
 
@@ -151,8 +150,8 @@ if opts.doImages:
         if os.path.isfile(fitsfile) and os.path.isfile(tempfile): continue
 
         status = cam.Temperature.read
-        current_temp = int(status["temperature"])
-        print("Image: %d, Current temp: %d"%(ii,current_temp))
+        current_temp = status["temperature"]
+        print("Image: %d, Current temp: %.2f"%(ii,current_temp))
 
         cam.Acquire.Single()
         data = cam.Acquire.snap(wait=True,type=32)
@@ -160,7 +159,7 @@ if opts.doImages:
         hdulist.writeto(fitsfile)
 
         fid = open(tempfile,'w')
-        fid.write('%d\n'%current_temp)
+        fid.write('%.2f\n'%current_temp)
         fid.close()
  
 if opts.doPlots:
@@ -240,3 +239,7 @@ if opts.doPlots:
     plt.savefig(plotfile)
     plt.close()
 
+    filename = os.path.join(plotdir,'adus.dat')
+    fid = open(filename,'w')
+    fid.write('%.2f %.2f\n'%(np.mean(adus),np.std(adus)))
+    fid.close()
