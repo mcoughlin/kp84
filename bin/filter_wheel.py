@@ -14,6 +14,7 @@ def parse_commandline():
     parser.add_option("-f","--filter",default=0,type=int)
     parser.add_option("--doPosition", action="store_true",default=False)
     parser.add_option("--doGetPosition", action="store_true",default=False)
+    parser.add_option("--doGetFilterList", action="store_true",default=False)
 
     opts, args = parser.parse_args()
 
@@ -31,6 +32,17 @@ def initialize_connection():
 
 # Parse command line
 opts = parse_commandline()
+
+filters = ["clear","r","g","I","dark"]
+masks = ["clear","U","B","V","R"]
+
+if opts.doGetFilterList:
+    cnt = 0
+    print "Number, filter, mask"
+    for filt, mask in zip(filters,masks):
+        print "%d, %s, %s"%(cnt,filt,mask)
+        cnt = cnt + 1
+    exit(0)
 
 fw0 = initialize_connection()
 
