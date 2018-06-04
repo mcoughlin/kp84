@@ -1,0 +1,45 @@
+
+import os, sys, optparse, shutil
+import numpy as np
+from matplotlib import pyplot as plt
+
+from astropy.io import fits
+from astropy.wcs import WCS
+
+import ztfsub.surveys, ztfsub.plotting
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--dataDir",default="../data")
+    parser.add_option("-t","--tmpDir",default="/tmp")
+    parser.add_option("-o","--outputDir",default="../output_cutouts")
+    parser.add_option("-d","--defaultsDir",default="../defaults")
+    parser.add_option("--ra",default=296.10890,type=float)
+    parser.add_option("--declination",default=26.22129,type=float)
+    parser.add_option("--image_size",default=1000,type=int)
+    parser.add_option("--doPlots",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+outputDir = opts.outputDir
+
+path_out_dir='%s/%.5f_%.5f'%(outputDir,opts.ra,opts.declination)
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+refimage = '%s/ref.fits'%(path_out_dir)
+ra, dec = opts.ra, opts.declination
+
+refgood = ztfsub.surveys.get_ps1(opts,refimage,ra,dec,'r')
+
+if opts.doPlots:
+    plotName = os.path.join(path_out_dir,'ref.pdf')
+    ztfsub.plotting.plot_image(refimage,plotName)

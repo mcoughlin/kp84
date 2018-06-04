@@ -1,0 +1,305 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, vstack
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+
+import matplotlib.path as mplPath
+import h5py    
+from astropy.io import fits
+import aplpy
+
+import requests
+from lxml.html import fromstring
+
+import ztfsub.utils, ztfsub.surveys
+import ztfsub.plotting
+
+import scipy
+from scipy.optimize import curve_fit
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--dataDir",default="../data")
+    parser.add_option("-t","--tmpDir",default="/tmp")
+    parser.add_option("-i","--inputDir",default="../input")
+    parser.add_option("-o","--outputDir",default="../output")
+    parser.add_option("-d","--defaultsDir",default="../defaults")
+    parser.add_option("--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_1.fits")
+    parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_*")
+    parser.add_option("-s","--star",default="M13")    
+    parser.add_option("-m","--minmag",default=-10,type=float)
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+    parser.add_option("--doAstrometryNet",  action="store_true", default=False)
+    parser.add_option("--doSubtractBackground",  action="store_true", default=False)
+    parser.add_option("--doOverwrite",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+# Parse command line
+opts = parse_commandline()
+inputDir = opts.inputDir
+outputDir = opts.outputDir
+defaultsDir = opts.defaultsDir
+dataDir = opts.dataDir
+fitsfile = opts.fitsfile
+minmag = opts.minmag
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+rm_command = "rm *.fits"
+os.system(rm_command)
+rm_command = "rm *.bz2"
+os.system(rm_command)
+
+if opts.star == "M13":
+    ra = 249.976843
+    dec = 36.555625
+
+if not opts.fitsfiles == None:
+    fitsfiles = sorted(glob.glob(opts.fitsfiles))
+    header = fits.getheader(fitsfiles[0],ext=0)
+    T0 = header['DATE']
+
+    fitsfileSplit = fitsfiles[0].split("/")[-1].replace(".fits","")
+
+    path_out_dir='%s/%s'%(outputDir,fitsfileSplit)
+    if opts.doOverwrite:
+        rm_command = "rm -rf %s"%path_out_dir
+        os.system(rm_command)
+    if not os.path.isdir(path_out_dir):
+        os.makedirs(path_out_dir)
+
+    for ii,fitsfile in enumerate(fitsfiles):
+        print(ii,fitsfile)
+
+        fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","")
+
+        path_out_dir_tmp='%s/%d'%(path_out_dir,ii)
+        if not os.path.isdir(path_out_dir_tmp):
+            os.makedirs(path_out_dir_tmp)
+
+        scienceimage = '%s/science.fits'%(path_out_dir_tmp)
+        catfile = scienceimage.replace(".fits",".cat")
+        backfile = scienceimage.replace(".fits",".background.fits")
+
+        if os.path.isfile(catfile): continue
+
+        if not os.path.isfile(scienceimage):
+            hdulist = fits.open(fitsfile)
+            hdulist = hdulist[1]
+            hdulist.writeto(scienceimage)
+
+        ra, dec = ztfsub.utils.get_radec_from_header(scienceimage,ext=1)
+
+        if opts.doAstrometryNet:
+            ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,ext=1)
+            axyfile = scienceimage.replace("fits","axy")
+            hdulist = fits.open(axyfile) 
+            print(hdulist[1].data)
+
+        ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+
+        cat = np.loadtxt(catfile)
+        xs, ys, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms_world, fwhms, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14]
+        
+        fwhmmax = 5e-3
+        xmin = 0
+        xmax = 10000
+
+        idx = np.where((fwhms <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
+        cat = cat[idx,:]
+        np.savetxt(catfile,cat,fmt='%.5f')
+
+    for ii,fitsfile in enumerate(fitsfiles):
+        path_out_dir_tmp='%s/%d'%(path_out_dir,ii)
+        scienceimage = '%s/science.fits'%(path_out_dir_tmp)
+        catfile = scienceimage.replace(".fits",".cat")
+
+        if ii == 0:
+            tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
+            tbl['FILE_INDEX'] = ii
+        else:
+            tbltemp = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
+            tbltemp['FILE_INDEX'] = ii
+            tbl = vstack([tbl,tbltemp])
+   
+    catfile = '%s/catfile.dat'%(path_out_dir)
+    ascii.write(tbl,catfile)
+
+tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','FILE_INDEX'])
+
+ra_deg = (np.max(tbl["RA"]) + np.min(tbl["RA"]))/2.0
+dec_deg = (np.max(tbl["Declination"]) + np.min(tbl["Declination"]))/2.0
+result = ps1_query(ra_deg, dec_deg, 1.0, maxmag=20,
+               maxsources=10000)
+
+coo_kp84 = SkyCoord(tbl['RA']*u.deg, tbl['Declination']*u.deg)
+coo_ps1 = SkyCoord(result['RAJ2000'], result['DEJ2000'])
+idx_ps1, d2d_ps1, d3d_ps1 = coo_kp84.match_to_catalog_sky(coo_ps1)
+
+def linear_fit(x):
+    return m * x + b
+xdata, ydata, yerr = np.array(result[idx_ps1]["gmag"]), np.array(tbl["mag"]), np.array(tbl["magerr"])
+#y_fit = linear_fit(xdata, 1, 2)
+#popt, pcov = curve_fit(linear_fit, xdata, ydata, sigma=yerr, p0=[1.0,-50.0], bounds=([-100.0,-100.0],[100.0, 100.0]))
+
+z = np.polyfit(xdata, ydata, 1)
+p = np.poly1d(z)
+
+if opts.doPlots:
+    xstar, ystar = 671.4644, 425.9586
+    lims = 50.0
+    idx1 = np.where(np.sqrt((tbl['X']-xstar)**2 + (tbl['Y']-ystar)**2)<lims)[0]
+    nums1 = np.arange(len(idx1))
+    nums1 = nums1*1/60.0
+
+    plotName = os.path.join(path_out_dir,'star.pdf')
+    fig = plt.figure()
+    plt.errorbar(nums1,tbl[idx1]["mag"],tbl[idx1]["magerr"],fmt='ko')
+    plt.gca().invert_yaxis()
+    plt.xlabel('Time from %s (approx) [min]'%T0)
+    plt.ylabel('Magnitude [arb]')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'drift.pdf')
+    plt.scatter(tbl[idx1]["X"],tbl[idx1]["Y"],s=20,c=tbl[idx1]["mag"])
+    plt.xlabel('X [pixels]')
+    plt.ylabel('Y [pixels]')
+    cbar = plt.colorbar()
+    cbar.set_label('Magnitude [arb]')
+    plt.savefig(plotName)
+    plt.close()
+
+    xstar_field, ystar_field = 103.0, 920.0
+    idx2 = np.where(np.sqrt((tbl['X']-xstar_field)**2 + (tbl['Y']-ystar_field)**2)<lims)[0]
+    nums2 = np.arange(len(idx2))
+    nums2 = nums2*1/60.0
+
+    plotName = os.path.join(path_out_dir,'star_field.pdf')
+    fig = plt.figure()
+    plt.errorbar(nums2,tbl[idx2]["mag"],tbl[idx2]["magerr"],fmt='ko')
+    plt.gca().invert_yaxis()
+    plt.xlabel('Time from %s (approx) [min]'%T0)
+    plt.ylabel('Magnitude [arb]')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'drift_field.pdf')
+    plt.scatter(tbl[idx2]["X"],tbl[idx2]["Y"],s=20,c=tbl[idx2]["mag"])
+    plt.xlabel('X [pixels]')
+    plt.ylabel('Y [pixels]')
+    cbar = plt.colorbar()
+    cbar.set_label('Magnitude [arb]')
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'star_relative.pdf')
+    fig = plt.figure()
+    for ii, num in zip(idx1,nums1):
+        row = tbl[ii]
+        idx3 = np.where(np.abs(tbl[idx2]["EXT"]-row["EXT"]) + np.abs(tbl[idx2]["FILE_INDEX"]-row["FILE_INDEX"])  == 0.0)[0]
+        if len(idx3) == 0: continue
+        idx3 = idx2[idx3]
+        magrel = row["mag"] - tbl[idx3]["mag"]
+        magrelerr = np.sqrt(row["magerr"]**2 + tbl[idx3]["magerr"]**2)
+        
+        plt.errorbar(num,magrel,magrelerr,fmt='ko')
+    plt.gca().invert_yaxis()
+    plt.xlabel('Time from %s (approx) [min]'%T0)
+    plt.ylabel('Magnitude [arb]')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'match.pdf')
+    plt.hist(d2d_ps1.arcsec, histtype='step', range=(0,100))
+    plt.xlabel('separation [arcsec]')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'colors.pdf')
+    plt.errorbar(result[idx_ps1]["rmag"],tbl["mag"],tbl["magerr"],fmt='ko')
+    plt.plot(result[idx_ps1]["rmag"],p(result[idx_ps1]["rmag"]),'r--')
+    plt.xlabel('PS1 (r) [mag]')
+    plt.ylabel('KP84 (r) [mag]')
+    plt.xlim([12,20])
+    plt.ylim([-18,-8])
+    plt.gca().invert_xaxis()
+    plt.gca().invert_yaxis()
+    plt.savefig(plotName)
+    plt.close()
+
+if opts.doPlots:
+    plotName = os.path.join(path_out_dir,'AoverB.pdf')
+    plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["A"]/tbl["B"])
+    plt.xlabel('X [pixels]')
+    plt.ylabel('Y [pixels]')
+    cbar = plt.colorbar()
+    cbar.set_label('A/B')
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'fwhm.pdf')
+    plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["FWHM_World"])
+    plt.xlabel('X [pixels]')
+    plt.ylabel('Y [pixels]')
+    cbar = plt.colorbar()
+    cbar.set_label('FWHM')
+    plt.savefig(plotName)
+    plt.close()
+
+    catfile = scienceimage.replace(".fits",".cat")
+    plotName = os.path.join(path_out_dir,'fits.pdf')
+    #ztfsub.plotting.plot_image(scienceimage,plotName,catfile=catfile)
+    ztfsub.plotting.plot_image(scienceimage,plotName)
+
+#rm_command = "rm %s/*.fits"%path_out_dir
+#os.system(rm_command)
+

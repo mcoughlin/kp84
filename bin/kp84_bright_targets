@@ -1,0 +1,155 @@
+
+import os, sys, optparse, shutil
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+
+from astroplan import Observer
+from astroplan import FixedTarget
+from astroplan import ObservingBlock
+from astroplan.constraints import TimeConstraint
+from astroplan.constraints import AtNightConstraint, AirmassConstraint
+from astroplan.scheduling import Transitioner
+from astroplan.scheduling import SequentialScheduler
+from astroplan.scheduling import PriorityScheduler
+from astroplan.scheduling import Schedule
+from astroplan.plots import plot_schedule_airmass
+from astroplan import observability_table
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_observing")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=20, 
+               maxsources=10000): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 
+                             'phot_g_mean_mag','phot_r_mean_mag'], 
+                    column_filters={"phot_g_mean_mag": 
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag": 
+                                    ("<%f" % maxmag)}, 
+                    row_limit = maxsources) 
+ 
+    field = SkyCoord(ra=ra_deg, dec=dec_deg, 
+                           unit=(u.deg, u.deg), 
+                           frame='icrs')
+    print(field)
+    print(rad_deg)
+    print(vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="I/337/gaia"))
+
+    return vquery.query_region(field, 
+                               width=("%fd" % rad_deg), 
+                               catalog="I/337/gaia")[0] 
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+
+def convert_to_hex(val, delimiter=':', force_sign=False):
+    """
+    Converts a numerical value into a hexidecimal string
+
+    Parameters:
+    ===========
+    - val:           float
+                     The decimal number to convert to hex.
+
+    - delimiter:     string
+                     The delimiter between hours, minutes, and seconds
+                     in the output hex string.
+
+    - force_sign:    boolean
+                     Include the sign of the string on the output,
+                     even if positive? Usually, you will set this to
+                     False for RA values and True for DEC
+
+    Returns:
+    ========
+    A hexadecimal representation of the input value.
+    """
+    s = np.sign(val)
+    s_factor = 1 if s > 0 else -1
+    val = np.abs(val)
+    degree = int(val)
+    minute = int((val  - degree)*60)
+    second = (val - degree - minute/60.0)*3600.
+    if degree == 0 and s_factor < 0:
+        return '-00{2:s}{0:02d}{2:s}{1:.2f}'.format(minute, second, delimiter)
+    elif force_sign or s_factor < 0:
+        deg_str = '{:+03d}'.format(degree * s_factor)
+    else:
+        deg_str = '{:02d}'.format(degree * s_factor)
+    return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
+
+# Parse command line
+opts = parse_commandline()
+
+ra_deg = 212.826290
+dec_deg = 48.216000
+rad_deg = 10.0/60.0
+
+#ra_deg = 207.086650
+#dec_deg = 38.171530
+#rad_deg = 10.0/60.0
+
+cat = gaia_query(ra_deg, dec_deg, rad_deg, maxmag=12.0,
+               maxsources=10000)
+print(cat)
+
+cat = ps1_query(ra_deg, dec_deg, rad_deg, maxmag=12.0,
+               maxsources=10000)
+
+print(cat)
+
+

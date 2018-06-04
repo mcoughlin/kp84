@@ -1,0 +1,317 @@
+
+import os, sys, optparse, shutil
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+
+from astroquery.vizier import Vizier
+
+from astroplan import Observer
+from astroplan import FixedTarget
+from astroplan import ObservingBlock
+from astroplan.constraints import TimeConstraint
+from astroplan.constraints import AtNightConstraint, AirmassConstraint
+from astroplan.scheduling import Transitioner
+from astroplan.scheduling import SequentialScheduler
+from astroplan.scheduling import PriorityScheduler
+from astroplan.scheduling import Schedule
+from astroplan.plots import plot_schedule_airmass
+
+import pysynphot as S
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_observing")
+    parser.add_option("-k","--kderpDir",default="/Users/mcoughlin/Code/KP84/kderp")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=20, 
+               maxsources=10000): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 
+                             'phot_g_mean_mag','phot_r_mean_mag'], 
+                    column_filters={"phot_g_mean_mag": 
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag": 
+                                    ("<%f" % maxmag)}, 
+                    row_limit = maxsources) 
+ 
+    field = SkyCoord(ra=ra_deg, dec=dec_deg, 
+                           unit=(u.deg, u.deg), 
+                           frame='icrs')
+    return vquery.query_region(field, 
+                               width=("%fd" % rad_deg), 
+                               catalog="I/337/gaia")[0] 
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+
+def convert_to_hex(val, delimiter=':', force_sign=False):
+    """
+    Converts a numerical value into a hexidecimal string
+
+    Parameters:
+    ===========
+    - val:           float
+                     The decimal number to convert to hex.
+
+    - delimiter:     string
+                     The delimiter between hours, minutes, and seconds
+                     in the output hex string.
+
+    - force_sign:    boolean
+                     Include the sign of the string on the output,
+                     even if positive? Usually, you will set this to
+                     False for RA values and True for DEC
+
+    Returns:
+    ========
+    A hexadecimal representation of the input value.
+    """
+    s = np.sign(val)
+    s_factor = 1 if s > 0 else -1
+    val = np.abs(val)
+    degree = int(val)
+    minute = int((val  - degree)*60)
+    second = (val - degree - minute/60.0)*3600.
+    if degree == 0 and s_factor < 0:
+        return '-00{2:s}{0:02d}{2:s}{1:.2f}'.format(minute, second, delimiter)
+    elif force_sign or s_factor < 0:
+        deg_str = '{:+03d}'.format(degree * s_factor)
+    else:
+        deg_str = '{:02d}'.format(degree * s_factor)
+    return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
+
+# Parse command line
+opts = parse_commandline()
+
+outputDir = opts.outputDir
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
+                                       2096*u.m)
+kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
+
+data = {}
+dataDir = "%s/data/stds"%opts.kderpDir
+bandpasses = ['B','V','R','I','g','r','i']
+
+data = {}
+filename = '../input/kderp_stds_starlist.txt'
+lines = [line.rstrip('\n') for line in open(filename)]
+for line in lines:
+    name = line[:14]
+    name = name.replace(" ","")
+    name = name.split("(")[0]
+
+    if name == "g24-9": continue
+
+    data[name] = {}
+    lineSplit = list(filter(None,line[15:].split(" ")))
+
+    RA = (360/24)*(float(lineSplit[0]) + float(lineSplit[1])/60.0 + float(lineSplit[2])/3600.0)
+    Dec = float(lineSplit[3]) + float(lineSplit[4])/60.0 + float(lineSplit[5])/3600.0
+    vmag = float(lineSplit[7].replace("vmag=",""))
+
+    fitsfile = os.path.join(dataDir,"%s.fits"%name)
+    hdul = fits.open(fitsfile)
+    hdr = hdul[1].header
+    fitsdata = hdul[1].data
+    wave, spec = [], []
+    for dat in fitsdata:
+        wave.append(dat[0])
+        spec.append(dat[1])
+    wave, spec = np.array(wave), np.array(spec)
+    idx = np.argsort(wave)
+    wave, spec = wave[idx], spec[idx]
+    spec = S.ArraySpectrum(wave, spec, name=name, fluxunits='flam', waveunits='angstrom')
+
+    for band in bandpasses:
+        if band in ['g','r','i']:
+            filename = os.path.join("../input/P200_LFC.sdss_%s.dat"%band)
+        else:
+            filename = os.path.join("../input/P200_LFC.%s.dat"%band)
+        table = astropy.table.Table.read(filename, format='ascii', names=['wavelength', 'transmission'])
+        band = S.ArrayBandpass((table['wavelength'] * u.angstrom).value, np.clip(table['transmission'], 0, np.inf), name=band)
+
+        obs = S.Observation(spec, band,force='extrap')
+        ret = obs.effstim('abmag') - S.Observation(S.FlatSpectrum(0, fluxunits='abmag'), band).effstim('abmag')
+        data[name]["mag_%s"%band] = ret
+
+    bminusv = data[name]["mag_B"] - data[name]["mag_V"]
+
+    #if vmag < 10 or vmag > 15 or (bminusv > -0.3 and bminusv < 0.1): 
+    #    del data[name]
+    #    continue
+
+    data[name]["RA"] = RA
+    data[name]["Declination"] = Dec
+    data[name]["vmag"] = vmag
+    data[name]["bminusv"] = bminusv
+    coord = SkyCoord(ra=data[name]["RA"]*u.deg, dec=data[name]["Declination"]*u.deg)
+    data[name]["Coord"] = coord
+    data[name]["target"] = FixedTarget(coord=coord, name=name)
+
+    if Dec < -30:
+        del data[name]
+        continue
+
+ra_deg, dec_deg, rad_deg = 150.1192, 2.2058, 2.0
+dx = 18.0/60.0 # field size in degrees
+ras = np.arange(ra_deg - 0.5*dx, ra_deg + 1.4*dx,dx)
+decs = np.arange(dec_deg - 0.5*dx, dec_deg + 1.4*dx,dx)
+#ras = [ra_deg]
+#decs = [dec_deg]
+
+NGC5466 = FixedTarget(coord=SkyCoord(ra=211.363710*u.deg, dec=28.534440*u.deg),name='NGC5466')
+
+cosmos = {}
+ii = 0
+for ra in ras:
+    for dec in decs:
+        name = "Cosmos%d"%ii
+        cosmos[name] = {}
+        cosmos[name]["RA"], cosmos[name]["Declination"] = ra, dec
+        coord = SkyCoord(ra=cosmos[name]["RA"]*u.deg, dec=cosmos[name]["Declination"]*u.deg)
+        cosmos[name]["Coord"] = coord
+        cosmos[name]["target"] = FixedTarget(coord=coord, name=name)
+        ii = ii+1
+
+noon_before = Time('2018-06-03 03:00')
+noon_after = Time('2018-06-03 6:00')
+
+night_start = Time('2018-06-03 03:00')
+night_end = Time('2018-06-03 06:00')
+night = TimeConstraint(night_start, night_end)
+
+global_constraints = [AirmassConstraint(max = 2, boolean_constraint = False),
+    AtNightConstraint.twilight_civil()]
+
+# Define the read-out time, exposure duration and number of exposures
+read_out = 10 * u.second
+exp = 300*u.second
+n = 5
+blocks = []
+exp_cosmos = 20*60*u.second
+n_cosmos = 1
+
+filename = os.path.join(outputDir,'targets.txt')
+fid = open(filename,'w')
+fid.write('#Standards\n')
+for name in data.keys():
+    if not "RA" in data[name]: continue
+    ra_hex, dec_hex = convert_to_hex(data[name]["Coord"].ra.hourangle), convert_to_hex(data[name]["Coord"].dec.deg,force_sign=True)
+    fid.write('%s; %s; %s; %.5f; %5f\n'%(name,ra_hex, dec_hex,data[name]["vmag"],data[name]["bminusv"]))    
+
+#fid.write('#COSMOS\n')
+#
+#for name in cosmos.keys():
+#    ra_hex, dec_hex = convert_to_hex(cosmos[name]["Coord"].ra.hourangle), convert_to_hex(cosmos[name]["Coord"].dec.deg,force_sign=True)
+#    fid.write('%s; %s; %s\n'%(name,ra_hex, dec_hex))
+
+#fid.write('#NGC4966\n')
+#ra_hex, dec_hex = convert_to_hex(NGC5466.ra.hourangle),convert_to_hex(NGC5466.dec.deg,force_sign=True)
+#fid.write('%s %s %s\n'%('NGC4966',ra_hex,dec_hex))
+#fid.close()
+
+# Create ObservingBlocks for each filter and target with our time
+# constraint, and durations determined by the exposures needed
+for priority, bandpass in enumerate(['u']):
+    # We want each filter to have separate priority (so that target
+    # and reference are both scheduled)
+    for name in data.keys():
+        if not "target" in data[name]: continue
+        b = ObservingBlock.from_exposures(data[name]["target"], priority, 
+                                      exp, n, read_out,
+                                      configuration = {'filter': bandpass},
+                                      constraints = [night])
+        blocks.append(b)
+
+    for name in []:
+    #for name in cosmos.keys():
+        b = ObservingBlock.from_exposures(cosmos[name]["target"], priority,
+                                      exp_cosmos, n_cosmos, read_out,
+                                      configuration = {'filter': bandpass},
+                                      constraints = [night])
+        blocks.append(b)
+
+    b = ObservingBlock.from_exposures(NGC5466, priority,
+                                      exp, n, read_out,
+                                      configuration = {'filter': bandpass},
+                                      constraints = [night])
+    blocks.append(b)
+
+# Initialize a transitioner object with the slew rate and/or the
+# duration of other transitions (e.g. filter changes)
+slew_rate = 100.0*u.deg/u.second
+transitioner = Transitioner(slew_rate,
+                            {'filter':{('B','G'): 10*u.second,
+                                       ('G','R'): 10*u.second,
+                                       'default': 30*u.second}})
+
+# Initialize the sequential scheduler with the constraints and transitioner
+prior_scheduler = PriorityScheduler(constraints = global_constraints,
+                                    observer = kp,
+                                    transitioner = transitioner)
+# Initialize a Schedule object, to contain the new schedule
+priority_schedule = Schedule(noon_before, noon_after)
+
+# Call the schedule with the observing blocks and schedule to schedule the blocks
+prior_scheduler(blocks, priority_schedule)
+
+#priority_schedule.to_table()
+
+# plot the schedule with the airmass of the targets
+plt.figure(figsize = (14,6))
+plot_schedule_airmass(priority_schedule)
+plt.legend(loc = "upper right")
+#plt.show()
+plt.savefig(os.path.join(outputDir,'scheduler.pdf'))
+plt.close()
+
