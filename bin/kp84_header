@@ -1,0 +1,97 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+
+import matplotlib.path as mplPath
+import h5py    
+from astropy.io import fits
+import aplpy
+
+import requests
+from lxml.html import fromstring
+
+import ztfsub.utils, ztfsub.surveys
+import ztfsub.plotting
+
+import scipy
+from scipy.optimize import curve_fit
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-o","--outputDir",default="../output")
+    parser.add_option("-r","--ra",default="15:49:11.64")
+    parser.add_option("-d","--declination",default="32:17:16.8")
+    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180605/ZTF18aalrxas_r_20180605_051222.945724_o.fits")
+    parser.add_option("--filter",default="r")    
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+    return vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")[0]
+
+# Parse command line
+opts = parse_commandline()
+outputDir = opts.outputDir
+fitsfile = opts.fitsfile
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+fitsfileSplit = opts.fitsfile.split("/")[-1].replace(".fits","")
+path_out_dir='%s/%s/'%(outputDir,fitsfileSplit)
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+scienceimage = '%s/%s/science.fits'%(outputDir,fitsfileSplit)
+hdulist = fits.open(fitsfile)
+
+keywords_to_remove = ["RAD","DECD","TELRA","TELDEC","TELRAD","TELDECD","CRPIX1","CRPIX2","CRVAL1","CRVAL2","CD1_1","CD1_2","CD2_1","CD2_2","CCD_ROT","PIXSCALX","PIXSCALY"]
+for keyword in hdulist[0].header:
+    del hdulist[0].header[keyword]
+
+hdulist[0].header["FILTER"] = opts.filter
+hdulist[0].header["RA"] = opts.ra
+hdulist[0].header["DEC"] = opts.declination
+hdulist[0].header["DATE-OBS"] = hdulist[0].header["DATE"]
+
+hdulist.writeto(scienceimage,output_verify='fix',overwrite=True)
+

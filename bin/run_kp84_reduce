@@ -1,0 +1,33 @@
+
+import os, sys, glob
+import numpy as np
+from astropy.io import fits
+from astropy.io import ascii
+
+fitsfiles = glob.glob('/Users/mcoughlin/Code/KP84/observing/20180604/feige66*.fits')
+
+outputDir = '../output'
+
+for fitsfile in fitsfiles:
+    print(fitsfile)
+
+    fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","")
+    path_out_dir='%s/%s/'%(outputDir,fitsfileSplit)
+
+    scienceimage = '%s/%s/science.fits'%(outputDir,fitsfileSplit)
+    catfile = scienceimage.replace(".fits",".cat")
+
+    if not os.path.isfile(catfile):
+        system_command = "python kp84_reduce --doAstrometryNet --doPlots --fitsfile %s"%fitsfile
+        os.system(system_command)
+
+    header = fits.getheader(scienceimage,ext=0)
+    exposuretime = header["EXPOSURE"]
+
+    tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
+    xstar, ystar = 560.0, 560.0
+    lims = 50.0
+    idx1 = np.where(np.sqrt((tbl['X']-xstar)**2 + (tbl['Y']-ystar)**2)<lims)[0]
+    mag = tbl[idx1]['mag']
+
+    print("%s: %.5f in %.5f seconds"%(fitsfileSplit,mag,exposuretime))

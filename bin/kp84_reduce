@@ -38,8 +38,8 @@ def parse_commandline():
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
-    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180603/M13_t40055672_o_8.fits")
-    parser.add_option("-s","--star",default="M13")    
+    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/feige66_g_20180604_033544.358525_o.fits")
+    parser.add_option("-s","--star",default="feige66")    
     parser.add_option("-m","--minmag",default=-10,type=float)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
@@ -112,6 +112,9 @@ ra, dec = ztfsub.utils.get_radec_from_wcs(scienceimage)
 if opts.star == "M13":
     ra = 249.976843
     dec = 36.555625
+elif opts.star == "feige66":
+    ra = 189.347988
+    dec = 25.066633
 
 if opts.doAstrometryNet:
     ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100)
@@ -119,7 +122,7 @@ if opts.doAstrometryNet:
 ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground)
 catfile = scienceimage.replace(".fits",".cat")
 cat = np.loadtxt(catfile)
-xs, ys, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms_world, fwhms = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13]
+xs, ys, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms_world, fwhms, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14]
 
 fwhmmax = 5e-3
 xmin = 0
@@ -129,12 +132,11 @@ idx = np.where((fwhms <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minma
 cat = cat[idx,:]
 np.savetxt(catfile,cat,fmt='%.5f')
 
-tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM'])
+tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
 
-ra_deg = (np.max(cat[:,4]) + np.min(cat[:,4]))/2.0
-dec_deg = (np.max(cat[:,5]) + np.min(cat[:,5]))/2.0
-
-result = ps1_query(ra_deg, dec_deg, 1.0, maxmag=20,
+ra_deg = (np.max(tbl["RA"]) + np.min(tbl["RA"]))/2.0
+dec_deg = (np.max(tbl["Declination"]) + np.min(tbl["Declination"]))/2.0
+result = ps1_query(ra_deg, dec_deg, 10.0, maxmag=20,
                maxsources=10000)
 
 coo_kp84 = SkyCoord(tbl['RA']*u.deg, tbl['Declination']*u.deg)

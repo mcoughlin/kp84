@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 
-import os, sys, optparse, shutil, glob
+import os, sys, optparse, shutil, glob, copy
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+import scipy.signal
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table, vstack
 from astropy.io import ascii
+from astropy.time import Time
 
 from astroquery.vizier import Vizier
 
@@ -38,15 +40,38 @@ def parse_commandline():
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
+    parser.add_option("-c","--calibrationDir",default="/Users/mcoughlin/Code/KP84/observing/20180605")
     parser.add_option("--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_1.fits")
-    parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_*")
-    parser.add_option("-s","--star",default="M13")    
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_20180605_053947.040477_o*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/1719an_*")
+    parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/182li_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/hz44_0_r_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/hz44_7_r_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/1813_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/1819a_10_g_*")
+    #parser.add_option("-s","--star",default="PG1336")    
+    #parser.add_option("-s","--star",default="1719an")
+    parser.add_option("-s","--star",default="182li")
+    #parser.add_option("-s","--star",default="hz44")
+    #parser.add_option("-s","--star",default="1813a")
+    #parser.add_option("-s","--star",default="1819a")
     parser.add_option("-m","--minmag",default=-10,type=float)
+    #parser.add_option("-n","--nimages",default=64,type=float)
+    parser.add_option("-n","--nimages",default=16,type=float)
+
+    #parser.add_option("--filter",default="r")
+    parser.add_option("--filter",default="g")
+    #parser.add_option("--camsetting",default=9,type=int)
+    #parser.add_option("--camsetting",default=7,type=int)
+    #parser.add_option("--camsetting",default=0,type=int)
+    parser.add_option("--camsetting",default=10,type=int)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doAstrometryNet",  action="store_true", default=False)
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False)
+    parser.add_option("--doCombine",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -77,6 +102,93 @@ def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
                                width=("%fd" % rad_deg),
                                catalog="II/349/ps1")[0]
 
+def dark_image(calibrationDir,camsetting):
+
+    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d_*.fits'%camsetting))
+    for ii, darkfile in enumerate(darkfiles):
+        hdulist = fits.open(darkfile)
+        if ii == 0:
+            if hdulist[0].data is None:
+                hdulist = hdulist[1:]
+            xshape, yshape = hdulist[0].data.shape
+            dark = np.empty([xshape,yshape,0])
+        for hdu in hdulist: 
+            dark = np.append(dark,np.expand_dims(hdu.data,axis=2),axis=2)
+    dark = np.median(dark,axis=2)
+
+    return dark
+
+def correct_image(calibrationDir,fitsfile,scienceimage,
+                  filt,camsetting,nimages):
+    dark = dark_image(calibrationDir,camsetting)
+
+    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s_*.fits'%filt))
+    for ii, flatfile in enumerate(flatfiles):
+        hdulist = fits.open(flatfile)
+        if ii == 0:
+            xshape, yshape = hdulist[0].data.shape
+            flat = np.empty([xshape,yshape,0])
+        for hdu in hdulist: 
+            flat = np.append(flat,np.expand_dims(hdu.data,axis=2),axis=2)
+    flat = np.median(flat,axis=2)
+
+    IFminusIB = flat - dark
+    m = np.mean(IFminusIB)
+
+    hdulist = fits.open(fitsfile)
+    for ii in range(len(hdulist)):
+        if ii == 0: continue
+        hdulist[ii].data = ((hdulist[ii].data - dark)*m)/IFminusIB
+
+    hdulist2 = []
+    cnt = 1
+    for ii in range(len(hdulist)):
+        if ii == 0:
+            hdulist2.append(hdulist[ii])
+        else:
+            if cnt == 1:
+                hdulist_hold = copy.copy(hdulist[ii])
+                xshape, yshape = hdulist_hold.data.shape
+                data = np.empty([xshape,yshape,0])
+            data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
+            cnt = cnt + 1            
+
+            if cnt == nimages:
+                hdulist_hold.data = np.mean(data,axis=2)
+                hdulist2.append(hdulist_hold)
+                cnt = 1    
+
+    hdulist2 = fits.HDUList(hdus=hdulist2)
+
+    keywords_to_remove = ["RAD","DECD","TELRA","TELDEC","TELRAD","TELDECD","CRPIX1","CRPIX2","CRVAL1","CRVAL2","CD1_1","CD1_2","CD2_1","CD2_2","CCD_ROT","PIXSCALX","PIXSCALY","CUNIT1","CUNIT2","WCSAXES","WCSNAME","RADESYS","WCSVERS","CTYPE1","CTYPE2","RA","DEC"]
+    for ii in range(len(hdulist2)):
+        for keyword in keywords_to_remove:
+            if keyword in hdulist2[ii].header:
+                del hdulist2[ii].header[keyword]
+
+    hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
+
+def combine_images(combineDir,fitsfiles,nimages): 
+    
+    hdulist_hold = []
+    cnt = 0
+    for ii in range(len(fitsfiles)):
+        hdulist = fits.open(fitsfiles[ii])
+        if cnt == 0:
+            fitsfilename = os.path.join(combineDir,fitsfiles[ii].split("/")[-1])
+            header = hdulist[0].header
+            header["EXTEND"] = "T"
+            hdulist_hold.append(fits.PrimaryHDU(header=header))
+        header = hdulist[0].header
+        data = hdulist[0].data
+        hdulist_hold.append(fits.ImageHDU(data=data, header=header))
+        cnt = cnt + 1
+        if cnt == nimages:
+            hdulist2 = fits.HDUList(hdus=hdulist_hold)
+            hdulist2.writeto(fitsfilename,output_verify='ignore',overwrite=True)
+            cnt = 0
+            hdulist_hold = []
+
 # Parse command line
 opts = parse_commandline()
 inputDir = opts.inputDir
@@ -85,6 +197,7 @@ defaultsDir = opts.defaultsDir
 dataDir = opts.dataDir
 fitsfile = opts.fitsfile
 minmag = opts.minmag
+calibrationDir = opts.calibrationDir
 
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
@@ -97,12 +210,33 @@ os.system(rm_command)
 if opts.star == "M13":
     ra = 249.976843
     dec = 36.555625
+elif opts.star == "feige66":
+    ra = 189.347988
+    dec = 25.066633
+elif opts.star == "PG1336":
+    ra = 204.700620
+    dec = -2.030310
+elif opts.star == "1719an":
+    ra = 294.693083
+    dec = 58.698278
+elif opts.star == "182li":
+    ra = 325.093960
+    dec = 26.356780
+elif opts.star == "hz44":
+    ra = 200.896933
+    dec = 36.133206
+elif opts.star == "1813a":
+    ra = 207.08665
+    dec = 38.171530
+elif opts.star == "1819a":
+    ra = 297.255810
+    dec = 67.501560
 
 if not opts.fitsfiles == None:
     fitsfiles = sorted(glob.glob(opts.fitsfiles))
+
     header = fits.getheader(fitsfiles[0],ext=0)
     T0 = header['DATE']
-
     fitsfileSplit = fitsfiles[0].split("/")[-1].replace(".fits","")
 
     path_out_dir='%s/%s'%(outputDir,fitsfileSplit)
@@ -112,64 +246,125 @@ if not opts.fitsfiles == None:
     if not os.path.isdir(path_out_dir):
         os.makedirs(path_out_dir)
 
+    if opts.doCombine:
+        combineDir = os.path.join(path_out_dir,'combine')
+        if not os.path.isdir(combineDir):
+            os.makedirs(combineDir)
+        combine_images(combineDir,fitsfiles,opts.nimages) 
+        fitsfiles = sorted(glob.glob(os.path.join(combineDir,'*.fits')))
+
     for ii,fitsfile in enumerate(fitsfiles):
         print(ii,fitsfile)
 
         fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","")
 
-        path_out_dir_tmp='%s/%d'%(path_out_dir,ii)
+        path_out_dir_tmp='%s/%s'%(path_out_dir,fitsfileSplit)
         if not os.path.isdir(path_out_dir_tmp):
             os.makedirs(path_out_dir_tmp)
 
         scienceimage = '%s/science.fits'%(path_out_dir_tmp)
+        astimage = '%s/ast.fits'%(path_out_dir_tmp)
         catfile = scienceimage.replace(".fits",".cat")
         backfile = scienceimage.replace(".fits",".background.fits")
 
         if os.path.isfile(catfile): continue
 
-        if not os.path.isfile(scienceimage):
-            hdulist = fits.open(fitsfile)
-            hdulist = hdulist[1]
-            hdulist.writeto(scienceimage)
+        correct_image(calibrationDir,fitsfile,scienceimage,
+                      opts.filter,opts.camsetting,opts.nimages)
 
-        ra, dec = ztfsub.utils.get_radec_from_header(scienceimage,ext=1)
+        if not os.path.isfile(astimage):
+            hdulist = fits.open(fitsfile)
+            if len(hdulist) > 1:
+                hdulist = hdulist[1]
+            else:
+                hdulist = hdulist[0]
+
+            keywords_to_remove = ["RAD","DECD","TELRA","TELDEC","TELRAD","TELDECD","CRPIX1","CRPIX2","CRVAL1","CRVAL2","CD1_1","CD1_2","CD2_1","CD2_2","CCD_ROT","PIXSCALX","PIXSCALY"]
+            for keyword in keywords_to_remove:
+                if keyword in hdulist.header:
+                    del hdulist.header[keyword]
+
+            hdulist.header["RA"] = ra
+            hdulist.header["DEC"] = dec
+            hdulist.header["DATE-OBS"] = hdulist.header["DATE"]
+
+            hdulist.writeto(astimage,output_verify='fix',overwrite=True)
+
+        #ra, dec = ztfsub.utils.get_radec_from_header(scienceimage,ext=1)
 
         if opts.doAstrometryNet:
-            ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,ext=1)
+            ztfsub.utils.astrometrynet(astimage,pixel_scale=0.26,ra=ra,dec=dec,ext=1)
             axyfile = scienceimage.replace("fits","axy")
             hdulist = fits.open(axyfile) 
-            print(hdulist[1].data)
 
-        ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+        ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
 
         cat = np.loadtxt(catfile)
-        xs, ys, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms_world, fwhms, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14]
-        
-        fwhmmax = 5e-3
-        xmin = 0
-        xmax = 10000
+        if not cat.size: continue
+        xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
 
-        idx = np.where((fwhms <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
-        cat = cat[idx,:]
-        np.savetxt(catfile,cat,fmt='%.5f')
+        hdulist = fits.open(scienceimage)
+        if len(hdulist) == 1:
+            dateobs = Time(hdulist[0].header["DATE"])
+            mjds = dateobs.mjd*np.ones(xs.shape)
+        else:
+            mjds = np.zeros(xs.shape)
+            for ii in range(len(hdulist)-1):
+                dateobs = Time(hdulist[ii+1].header["DATE"])
+                idx = np.where(extnumber==ii+1)[0]
+                mjds[idx] = dateobs.mjd
 
+        cat = np.vstack((cat.T,mjds.T)).T
+        np.savetxt(catfile,cat,fmt='%.5f')        
+
+        #fwhmmax = 1e-2
+        #xmin = 0
+        #xmax = 10000
+        #idx = np.where((fwhms_world <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
+        #cat = cat[idx,:]
+        #np.savetxt(catfile,cat,fmt='%.5f')
+
+        #if opts.doPlots:
+        #    ztfsub.plotting.plot_cube(scienceimage,path_out_dir_tmp,catfile=catfile)
+        if os.path.isfile(scienceimage):
+            rm_command = "rm %s"%scienceimage
+            os.system(rm_command)
+
+        if os.path.isfile(backfile):
+            rm_command = "rm %s"%backfile
+            os.system(rm_command)
+
+    cnt = 0
     for ii,fitsfile in enumerate(fitsfiles):
-        path_out_dir_tmp='%s/%d'%(path_out_dir,ii)
+
+        fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","")
+        path_out_dir_tmp='%s/%s'%(path_out_dir,fitsfileSplit)
         scienceimage = '%s/science.fits'%(path_out_dir_tmp)
         catfile = scienceimage.replace(".fits",".cat")
 
-        if ii == 0:
-            tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
-            tbl['FILE_INDEX'] = ii
+        if opts.star == "1819a":
+            fitsfileBase = "_".join(fitsfileSplit.split("_")[:5])
         else:
-            tbltemp = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
+            fitsfileBase = "_".join(fitsfileSplit.split("_")[:4])
+
+        cat = np.loadtxt(catfile)
+        if not cat.size: continue
+
+        if cnt == 0:
+            tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
+            tbl['FILE_INDEX'] = ii
+            tbl['fitsfile'] = fitsfileBase
+        else:
+            tbltemp = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
             tbltemp['FILE_INDEX'] = ii
+            tbltemp['fitsfile'] = fitsfileBase
             tbl = vstack([tbl,tbltemp])
-   
+        cnt = cnt + 1   
+
     catfile = '%s/catfile.dat'%(path_out_dir)
     ascii.write(tbl,catfile)
 
-tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','FILE_INDEX'])
+tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
 
 ra_deg = (np.max(tbl["RA"]) + np.min(tbl["RA"]))/2.0
 dec_deg = (np.max(tbl["Declination"]) + np.min(tbl["Declination"]))/2.0
@@ -191,23 +386,106 @@ p = np.poly1d(z)
 
 if opts.doPlots:
     xstar, ystar = 671.4644, 425.9586
-    lims = 50.0
-    idx1 = np.where(np.sqrt((tbl['X']-xstar)**2 + (tbl['Y']-ystar)**2)<lims)[0]
-    nums1 = np.arange(len(idx1))
-    nums1 = nums1*1/60.0
 
+    idx1s, idx2s = np.empty((0,1)), np.empty((0,1))
+    if opts.star == "PG1336":
+        lims = 50.0
+        prefixes = ["PG1336-018_20180605_053947.040477_o","PG1336-018_20180605_064012.017688_o","PG1336-018_20180605_064249.040982_o","PG1336-018_20180605_073853.042577_o"]
+        xstars = [535,515,515,487]
+        ystars = [607,515,515,535] 
+        xstars_field = [787,768,768,743] 
+        ystars_field = [326,244,244,260]
+    elif opts.star == "1719an":
+        lims = 50.0
+        prefixes = ["1719an_20180605_082958.034124_o","1719an_20180605_091830.036272_o"]
+        xstars = [555,603]
+        ystars = [174,502]
+        xstars_field = [355,402]
+        ystars_field = [271,600]
+
+    elif opts.star == "hz44":
+        lims = 50.0
+        prefixes = ["hz44_0_r_20180607","hz44_7_r_20180607"]
+        xstars = [614,577]
+        ystars = [546,538]
+        xstars_field = [299,230]
+        ystars_field = [155,150]
+
+    elif opts.star == "1813a":
+        lims = 25.0
+        prefixes = ["1813_10_g_20180607"]
+        xstars = [900]
+        ystars = [640]
+        xstars_field = [300]
+        ystars_field = [565]
+
+    elif opts.star == "1819a":
+        lims = 30.0
+        prefixes = ["1819a_10_g_20180607_062809.034490","1819a_10_g_20180607_072404.034087"]
+        xstars = [487,545]
+        ystars = [469,452]
+        xstars_field = [426,483]
+        ystars_field = [137,125]
+
+    elif opts.star == "182li":
+        lims = 30.0
+        prefixes = ["182li_10_g_20180607"]
+        xstars = [565]
+        ystars = [655]
+        xstars_field = [461]
+        ystars_field = [661]
+
+    for prefix,xstar,ystar,xstar_field,ystar_field in zip(prefixes,xstars,ystars,xstars_field,ystars_field):
+        idx = np.where(prefix==tbl["fitsfile"])[0]
+        idx1 = np.where(np.sqrt((tbl[idx]['X']-xstar)**2 + (tbl[idx]['Y']-ystar)**2)<=lims)[0]
+        idx2 = np.where(np.sqrt((tbl[idx]['X']-xstar_field)**2 + (tbl[idx]['Y']-ystar_field)**2)<=lims)[0]
+      
+        idx1s = np.append(idx1s,idx[idx1])
+        idx2s = np.append(idx2s,idx[idx2])
+    idx1s = idx1s.astype(int)
+    idx2s = idx2s.astype(int)
+
+    x1, x2 = tbl[idx1s]['X'].data, tbl[idx2s]['X'].data
+    y1, y2 = tbl[idx1s]['Y'].data, tbl[idx2s]['Y'].data
+    mjd1, mjd2 = tbl[idx1s]['MJD'].data, tbl[idx2s]['MJD'].data
+    mag1, mag2 = tbl[idx1s]['mag'].data, tbl[idx2s]['mag'].data
+    magerr1, magerr2 = tbl[idx1s]['magerr'].data, tbl[idx2s]['magerr'].data
+    flux1, flux2 = tbl[idx1s]['flux'].data, tbl[idx2s]['flux'].data
+    fluxerr1, fluxerr2 = tbl[idx1s]['fluxerr'].data, tbl[idx2s]['fluxerr'].data
+
+    mjd, mag, magerr, flux, fluxerr = [], [], [], [], [] 
+    for ii in range(len(mjd1)):
+        idx3 = np.where(mjd1[ii] == mjd2)[0] 
+        if len(idx3) == 0: continue        
+        idx3 = idx3[np.argmax(mag2[idx3])]
+        mjd.append(mjd1[ii])
+        mag.append(mag1[ii] - mag2[idx3])
+        magerr.append(np.sqrt(magerr1[ii]**2 + magerr2[idx3]**2))
+        flux.append(flux1[ii]/flux2[idx3])
+        fluxerr.append((flux1[ii]/flux2[idx3])*np.sqrt((fluxerr1[ii]/flux1[ii])**2 + (fluxerr2[idx3]/flux2[idx3])**2))
+
+    idx = np.argsort(mjd)
+    mjd, mag, magerr, flux, fluxerr = np.array(mjd), np.array(mag), np.array(magerr), np.array(flux), np.array(fluxerr)
+    mjd, mag, magerr, flux, fluxerr = mjd[idx], mag[idx], magerr[idx], flux[idx], fluxerr[idx] 
+
+    filename = os.path.join(path_out_dir,'phot.dat')
+    fid = open(filename,'w')
+    for ii in range(len(mjd)):
+        fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
+    fid.close()
+    
     plotName = os.path.join(path_out_dir,'star.pdf')
-    fig = plt.figure()
-    plt.errorbar(nums1,tbl[idx1]["mag"],tbl[idx1]["magerr"],fmt='ko')
-    plt.gca().invert_yaxis()
-    plt.xlabel('Time from %s (approx) [min]'%T0)
+    fig = plt.figure(figsize=(20,8))
+    plt.errorbar(mjd1-mjd1[0],mag1,magerr1,fmt='ko')
+    plt.xlabel('Time from %.5f [days]'%mjd1[0])
     plt.ylabel('Magnitude [arb]')
+    plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.savefig(plotName)
     plt.close()
 
     plotName = os.path.join(path_out_dir,'drift.pdf')
-    plt.scatter(tbl[idx1]["X"],tbl[idx1]["Y"],s=20,c=tbl[idx1]["mag"])
+    plt.scatter(x1,y1,s=20,c=mag1)
     plt.xlabel('X [pixels]')
     plt.ylabel('Y [pixels]')
     cbar = plt.colorbar()
@@ -215,23 +493,18 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
-    xstar_field, ystar_field = 103.0, 920.0
-    idx2 = np.where(np.sqrt((tbl['X']-xstar_field)**2 + (tbl['Y']-ystar_field)**2)<lims)[0]
-    nums2 = np.arange(len(idx2))
-    nums2 = nums2*1/60.0
-
     plotName = os.path.join(path_out_dir,'star_field.pdf')
-    fig = plt.figure()
-    plt.errorbar(nums2,tbl[idx2]["mag"],tbl[idx2]["magerr"],fmt='ko')
-    plt.gca().invert_yaxis()
-    plt.xlabel('Time from %s (approx) [min]'%T0)
+    fig = plt.figure(figsize=(20,8))
+    plt.errorbar(mjd2-mjd2[0],mag2,magerr2,fmt='ko')
+    plt.xlabel('Time from %.5f [days]'%mjd2[0])
     plt.ylabel('Magnitude [arb]')
+    plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.savefig(plotName)
     plt.close()
 
     plotName = os.path.join(path_out_dir,'drift_field.pdf')
-    plt.scatter(tbl[idx2]["X"],tbl[idx2]["Y"],s=20,c=tbl[idx2]["mag"])
+    plt.scatter(x2,y2,s=20,c=mag2)
     plt.xlabel('X [pixels]')
     plt.ylabel('Y [pixels]')
     cbar = plt.colorbar()
@@ -239,20 +512,59 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
-    plotName = os.path.join(path_out_dir,'star_relative.pdf')
-    fig = plt.figure()
-    for ii, num in zip(idx1,nums1):
-        row = tbl[ii]
-        idx3 = np.where(np.abs(tbl[idx2]["EXT"]-row["EXT"]) + np.abs(tbl[idx2]["FILE_INDEX"]-row["FILE_INDEX"])  == 0.0)[0]
-        if len(idx3) == 0: continue
-        idx3 = idx2[idx3]
-        magrel = row["mag"] - tbl[idx3]["mag"]
-        magrelerr = np.sqrt(row["magerr"]**2 + tbl[idx3]["magerr"]**2)
-        
-        plt.errorbar(num,magrel,magrelerr,fmt='ko')
-    plt.gca().invert_yaxis()
-    plt.xlabel('Time from %s (approx) [min]'%T0)
+    plotName = os.path.join(path_out_dir,'mag_relative.pdf')
+    fig = plt.figure(figsize=(20,8))
+    plt.errorbar(mjd-mjd[0],mag,magerr,fmt='ko')
+    #plt.plot(mjd-mjd[0],scipy.signal.savgol_filter(mag,9,3),'b')
+    plt.xlabel('Time from %.5f [days]'%mjd[0])
     plt.ylabel('Magnitude [arb]')
+    if opts.star == "1813a":
+        plt.ylim([0.2,0.3])
+    else:
+        plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
+    #if opts.star == "PG1336":
+    #    plt.ylim([-1.5,-0.5])
+    #elif opts.star == "1719an":
+    #    plt.ylim([1.0,2.5])
+    #elif opts.star == "182li":
+    #    plt.ylim([-1.5,-0.5])
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'mag_relative_zoom.pdf')
+    fig = plt.figure(figsize=(20,8))
+    plt.errorbar(mjd-mjd[0],mag,magerr,fmt='ko')
+    #plt.plot(mjd-mjd[0],scipy.signal.savgol_filter(mag,9,3),'b')
+    plt.xlabel('Time from %.5f [days]'%mjd[0])
+    plt.ylabel('Magnitude [arb]')
+    if opts.star == "PG1336":
+        plt.ylim([-1.5,-0.5])
+        plt.xlim([0.01,0.02])
+    elif opts.star == "1719an":
+        plt.ylim([1.0,2.5])
+        plt.xlim([0.00,0.01])
+    elif opts.star == "182li":
+        plt.ylim([1.0,2.5])
+        plt.xlim([0.00,0.01])
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'flux_relative.pdf')
+    fig = plt.figure(figsize=(20,8))
+    plt.errorbar(mjd-mjd[0],flux,fluxerr,fmt='ko')
+    plt.xlabel('Time from %.5f [days]'%mjd[0])
+    plt.ylabel('Flux Ratio')
+    plt.ylim([np.percentile(flux,5)*0.9,np.percentile(flux,95)*1.1])
+    if opts.star == "1813a":
+        plt.ylim([0.7,0.9])
+    #if opts.star == "PG1336":
+    #    plt.ylim([-1.5,-0.5])
+    #elif opts.star == "1719an":
+    #    plt.ylim([1.0,2.5])
     plt.tight_layout()
     plt.savefig(plotName)
     plt.close()
@@ -276,7 +588,6 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
-if opts.doPlots:
     plotName = os.path.join(path_out_dir,'AoverB.pdf')
     plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["A"]/tbl["B"])
     plt.xlabel('X [pixels]')
@@ -298,7 +609,7 @@ if opts.doPlots:
     catfile = scienceimage.replace(".fits",".cat")
     plotName = os.path.join(path_out_dir,'fits.pdf')
     #ztfsub.plotting.plot_image(scienceimage,plotName,catfile=catfile)
-    ztfsub.plotting.plot_image(scienceimage,plotName)
+    #ztfsub.plotting.plot_image(scienceimage,plotName)
 
 #rm_command = "rm %s/*.fits"%path_out_dir
 #os.system(rm_command)
