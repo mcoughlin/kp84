@@ -1,0 +1,31 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+from astropy.io import fits
+
+fitsfiles = glob.glob("/Users/mcoughlin/Code/KP84/observing/20180627/ZTFHC7_10_g_20180627_080418.036682*.fits")
+fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/ZTFHC7_10_g_20180627_080418.036682_o_stack.fits"
+
+fitsfiles = fitsfiles[:5]
+
+hdulist2 = []
+cnt = 1
+for jj in range(len(fitsfiles)):
+    print(jj,fitsfiles[jj])
+    fitsfile = fitsfiles[jj]
+    hdulist = fits.open(fitsfile)
+    for ii in range(len(hdulist)):
+        if ii == 0: continue
+        if cnt == 1:
+            hdulist_hold = copy.copy(hdulist[ii])
+            xshape, yshape = hdulist_hold.data.shape
+            data = np.empty([xshape,yshape,0])
+        data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
+        cnt = cnt + 1            
+
+hdulist_hold.data = np.mean(data,axis=2)
+hdulist2 = fits.HDUList(hdus=hdulist_hold)
+hdulist2.writeto(fitsfile_stack,output_verify='fix',overwrite=True)
+
+

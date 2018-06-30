@@ -41,37 +41,101 @@ def parse_commandline():
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
     parser.add_option("-c","--calibrationDir",default="/Users/mcoughlin/Code/KP84/observing/20180605")
-    parser.add_option("--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_1.fits")
-    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_20180605_053947.040477_o*")
-    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_*")
-    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/1719an_*")
-    parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/182li_*")
+    parser.add_option("--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_1.fits") # 7 r
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180608/SDSS-J14_20180608_053913.036754_o*") # 8 r
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_20180605_053947.040477_o*") 
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_*") # 7 r
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/1719an_*") # 10 g
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/182li_*") # 10 g
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/hz44_0_r_*")
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/hz44_7_r_*")
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/1813_10_g_*")
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/1819a_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180607/1819a_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180609/1711e_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180609/1717ae_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180610/1818k_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180610/SDSS-J14_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180611/1815f_7_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180612/1815f_10_I_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180612/1815f_10_R_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180612/1815f_10_U_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180613/1818k_10_R_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180619/D6-3_7_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180619/D6-2_6_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180620/ATLAS18qqn_7_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180621/1815f_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180621/J14_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180622/MAXI-J1820-070_8_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180623/1715m_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180623/1818k_10_r_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180623/ZTFHC1_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180624/ZTF2_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180624/ZTF3_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180625/1815f_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180625/ZTF10_6_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180626/ZTF4_6_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180626/ZTF9_8_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180626/ZTF9_8_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180626/ZTFHC6_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180626/ZTF2_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180627/ZTF7_10_g_*")
+    parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180627/ZTFHC7_10_g_*")
+
+    #parser.add_option("-s","--star",default="SDSS-J14")
     #parser.add_option("-s","--star",default="PG1336")    
     #parser.add_option("-s","--star",default="1719an")
-    parser.add_option("-s","--star",default="182li")
+    #parser.add_option("-s","--star",default="182li")
     #parser.add_option("-s","--star",default="hz44")
     #parser.add_option("-s","--star",default="1813a")
     #parser.add_option("-s","--star",default="1819a")
+    #parser.add_option("-s","--star",default="1711e")
+    #parser.add_option("-s","--star",default="1717ae")
+    #parser.add_option("-s","--star",default="1818k")
+    #parser.add_option("-s","--star",default="1815f")
+    #parser.add_option("-s","--star",default="D6-3")
+    #parser.add_option("-s","--star",default="D6-2")
+    #parser.add_option("-s","--star",default="ATLAS18qqn")
+    #parser.add_option("-s","--star",default="MAXI-J1820-070")
+    #parser.add_option("-s","--star",default="1715m")
+    #parser.add_option("-s","--star",default="ZTFHC1")
+    #parser.add_option("-s","--star",default="ZTF2")
+    #parser.add_option("-s","--star",default="ZTF3")
+    #parser.add_option("-s","--star",default="ZTF9")
+    #parser.add_option("-s","--star",default="ZTF10")
+    #parser.add_option("-s","--star",default="ZTF4")
+    #parser.add_option("-s","--star",default="ZTF7")
+    #parser.add_option("-s","--star",default="ZTFHC6")
+    parser.add_option("-s","--star",default="ZTFHC7")
     parser.add_option("-m","--minmag",default=-10,type=float)
-    #parser.add_option("-n","--nimages",default=64,type=float)
-    parser.add_option("-n","--nimages",default=16,type=float)
+
+    #parser.add_option("-n","--nimages",default=2,type=int)
+    #parser.add_option("-n","--nimages",default=64,type=int)
+    #parser.add_option("-n","--nimages",default=4,type=int)
+    parser.add_option("-n","--nimages",default=16,type=int)
 
     #parser.add_option("--filter",default="r")
     parser.add_option("--filter",default="g")
+    #parser.add_option("--filter",default="I")    
+    #parser.add_option("--filter",default="R")
+    #parser.add_option("--filter",default="U")
+
     #parser.add_option("--camsetting",default=9,type=int)
     #parser.add_option("--camsetting",default=7,type=int)
     #parser.add_option("--camsetting",default=0,type=int)
     parser.add_option("--camsetting",default=10,type=int)
+    #parser.add_option("--camsetting",default=8,type=int)
+    #parser.add_option("--camsetting",default=6,type=int) 
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doAstrometryNet",  action="store_true", default=False)
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False)
     parser.add_option("--doCombine",  action="store_true", default=False)
+
+    parser.add_option("--doPhase",  action="store_true", default=False)
+    parser.add_option("-p","--phase",default=0.004800835466385,type=float)
+    parser.add_option("--nphase",default=32,type=int)
 
     opts, args = parser.parse_args()
 
@@ -140,25 +204,28 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
         if ii == 0: continue
         hdulist[ii].data = ((hdulist[ii].data - dark)*m)/IFminusIB
 
-    hdulist2 = []
-    cnt = 1
-    for ii in range(len(hdulist)):
-        if ii == 0:
-            hdulist2.append(hdulist[ii])
-        else:
-            if cnt == 1:
-                hdulist_hold = copy.copy(hdulist[ii])
-                xshape, yshape = hdulist_hold.data.shape
-                data = np.empty([xshape,yshape,0])
-            data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
-            cnt = cnt + 1            
+    if nimages == 1:
+        hdulist2 = hdulist
+    else:
+        hdulist2 = []
+        cnt = 1
+        for ii in range(len(hdulist)):
+            if ii == 0:
+                hdulist2.append(hdulist[ii])
+            else:
+                if cnt == 1:
+                    hdulist_hold = copy.copy(hdulist[ii])
+                    xshape, yshape = hdulist_hold.data.shape
+                    data = np.empty([xshape,yshape,0])
+                data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
+                cnt = cnt + 1            
 
-            if cnt == nimages:
-                hdulist_hold.data = np.mean(data,axis=2)
-                hdulist2.append(hdulist_hold)
-                cnt = 1    
+                if cnt == nimages:
+                    hdulist_hold.data = np.mean(data,axis=2)
+                    hdulist2.append(hdulist_hold)
+                    cnt = 1    
 
-    hdulist2 = fits.HDUList(hdus=hdulist2)
+        hdulist2 = fits.HDUList(hdus=hdulist2)
 
     keywords_to_remove = ["RAD","DECD","TELRA","TELDEC","TELRAD","TELDECD","CRPIX1","CRPIX2","CRVAL1","CRVAL2","CD1_1","CD1_2","CD2_1","CD2_2","CCD_ROT","PIXSCALX","PIXSCALY","CUNIT1","CUNIT2","WCSAXES","WCSNAME","RADESYS","WCSVERS","CTYPE1","CTYPE2","RA","DEC"]
     for ii in range(len(hdulist2)):
@@ -188,6 +255,51 @@ def combine_images(combineDir,fitsfiles,nimages):
             hdulist2.writeto(fitsfilename,output_verify='ignore',overwrite=True)
             cnt = 0
             hdulist_hold = []
+
+def phase_images(phaseDir,fitsfiles,nimages,phase):
+
+    fitsfilename = os.path.join(phaseDir,'phase.fits')
+
+    phase_array = np.linspace(0,1.0,nimages+1)
+    phase_counts = np.zeros((nimages,))
+
+    hdulist_hold = []
+    cnt = 0
+
+    for ii in range(len(fitsfiles)):
+        hdulist = fits.open(fitsfiles[ii])
+        header = hdulist[0].header
+        data = hdulist[0].data
+
+        if cnt == 0:
+            header = hdulist[0].header
+            header["EXTEND"] = "T"
+            hdulist_hold.append(fits.PrimaryHDU(header=header))
+          
+            xshape, yshape = hdulist[1].data.shape
+            datas = np.zeros([xshape,yshape,nimages])
+
+        for jj in range(len(hdulist)-1):
+            dateobs = Time(hdulist[jj+1].header["DATE"])
+            mjd = dateobs.mjd
+            mjd_mod = np.mod(mjd, phase)/phase
+            idx = np.where((mjd_mod>=phase_array[:-1]) & (mjd_mod<=phase_array[1:]))[0][0] 
+            datas[:,:,idx] = datas[:,:,idx] + hdulist[jj+1].data
+            phase_counts[idx] = phase_counts[idx] + 1
+
+        cnt = cnt + 1
+
+    hdulist = fits.open(fitsfiles[0])
+    header = hdulist[0].header
+    dateobs = Time(hdulist[1].header["DATE"])
+    mjd = dateobs.mjd
+    mjds = mjd + phase*(phase_array[:-1] + phase_array[1:])/2.0
+    for ii in range(nimages):
+        header["DATE"] = Time(mjds[ii],format='mjd').iso 
+        data = datas[:,:,ii]/phase_counts[ii]
+        hdulist_hold.append(fits.ImageHDU(data=data, header=header))
+    hdulist2 = fits.HDUList(hdus=hdulist_hold)
+    hdulist2.writeto(fitsfilename,output_verify='ignore',overwrite=True)
 
 # Parse command line
 opts = parse_commandline()
@@ -231,13 +343,70 @@ elif opts.star == "1813a":
 elif opts.star == "1819a":
     ra = 297.255810
     dec = 67.501560
+elif opts.star == "SDSS-J14":
+    ra = 212.826290
+    dec = 48.216000
+elif opts.star == "1711e":
+    ra = 167.141690
+    dec = 31.897930
+elif opts.star == "1717ae":
+    ra = 267.901830
+    dec = 14.738640
+elif opts.star == "1818k":
+    ra = 273.296292
+    dec = 42.864028
+elif opts.star == "1815f":
+    ra = 234.884000
+    dec = 50.460778
+elif opts.star == "D6-2":
+    ra = 324.612488
+    dec = 25.373711
+elif opts.star == "D6-3":
+    ra = 283.007854
+    dec = 62.036167
+elif opts.star == "ATLAS18qqn":
+    ra = 244.000917
+    dec = 22.268000
+elif opts.star == "MAXI-J1820-070":
+    ra = 275.091380
+    dec = 7.185300
+elif opts.star == "1715m":
+    ra = 235.050320
+    dec = 29.141340
+elif opts.star == "ZTFHC1":
+    ra = 291.201667
+    dec = -26.775694
+elif opts.star == "ZTF2":
+    ra = 262.004019
+    dec = 44.971073
+elif opts.star == "ZTF3":
+    ra = 280.239150
+    dec = 37.460777
+elif opts.star == "ZTF4":
+    ra = 218.441030
+    dec = 43.794303
+elif opts.star == "ZTF7":
+    ra = 263.200192
+    dec = 22.996229
+elif opts.star == "ZTF9":
+    ra = 225.908785
+    dec = 58.996695
+elif opts.star == "ZTF10":
+    ra = 245.872770
+    dec = 32.486761
+elif opts.star == "ZTFHC6":
+    ra = 283.324116
+    dec = -26.754382
+elif opts.star == "ZTFHC7":
+    ra = 289.023597
+    dec = -24.051733
 
 if not opts.fitsfiles == None:
     fitsfiles = sorted(glob.glob(opts.fitsfiles))
 
     header = fits.getheader(fitsfiles[0],ext=0)
     T0 = header['DATE']
-    fitsfileSplit = fitsfiles[0].split("/")[-1].replace(".fits","")
+    fitsfileSplit = fitsfiles[0].split("/")[-1].replace(".fits.fz","").replace(".fits","")
 
     path_out_dir='%s/%s'%(outputDir,fitsfileSplit)
     if opts.doOverwrite:
@@ -251,12 +420,19 @@ if not opts.fitsfiles == None:
         if not os.path.isdir(combineDir):
             os.makedirs(combineDir)
         combine_images(combineDir,fitsfiles,opts.nimages) 
-        fitsfiles = sorted(glob.glob(os.path.join(combineDir,'*.fits')))
+        fitsfiles = sorted(glob.glob(os.path.join(combineDir,'*.fits*')))
+
+    if opts.doPhase:
+        phaseDir = os.path.join(path_out_dir,'phase')
+        if not os.path.isdir(phaseDir):
+            os.makedirs(phaseDir)
+        phase_images(phaseDir,fitsfiles,opts.nphase,opts.phase)
+        fitsfiles = sorted(glob.glob(os.path.join(phaseDir,'phase.fits')))
 
     for ii,fitsfile in enumerate(fitsfiles):
         print(ii,fitsfile)
 
-        fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","")
+        fitsfileSplit = fitsfile.split("/")[-1].replace(".fits.fz","").replace(".fits","")
 
         path_out_dir_tmp='%s/%s'%(path_out_dir,fitsfileSplit)
         if not os.path.isdir(path_out_dir_tmp):
@@ -266,6 +442,8 @@ if not opts.fitsfiles == None:
         astimage = '%s/ast.fits'%(path_out_dir_tmp)
         catfile = scienceimage.replace(".fits",".cat")
         backfile = scienceimage.replace(".fits",".background.fits")
+        astcatfile = astimage.replace(".fits",".cat")
+        astbackfile = astimage.replace(".fits",".background.fits")
 
         if os.path.isfile(catfile): continue
 
@@ -290,17 +468,44 @@ if not opts.fitsfiles == None:
 
             hdulist.writeto(astimage,output_verify='fix',overwrite=True)
 
-        #ra, dec = ztfsub.utils.get_radec_from_header(scienceimage,ext=1)
+            ztfsub.utils.sextractor(astimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=astcatfile,backfile=astbackfile)
 
         if opts.doAstrometryNet:
-            ztfsub.utils.astrometrynet(astimage,pixel_scale=0.26,ra=ra,dec=dec,ext=1)
+
+            hdulist = fits.open(astimage)
+            cat = np.loadtxt(astcatfile)
+            xsize,ysize = hdulist[1].data.shape
+            magthresh = np.min(cat[:,4])+4.0
+            idx = np.where(cat[:,4] <= magthresh)[0]
+            cat = cat[idx,:]
+            np.savetxt(astcatfile,cat,fmt='%.5f')
+
+            if opts.doPlots:
+                astplot = '%s/ast.pdf'%(path_out_dir_tmp)
+                ztfsub.plotting.plot_image(astimage,astplot,catfile=astcatfile)
+
+            #ztfsub.utils.astrometrynet(astimage,pixel_scale=0.26,ra=ra,dec=dec,ext=1)
+
+            filename = os.path.join(path_out_dir_tmp,'astcat.fits')
+            tbl = Table([cat[:,6],cat[:,7],cat[:,6], cat[:,0],cat[:,1]], names=('RA', 'Declination', 'MAG','XIMAGE','YIMAGE'))
+            tbl.write(filename, format='fits',overwrite=True)
+
+            solve_field_command = "solve-field %s --x-column XIMAGE --y-column YIMAGE --sort-ascending --sort-column MAG --width %d --height %d --no-plots --overwrite --ra %.5f --dec %.5f --radius %.5f"%(filename,xsize,ysize,ra,dec,20.0/60.0)
+            os.system(solve_field_command)
+
             axyfile = scienceimage.replace("fits","axy")
-            hdulist = fits.open(axyfile) 
+            hdulist = fits.open(axyfile)
+
+        #ra, dec = ztfsub.utils.get_radec_from_header(scienceimage,ext=1)
 
         ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
 
         cat = np.loadtxt(catfile)
         if not cat.size: continue
+
+        #if opts.doPlots:
+        #    ztfsub.plotting.plot_cube(scienceimage,path_out_dir_tmp,catfile=catfile)
+
         xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
 
         hdulist = fits.open(scienceimage)
@@ -317,15 +522,10 @@ if not opts.fitsfiles == None:
         cat = np.vstack((cat.T,mjds.T)).T
         np.savetxt(catfile,cat,fmt='%.5f')        
 
-        #fwhmmax = 1e-2
-        #xmin = 0
-        #xmax = 10000
-        #idx = np.where((fwhms_world <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
+        #idx = np.where(mags <= minmag)[0]
         #cat = cat[idx,:]
         #np.savetxt(catfile,cat,fmt='%.5f')
 
-        #if opts.doPlots:
-        #    ztfsub.plotting.plot_cube(scienceimage,path_out_dir_tmp,catfile=catfile)
         if os.path.isfile(scienceimage):
             rm_command = "rm %s"%scienceimage
             os.system(rm_command)
@@ -336,19 +536,27 @@ if not opts.fitsfiles == None:
 
     cnt = 0
     for ii,fitsfile in enumerate(fitsfiles):
+        print(ii,fitsfile)
 
-        fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","")
+        fitsfileSplit = fitsfile.split("/")[-1].replace(".fits.fz","").replace(".fits","")
         path_out_dir_tmp='%s/%s'%(path_out_dir,fitsfileSplit)
         scienceimage = '%s/science.fits'%(path_out_dir_tmp)
         catfile = scienceimage.replace(".fits",".cat")
 
-        if opts.star == "1819a":
+        if opts.star in ["1815f","1819a","1711e","1717ae","1818k","SDSS-J14","D6-2","D6-3","ATLAS18qqn","MAXI-J1820-070","1715m","ZTFHC1","ZTF1","ZTF2","ZTF3","ZTF4","ZTF7","ZTF9","ZTF10","ZTFHC6","ZTFHC7"]:
             fitsfileBase = "_".join(fitsfileSplit.split("_")[:5])
         else:
             fitsfileBase = "_".join(fitsfileSplit.split("_")[:4])
 
         cat = np.loadtxt(catfile)
         if not cat.size: continue
+
+        #magthresh = np.inf
+        #magthresh = -12
+
+        #idx = np.where(cat[:,4] <= magthresh)[0]
+        #cat = cat[idx,:]
+        #np.savetxt(catfile,cat,fmt='%.5f')
 
         if cnt == 0:
             tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
@@ -362,7 +570,7 @@ if not opts.fitsfiles == None:
         cnt = cnt + 1   
 
     catfile = '%s/catfile.dat'%(path_out_dir)
-    ascii.write(tbl,catfile)
+    ascii.write(tbl,catfile,overwrite=True)
 
 tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
 
@@ -385,8 +593,9 @@ z = np.polyfit(xdata, ydata, 1)
 p = np.poly1d(z)
 
 if opts.doPlots:
-    xstar, ystar = 671.4644, 425.9586
 
+    magthresh, magthresh_field = np.inf, np.inf
+    magthresh_upper = -np.inf
     idx1s, idx2s = np.empty((0,1)), np.empty((0,1))
     if opts.star == "PG1336":
         lims = 50.0
@@ -434,6 +643,216 @@ if opts.doPlots:
         ystars = [655]
         xstars_field = [461]
         ystars_field = [661]
+    elif opts.star == "SDSS-J14":
+        lims = 50.0
+        #prefixes = ["SDSS-J14_20180608_043912.034585_o","SDSS-J14_20180608_053913.036754_o"]
+        #xstars = [551,578]
+        #ystars = [519,567]
+        #xstars_field = [807,837]
+        #ystars_field = [809,859]
+
+        #prefixes = ["SDSS-J14_10_g_20180610_045410.042083","SDSS-J14_10_g_20180610_055452.040907"]
+        #xstars = [719,685]
+        #ystars = [471,436]
+        #xstars_field = [721,684]
+        #ystars_field = [296,262]
+
+        prefixes = ["J14_10_g_20180621_053832.042574","J14_10_g_20180621_061333.039880"]
+        xstars = [561,558]
+        ystars = [412,478]
+        xstars_field = [817,815]
+        ystars_field = [703,769]
+        magthresh, magthresh_field = -10, -10
+
+    elif opts.star == "1711e":
+        lims = 30.0
+        prefixes = ["1711e_10_g_20180609_040356.034889","1711e_10_g_20180609_045622.042703"]
+        xstars = [540,536]
+        ystars = [591,653]
+        xstars_field = [384,379]
+        ystars_field = [663,715]
+    elif opts.star == "1717ae":
+        lims = 10.0
+        prefixes = ["1717ae_10_g_20180609_060435.034149","1717ae_10_g_20180609_070408.034756"]
+        xstars = [406,370]
+        ystars = [563,508]
+        xstars_field = [587,551]
+        ystars_field = [568,514]
+    elif opts.star == "1818k":
+        lims = 30.0
+        #prefixes = ["1818k_10_g_20180610_070206.036101","1818k_10_g_20180610_080231.043411","1818k_10_R_20180613_034802.035494"] 
+        #xstars = [506,475,535]
+        #ystars = [509,609,633]
+        #xstars_field = [513,482,543]
+        #ystars_field = [422,520,545]
+
+        prefixes = ["1818k_10_r_20180623_064440.043650"]
+        xstars = [452]
+        ystars = [511]
+        xstars_field = [507]
+        ystars_field = [657]
+        magthresh, magthresh_field = -8, -10
+
+    elif opts.star == "1815f":
+        lims = 30.0
+        #prefixes = ["1815f_7_g_20180611_060014.044447","1815f_7_g_20180611_064500.040319","1815f_10_I_20180612_054743.034371","1815f_10_U_20180612_065225.038587","1815f_10_R_20180612_075055.033347"]
+        xstars = [412,727,551,577,702]
+        ystars = [624,443,457,543,448]
+        xstars_field = [234,548,372,398,502]
+        ystars_field = [770,593,607,693,599]
+        magthresh, magthresh_field = -11.5, -12
+        magthresh, magthresh_field = -5, -9
+
+        prefixes = ["1815f_10_g_20180621_071249.036041"]
+        xstars = [552]
+        ystars = [419]
+        xstars_field = [622]
+        ystars_field = [455]
+        magthresh, magthresh_field = -6.5, -9
+
+        prefixes = ["phase"]
+        xstars = [552]
+        ystars = [419]
+        xstars_field = [622]
+        ystars_field = [455]
+        magthresh, magthresh_field = -6.5, -9
+   
+        lims = 100
+        prefixes = ["1815f_10_g_20180625_042716.053145"]
+        xstars = [632,550]
+        ystars = [365,415]
+        xstars_field = [496,414]
+        ystars_field = [779,829]
+        magthresh, magthresh_field = 0, -10
+        magthresh_upper = -8.7
+
+    elif opts.star == "D6-2":
+        lims = 30.0
+        prefixes = ["D6-2_6_g_20180619_083940.033859"]
+        xstars = [497]
+        ystars = [514]
+        xstars_field = [634]
+        ystars_field = [580]
+        magthresh, magthresh_field = -9, -9
+
+        prefixes = ["D6-2_6_g_20180621_080902.025448"]
+        xstars = [894]
+        ystars = [520]
+        xstars_field = [975]
+        ystars_field = [593]
+        magthresh, magthresh_field = 0, 0
+    elif opts.star == "D6-3":
+        lims = 50.0
+        prefixes = ["D6-3_7_g_20180619_065030.042884"]
+        xstars = [534]
+        ystars = [509]
+        xstars_field = [350]
+        ystars_field = [472]
+        magthresh, magthresh_field = -12, -13
+    elif opts.star == "ATLAS18qqn":
+        lims = 50.0
+        prefixes = ["ATLAS18qqn_7_g_20180620_045350.038802","ATLAS18qqn_7_g_20180620_055327.044286","ATLAS18qqn_7_g_20180620_065359.040926","ATLAS18qqn_7_g_20180620_075419.041429","ATLAS18qqn_7_g_20180620_085453.040871"]
+        xstars = [538,407,507,489,495]
+        ystars = [482,486,531,595,651]
+        xstars_field = [650,519,618,600,605]
+        ystars_field = [319,322,366,433,486]
+        magthresh, magthresh_field = -10, -8
+    elif opts.star == "MAXI-J1820-070":
+        lims = 50.0
+        prefixes = ["MAXI-J1820-070_8_g_20180622_045313.040008","MAXI-J1820-070_8_g_20180622_054756"]
+        xstars = [582,522]
+        ystars = [579,522]
+        xstars_field = [583,526]
+        ystars_field = [648,591]
+        magthresh, magthresh_field = -12, -12
+    elif opts.star == "1715m":
+        lims = 50.0
+        prefixes = ["1715m_10_g_20180623_045420.034439"]
+        xstars = [616]
+        ystars = [457]
+        xstars_field = [341]
+        ystars_field = [81]
+        magthresh, magthresh_field = -8, -10
+    elif opts.star == "ZTFHC1":
+        lims = 30.0
+        prefixes = ["ZTFHC1_10_g_20180623_071950.033999"]
+        xstars = [523]
+        ystars = [588]
+        xstars_field = [461]
+        ystars_field = [563]
+        magthresh, magthresh_field = -8, -11
+    elif opts.star == "ZTFHC6":
+        lims = 30.0
+        prefixes = ["ZTFHC6_10_g_20180626_061558.037221"]
+        xstars = [511]
+        ystars = [533]
+        xstars_field = [557]
+        ystars_field = [627]
+        magthresh, magthresh_field = -11, -11
+    elif opts.star == "ZTFHC7":
+        lims = 30.0
+        prefixes = ["ZTFHC7_10_g_20180627_080418.036682"]
+        xstars = [516]
+        ystars = [597]
+        xstars_field = [495]
+        ystars_field = [727]
+        magthresh, magthresh_field = 0, 0
+    elif opts.star == "ZTF2":
+        lims = 50.0
+        prefixes = ["ZTF2_10_g_20180624_072243.035496"]
+        xstars = [519]
+        ystars = [393]
+        #xstars_field = [693]
+        #ystars_field = [452]
+        xstars_field = [261]
+        ystars_field = [576]
+
+        prefixes = ["ZTF2_10_g_20180626_082932.033927"]
+        xstars = [487]
+        ystars = [467]
+        xstars_field = [663]
+        ystars_field = [521]
+        magthresh, magthresh_field = -11, -11 
+    elif opts.star == "ZTF3":
+        lims = 50.0
+        prefixes = ["ZTF3_10_g_20180624_083119.078592"]
+        xstars = [565]
+        ystars = [462]
+        xstars_field = [609]
+        ystars_field = [210]
+        magthresh, magthresh_field = -12, -12 
+    elif opts.star == "ZTF4":
+        lims = 50.0
+        prefixes = ["ZTF4_6_g_20180626_040002.033892"]
+        xstars = [705]
+        ystars = [701]
+        xstars_field = [191]
+        ystars_field = [748]
+        magthresh, magthresh_field = -11, -10 
+    elif opts.star == "ZTF7":
+        lims = 30.0
+        prefixes = ["ZTF7_10_g_20180627_061542.038530"]
+        xstars = [556]
+        ystars = [444]
+        xstars_field = [626]
+        ystars_field = [560]
+        magthresh, magthresh_field = -8, -8
+    elif opts.star == "ZTF9":
+        lims = 50.0
+        prefixes = ["ZTF9_8_g_20180626_050607.044418"]
+        xstars = [446]
+        ystars = [437]
+        xstars_field = [359]
+        ystars_field = [463]
+        magthresh, magthresh_field = -12, -10
+    elif opts.star == "ZTF10":
+        lims = 50.0
+        prefixes = ["ZTF10_6_g_20180625_094218.034862"]
+        xstars = [449] 
+        ystars = [716] 
+        xstars_field = [652]
+        ystars_field = [709]
+        magthresh, magthresh_field = 0, 0 
 
     for prefix,xstar,ystar,xstar_field,ystar_field in zip(prefixes,xstars,ystars,xstars_field,ystars_field):
         idx = np.where(prefix==tbl["fitsfile"])[0]
@@ -453,11 +872,17 @@ if opts.doPlots:
     flux1, flux2 = tbl[idx1s]['flux'].data, tbl[idx2s]['flux'].data
     fluxerr1, fluxerr2 = tbl[idx1s]['fluxerr'].data, tbl[idx2s]['fluxerr'].data
 
+    ii = np.where((mag1 <= magthresh) & (mag1 >= magthresh_upper))[0]
+    x1, y1, mjd1, mag1, magerr1, flux1, fluxerr1 = x1[ii], y1[ii], mjd1[ii], mag1[ii], magerr1[ii], flux1[ii], fluxerr1[ii]
+    ii = np.where(mag2 <= magthresh_field)[0]
+    x2, y2, mjd2, mag2, magerr2, flux2, fluxerr2 = x2[ii], y2[ii], mjd2[ii], mag2[ii], magerr2[ii], flux2[ii], fluxerr2[ii]
+
     mjd, mag, magerr, flux, fluxerr = [], [], [], [], [] 
     for ii in range(len(mjd1)):
         idx3 = np.where(mjd1[ii] == mjd2)[0] 
         if len(idx3) == 0: continue        
         idx3 = idx3[np.argmax(mag2[idx3])]
+
         mjd.append(mjd1[ii])
         mag.append(mag1[ii] - mag2[idx3])
         magerr.append(np.sqrt(magerr1[ii]**2 + magerr2[idx3]**2))
@@ -473,12 +898,29 @@ if opts.doPlots:
     for ii in range(len(mjd)):
         fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
     fid.close()
-    
+   
+    filename = os.path.join(path_out_dir,'star.dat')
+    fid = open(filename,'w')
+    for ii in range(len(mjd)):
+        fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd1[ii],mag1[ii],magerr1[ii],flux1[ii],fluxerr1[ii]))
+    fid.close()
+ 
     plotName = os.path.join(path_out_dir,'star.pdf')
     fig = plt.figure(figsize=(20,8))
     plt.errorbar(mjd1-mjd1[0],mag1,magerr1,fmt='ko')
     plt.xlabel('Time from %.5f [days]'%mjd1[0])
     plt.ylabel('Magnitude [arb]')
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'star_zoom.pdf')
+    fig = plt.figure(figsize=(20,8))
+    plt.errorbar((mjd1-mjd1[0])*86400.0/(60.0),mag1,magerr1,fmt='ko')
+    plt.xlabel('Time from MJD %.5f [minutes]'%mjd1[0],fontsize=24)
+    plt.ylabel('Magnitude [arb]',fontsize=24)
+    plt.ylim([-14.13,-14.00])
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.savefig(plotName)
@@ -490,6 +932,17 @@ if opts.doPlots:
     plt.ylabel('Y [pixels]')
     cbar = plt.colorbar()
     cbar.set_label('Magnitude [arb]')
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'drift_numbers.pdf')
+    plt.scatter(x1,y1,s=20,c=np.arange(len(x1)))
+    plt.xlabel('X [pixels]')
+    plt.ylabel('Y [pixels]')
+    plt.xlim([570,630])
+    plt.ylim([537,545])
+    cbar = plt.colorbar()
+    cbar.set_label('Image Number')
     plt.savefig(plotName)
     plt.close()
 
@@ -520,6 +973,8 @@ if opts.doPlots:
     plt.ylabel('Magnitude [arb]')
     if opts.star == "1813a":
         plt.ylim([0.2,0.3])
+    elif opts.star == "ATLAS18qqn":
+        plt.ylim([-2.48,-2.3])
     else:
         plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
     #if opts.star == "PG1336":

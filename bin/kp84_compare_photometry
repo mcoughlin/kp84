@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+
+import matplotlib.path as mplPath
+import h5py    
+from astropy.io import fits
+import aplpy
+
+import requests
+from lxml.html import fromstring
+
+import ztfsub.utils, ztfsub.surveys
+import ztfsub.plotting
+
+import scipy
+from scipy.optimize import curve_fit
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-o","--outputDir",default="../output")
+    parser.add_option("-n","--name",default="hz44")
+    parser.add_option("-f","--photfiles",default="../output/hz44_0_r_20180607_031253.013500_o_0000/phot.dat,../output/hz44_7_r_20180607_042213.034464_o/phot.dat")
+    parser.add_option("--doPlots",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+outputDir = opts.outputDir
+name = opts.name
+photfiles = opts.photfiles.split(",")
+
+outputDir = os.path.join(outputDir,name)
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+data_out = {}
+for photfile in photfiles:
+    name = "_".join(photfile.split("/")[-2].split("_")[1])
+    data = np.loadtxt(photfile)
+    data_out[name] = data
+
+if opts.doPlots:
+    bins = np.linspace(-1.28,-1.25,30)
+    hist1, bin_edges = np.histogram(data_out["0"][:,1],bins=bins)
+    hist2, bin_edges = np.histogram(data_out["7"][:,1],bins=bins)
+    print(np.median(data_out["0"][:,2]),np.median(data_out["7"][:,2]))
+    bins = (bin_edges[:-1]+bin_edges[1:])/2.0
+    plotName = os.path.join(outputDir,'hist.pdf')
+    fig = plt.figure()
+    plt.step(bins, hist1, 'b', where='mid', label="CCD")
+    plt.step(bins, hist2, 'r', where='mid', label="EMCCD")
+    plt.xlabel('Relative Magnitude [mag]')
+    plt.ylabel('Counts')
+    leg1 = plt.legend()
+    plt.ylim([0,25])
+    plt.savefig(plotName)
+    plt.close()
+
+

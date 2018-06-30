@@ -38,8 +38,8 @@ def parse_commandline():
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
-    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/feige66_g_20180604_033544.358525_o.fits")
-    parser.add_option("-s","--star",default="feige66")    
+    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180603/M13_t40055672_o_9.fits")
+    parser.add_option("-s","--star",default="M13")    
     parser.add_option("-m","--minmag",default=-10,type=float)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
@@ -122,24 +122,23 @@ if opts.doAstrometryNet:
 ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground)
 catfile = scienceimage.replace(".fits",".cat")
 cat = np.loadtxt(catfile)
-xs, ys, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms_world, fwhms, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14]
+xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
 
-fwhmmax = 5e-3
-xmin = 0
-xmax = 10000
+#fwhmmax = 5e-3
+#xmin = 0
+#xmax = 10000
+#idx = np.where((fwhms <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
+#cat = cat[idx,:]
+#np.savetxt(catfile,cat,fmt='%.5f')
 
-idx = np.where((fwhms <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
-cat = cat[idx,:]
-np.savetxt(catfile,cat,fmt='%.5f')
-
-tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
+tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT'])
 
 ra_deg = (np.max(tbl["RA"]) + np.min(tbl["RA"]))/2.0
 dec_deg = (np.max(tbl["Declination"]) + np.min(tbl["Declination"]))/2.0
 result = ps1_query(ra_deg, dec_deg, 10.0, maxmag=20,
                maxsources=10000)
 
-coo_kp84 = SkyCoord(tbl['RA']*u.deg, tbl['Declination']*u.deg)
+coo_kp84 = SkyCoord(tbl['RA'], tbl['Declination'])
 coo_ps1 = SkyCoord(result['RAJ2000'], result['DEJ2000'])
 idx_ps1, d2d_ps1, d3d_ps1 = coo_kp84.match_to_catalog_sky(coo_ps1)
 
@@ -172,13 +171,36 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
-if opts.doPlots:
     plotName = os.path.join(path_out_dir,'AoverB.pdf')
+    plt.figure()
     plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["A"]/tbl["B"])
     plt.xlabel('X [pixels]')
     plt.ylabel('Y [pixels]')
     cbar = plt.colorbar()
     cbar.set_label('A/B')
+    plt.savefig(plotName)
+    plt.close()
+
+    bins = np.linspace(1,5,50)
+    hist1, bin_edges = np.histogram(tbl["A"]/tbl["B"],bins=bins)
+    bins1 = (bin_edges[:-1]+bin_edges[1:])/2.0
+    bins = np.linspace(4,20,50)
+    hist2, bin_edges = np.histogram(tbl["FWHM_World"],bins=bins)
+    bins2 = (bin_edges[:-1]+bin_edges[1:])/2.0
+    plotName = os.path.join(path_out_dir,'hist.pdf')
+    fig = plt.figure()
+    ax1 = fig.add_subplot(111)
+    ax2 = ax1.twiny()
+    ax1.step(bins1, hist1, 'b', where='mid')
+    ax2.step(bins2, hist2, 'r', where='mid')
+    ax1.set_xlabel('Point Spread Function shape [A/B]',color='b')
+    ax2.set_xlabel('Full Width Half Max [pixels]',color='r')
+    ax1.set_ylabel('Counts')
+    for tl in ax1.get_xticklabels():
+        tl.set_color('b')
+    for tl in ax2.get_xticklabels():
+        tl.set_color('r')
+
     plt.savefig(plotName)
     plt.close()
 
