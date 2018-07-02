@@ -1,0 +1,278 @@
+
+import os, sys, optparse, shutil
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+from scipy.optimize import curve_fit
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import ascii
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-d","--dataDir",default="../data")
+    parser.add_option("-o","--outputDir",default="../output/results")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def convert_to_hex(val, delimiter=':', force_sign=False):
+    """
+    Converts a numerical value into a hexidecimal string
+
+    Parameters:
+    ===========
+    - val:           float
+                     The decimal number to convert to hex.
+
+    - delimiter:     string
+                     The delimiter between hours, minutes, and seconds
+                     in the output hex string.
+
+    - force_sign:    boolean
+                     Include the sign of the string on the output,
+                     even if positive? Usually, you will set this to
+                     False for RA values and True for DEC
+
+    Returns:
+    ========
+    A hexadecimal representation of the input value.
+    """
+    s = np.sign(val)
+    s_factor = 1 if s > 0 else -1
+    val = np.abs(val)
+    degree = int(val)
+    minute = int((val  - degree)*60)
+    second = (val - degree - minute/60.0)*3600.
+    if degree == 0 and s_factor < 0:
+        return '-00{2:s}{0:02d}{2:s}{1:.2f}'.format(minute, second, delimiter)
+    elif force_sign or s_factor < 0:
+        deg_str = '{:+03d}'.format(degree * s_factor)
+    else:
+        deg_str = '{:02d}'.format(degree * s_factor)
+    return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
+
+def reject_outliers(data, m = 2.):
+    d = np.abs(data - np.median(data))
+    mdev = np.median(d)
+    s = d/(mdev if mdev else 1.)
+    return np.where(s<m)[0]
+
+def func(x, a, b, c, d):
+    return a * np.sin(2*np.pi*x/b + c) + d
+
+# Parse command line
+opts = parse_commandline()
+
+dataDir = opts.dataDir
+outputDir = opts.outputDir
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+plotDir = os.path.join(outputDir,'plots')
+if not os.path.isdir(plotDir):
+    os.makedirs(plotDir)
+
+data = {}
+data_rows = []
+filename = '../input/observed.dat'
+lines = [line.rstrip('\n') for line in open(filename)]
+for line in lines:
+    lineSplit = list(filter(None,line.split(" ")))
+    name = lineSplit[0]
+    RA = float(lineSplit[1])
+    Dec = float(lineSplit[2])
+
+    filenames = glob.glob(os.path.join(dataDir,"%s_*"%name))
+    phot = np.empty((0,5))
+    for ii,filename in enumerate(filenames):
+        data_out = np.loadtxt(filename)
+        phot = np.append(phot,data_out,axis=0)
+    if phot.size == 0: continue
+    idx = reject_outliers(phot[:,1], m = 1.)
+    phot = phot[idx,:]
+
+    data[name] = {}
+    data[name]["RA"] = RA
+    data[name]["Declination"] = Dec
+    data[name]["phot"] = phot
+
+    coord = SkyCoord(ra=data[name]["RA"]*u.deg, dec=data[name]["Declination"]*u.deg)
+    data[name]["Coord"] = coord
+    ra_hex, dec_hex = convert_to_hex(data[name]["Coord"].ra.hourangle), convert_to_hex(data[name]["Coord"].dec.deg,force_sign=True)
+    data[name]["RA_hex"] = ra_hex
+    data[name]["Declination_hex"] = dec_hex
+
+    xdata = data[name]["phot"][:,0].T
+    t0 = np.min(xdata)
+    xdata = xdata - t0
+    ydata = data[name]["phot"][:,1].T
+    y0 = np.median(ydata)
+    ydata = ydata - y0
+    sigma = data[name]["phot"][:,2].T
+
+    if name in ["ZTF4"]:
+        p0=[0.1,0.02,0,0]
+    elif name in ["ZTFHC6"]:
+        p0=[0.02,300.0/86400.0,0,0]
+    elif name in ["ZTF7"]:
+        p0=[1.0,0.02,0,0]
+    elif name in ["ZTF5"]:
+        p0=[0.1,0.04,0,0]
+    elif name in ["ZTF10"]:
+        p0=[0.04,0.02,0,0]
+    else:
+        p0=[0.1,0.1,0,0]
+
+    popt, pcov = curve_fit(func, xdata, ydata, p0=p0,sigma=sigma,maxfev=1000)
+
+    tt = np.linspace(np.min(xdata),np.max(xdata),500)
+    plt.figure(figsize = (14,6))
+    plt.errorbar(xdata, ydata, yerr=sigma,fmt='bo')
+    plt.plot(tt, func(tt, *popt), 'g--')
+    #plt.show()
+    plt.savefig(os.path.join(plotDir,'%s.pdf'%name))
+    plt.close()
+
+    data[name]["A"] = np.abs(popt[0])
+    data[name]["T"] = np.abs(popt[1])*24.0
+    data[name]["popt"] = popt
+
+for name in data.keys():
+    data_rows.append((name,data[name]["RA_hex"],data[name]["Declination_hex"],
+                      data[name]["A"],data[name]["T"]))
+
+t = Table(rows=data_rows, names=('Name', 'RA', 'Declination', 'Amplitude [mag]', 'Period [hr]'), dtype=('S8', 'S11', 'S11', 'f8', 'f8'))
+ascii.write(t, format='latex', formats={'Amplitude [mag]':'%.4f','Period [hr]':'%.2f'}) 
+
+names = data.keys()
+plt.figure(figsize = (20,24))
+cnt = 0
+for ii,name in enumerate(names):
+    cnt = cnt+1
+    vals = "%d%d%d"%(len(names),1,cnt)
+    if cnt == 1:
+        ax1 = plt.subplot(eval(vals))
+    else:
+        ax2 = plt.subplot(eval(vals),sharex=ax1)
+
+    xdata = data[name]["phot"][:,0].T
+    t0 = np.min(xdata)
+    xdata = xdata - t0
+    ydata = data[name]["phot"][:,1].T
+    y0 = np.median(ydata)
+    ydata = ydata - y0
+    sigma = data[name]["phot"][:,2].T
+    popt = data[name]["popt"]
+
+    tt = np.linspace(np.min(xdata),np.max(xdata),500)
+    plt.errorbar(xdata, ydata, yerr=sigma,fmt='bo')
+    plt.plot(tt, func(tt, *popt), 'g--')
+
+    plt.ylabel('%s'%name,fontsize=36,rotation=0,labelpad=40)
+    plt.grid()
+
+    scale = 6.0
+    if cnt == 1:
+        ax1.set_ylim([-scale*data[name]["A"],scale*data[name]["A"]])
+        plt.setp(ax1.get_xticklabels(), visible=False)
+    elif not cnt == len(names):
+        ax2.set_ylim([-scale*data[name]["A"],scale*data[name]["A"]])
+        plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.xticks(fontsize=28)
+    plt.yticks(fontsize=28)
+
+plt.xlim([0.0, 0.04])
+ax1.set_zorder(1)
+plt.xlabel('Time [days]',fontsize=36)
+plt.savefig(os.path.join(outputDir,'results.pdf'))
+plt.close()
+
+plt.figure(figsize = (20,24))
+cnt = 0
+for ii,name in enumerate(names):
+    cnt = cnt+1
+    vals = "%d%d%d"%(len(names),1,cnt)
+    if cnt == 1:
+        ax1 = plt.subplot(eval(vals))
+    else:
+        ax2 = plt.subplot(eval(vals),sharex=ax1)
+
+    xdata = data[name]["phot"][:,0].T
+    t0 = np.min(xdata)
+    xdata = xdata - t0
+    ydata = data[name]["phot"][:,1].T
+    y0 = np.median(ydata)
+    ydata = ydata - y0
+    sigma = data[name]["phot"][:,2].T
+    popt = data[name]["popt"]
+    T = data[name]["T"]/24.0
+    
+    tt = np.linspace(np.min(xdata),np.max(xdata),500)
+    plt.errorbar(np.mod(xdata,T)/T, ydata, yerr=sigma,fmt='bo')
+    idx = np.argsort(np.mod(tt,T)/T)
+    plt.plot(np.mod(tt[idx],T)/T, func(tt[idx], *popt), 'g--')
+
+    plt.ylabel('%s'%name,fontsize=36,rotation=0,labelpad=40)
+    plt.grid()
+
+    scale = 6.0
+    if cnt == 1:
+        ax1.set_ylim([-scale*data[name]["A"],scale*data[name]["A"]])
+        plt.setp(ax1.get_xticklabels(), visible=False)
+    elif not cnt == len(names):
+        ax2.set_ylim([-scale*data[name]["A"],scale*data[name]["A"]])
+        plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.xticks(fontsize=28)
+    plt.yticks(fontsize=28)
+
+plt.xlim([0.0, 1.0])
+ax1.set_zorder(1)
+plt.xlabel('Phase',fontsize=36)
+plt.savefig(os.path.join(outputDir,'phase.pdf'))
+plt.close()
+
+plt.figure(figsize = (20,24))
+cnt = 0
+for ii,name in enumerate(names):
+    cnt = cnt+1
+    vals = "%d%d%d"%(len(names),1,cnt)
+    if cnt == 1:
+        ax1 = plt.subplot(eval(vals))
+    else:
+        ax2 = plt.subplot(eval(vals),sharex=ax1)
+
+    xdata = data[name]["phot"][:,0].T
+    t0 = np.min(xdata)
+    xdata = xdata - t0
+    ydata = data[name]["phot"][:,3].T
+    sigma = data[name]["phot"][:,4].T
+
+    plt.errorbar(xdata, ydata, yerr=sigma,fmt='bo')
+
+    plt.ylabel('%s'%name,fontsize=36,rotation=0,labelpad=40)
+    plt.grid()
+
+    scale = 6.0
+    if cnt == 1:
+        plt.setp(ax1.get_xticklabels(), visible=False)
+    elif not cnt == len(names):
+        plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.xticks(fontsize=28)
+    plt.yticks(fontsize=28)
+
+plt.xlim([0.0, 0.04])
+ax1.set_zorder(1)
+plt.xlabel('Time [days]',fontsize=36)
+plt.savefig(os.path.join(outputDir,'results_flux.pdf'))
+plt.close()
