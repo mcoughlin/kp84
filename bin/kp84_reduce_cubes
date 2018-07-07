@@ -40,7 +40,7 @@ def parse_commandline():
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
-    parser.add_option("-c","--calibrationDir",default="/Users/mcoughlin/Code/KP84/observing/20180605")
+    parser.add_option("-c","--calibrationDir",default="/Data3/archive_kped/20180625/calib/")
     parser.add_option("--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180604/SDSS_J141118p31_20180604_061539.036404_o_1.fits") # 7 r
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180608/SDSS-J14_20180608_053913.036754_o*") # 8 r
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180605/PG1336-018_20180605_053947.040477_o*") 
@@ -88,7 +88,10 @@ def parse_commandline():
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180701/ZTF11_10_g_*")
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180701/ZTF10_10_g_*")
     #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180701/D6-2_10_g_*")
-    parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180702/ZTF10_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Users/mcoughlin/Code/KP84/observing/20180702/ZTF10_10_g_*")
+    #parser.add_option("--fitsfiles",default="/Data3/archive_kped/20180625/1815f_10_g_20180625_042716.053145_o/registration/1815f_10_g_20180625_042716.053145_o_registered_0*.fits")
+    #parser.add_option("--fitsfiles",default="/Data3/archive_kped/20180611/1815f_7_g_20180611_060014.044447_o/registration/1815f_7_g_20180611_060014.044447_o_registered_0*")
+    parser.add_option("--fitsfiles",default="/Data3/archive_kped/20180611/1815f_7_g_20180611_064500.040319_o/registration/1815f_7_g_20180611_064500.040319_o_registered_0*")
 
     #parser.add_option("-s","--star",default="SDSS-J14")
     #parser.add_option("-s","--star",default="PG1336")    
@@ -100,7 +103,7 @@ def parse_commandline():
     #parser.add_option("-s","--star",default="1711e")
     #parser.add_option("-s","--star",default="1717ae")
     #parser.add_option("-s","--star",default="1818k")
-    #parser.add_option("-s","--star",default="1815f")
+    parser.add_option("-s","--star",default="1815f")
     #parser.add_option("-s","--star",default="D6-3")
     #parser.add_option("-s","--star",default="D6-2")
     #parser.add_option("-s","--star",default="ATLAS18qqn")
@@ -118,14 +121,14 @@ def parse_commandline():
     #parser.add_option("-s","--star",default="ZTF6")
     #parser.add_option("-s","--star",default="ZTF8")
     #parser.add_option("-s","--star",default="ZTF5")
-    parser.add_option("-s","--star",default="ZTF10")
+    #parser.add_option("-s","--star",default="ZTF10")
     #parser.add_option("-s","--star",default="ZTF11")
     parser.add_option("-m","--minmag",default=-10,type=float)
 
     #parser.add_option("-n","--nimages",default=2,type=int)
     #parser.add_option("-n","--nimages",default=64,type=int)
     #parser.add_option("-n","--nimages",default=4,type=int)
-    parser.add_option("-n","--nimages",default=16,type=int)
+    #parser.add_option("-n","--nimages",default=16,type=int)
 
     #parser.add_option("--filter",default="r")
     parser.add_option("--filter",default="g")
@@ -148,7 +151,14 @@ def parse_commandline():
 
     parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--phase",default=0.004800835466385,type=float)
-    parser.add_option("--nphase",default=32,type=int)
+    parser.add_option("--nphase",default=64,type=int)
+    parser.add_option("-n","--nimages",default=1,type=int)
+
+    parser.add_option("--doNoCalibration",  action="store_true", default=False)
+
+    parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
+
+    parser.add_option("--doMakeMovie",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -181,7 +191,7 @@ def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
 
 def dark_image(calibrationDir,camsetting):
 
-    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d_*.fits'%camsetting))
+    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d.fits'%camsetting))
     for ii, darkfile in enumerate(darkfiles):
         hdulist = fits.open(darkfile)
         if ii == 0:
@@ -199,7 +209,7 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
                   filt,camsetting,nimages):
     dark = dark_image(calibrationDir,camsetting)
 
-    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s_*.fits'%filt))
+    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s.fits'%filt))
     for ii, flatfile in enumerate(flatfiles):
         hdulist = fits.open(flatfile)
         if ii == 0:
@@ -212,7 +222,7 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
     IFminusIB = flat - dark
     m = np.mean(IFminusIB)
 
-    hdulist = fits.open(fitsfile)
+    hdulist = fits.open(fitsfile,memmap=True)
     for ii in range(len(hdulist)):
         if ii == 0: continue
         hdulist[ii].data = ((hdulist[ii].data - dark)*m)/IFminusIB
@@ -279,7 +289,10 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
     hdulist_hold = []
     cnt = 0
 
+    fitsfiles = fitsfiles[:15]
+
     for ii in range(len(fitsfiles)):
+        print("%d/%d"%(ii,len(fitsfiles)))
         hdulist = fits.open(fitsfiles[ii])
         header = hdulist[0].header
         data = hdulist[0].data
@@ -310,9 +323,478 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
     for ii in range(nimages):
         header["DATE"] = Time(mjds[ii],format='mjd').iso 
         data = datas[:,:,ii]/phase_counts[ii]
+        data = data + 1000.0
         hdulist_hold.append(fits.ImageHDU(data=data, header=header))
     hdulist2 = fits.HDUList(hdus=hdulist_hold)
     hdulist2.writeto(fitsfilename,output_verify='ignore',overwrite=True)
+
+def star_info(star):
+
+    if star == "M13":
+        ra = 249.976843
+        dec = 36.555625
+    elif star == "feige66":
+        ra = 189.347988
+        dec = 25.066633
+    elif star == "PG1336":
+        ra = 204.700620
+        dec = -2.030310
+    elif star == "1719an":
+        ra = 294.693083
+        dec = 58.698278
+    elif star == "182li":
+        ra = 325.093960
+        dec = 26.356780
+    elif star == "hz44":
+        ra = 200.896933
+        dec = 36.133206
+    elif star == "1813a":
+        ra = 207.08665
+        dec = 38.171530
+    elif star == "1819a":
+        ra = 297.255810
+        dec = 67.501560
+    elif star == "SDSS-J14":
+        ra = 212.826290
+        dec = 48.216000
+    elif star == "1711e":
+        ra = 167.141690
+        dec = 31.897930
+    elif star == "1717ae":
+        ra = 267.901830
+        dec = 14.738640
+    elif star == "1818k":
+        ra = 273.296292
+        dec = 42.864028
+    elif star == "1815f":
+        ra = 234.884000
+        dec = 50.460778
+    elif star == "D6-2":
+        ra = 324.612488
+        dec = 25.373711
+    elif star == "D6-3":
+        ra = 283.007854
+        dec = 62.036167
+    elif star == "ATLAS18qqn":
+        ra = 244.000917
+        dec = 22.268000
+    elif star == "MAXI-J1820-070":
+        ra = 275.091380
+        dec = 7.185300
+    elif star == "1715m":
+        ra = 235.050320
+        dec = 29.141340
+    elif star == "ZTFHC1":
+        ra = 291.201667
+        dec = -26.775694
+    elif star == "ZTF1":
+        ra = 246.428907
+        dec = 30.850281
+    elif star == "ZTF2":
+        ra = 262.004019
+        dec = 44.971073
+    elif star == "ZTF3":
+        ra = 280.239150
+        dec = 37.460777
+    elif star == "ZTF4":
+        ra = 218.441030
+        dec = 43.794303
+    elif star == "ZTF5":
+        ra = 259.387506
+        dec = 30.821821
+    elif star == "ZTF6":
+        ra = 221.0189237
+        dec = 59.602022
+    elif star == "ZTF7":
+        ra = 263.200192
+        dec = 22.996229
+    elif star == "ZTF8":
+        ra = 265.3541848
+        dec = 19.1568577
+    elif star == "ZTF9":
+        ra = 225.908785
+        dec = 58.996695
+    elif star == "ZTF10":
+        ra = 245.872770
+        dec = 32.486761
+    elif star == "ZTF11":
+        ra = 226.553315
+        dec = 46.537222
+    elif star == "ZTFHC6":
+        ra = 283.324116
+        dec = -26.754382
+    elif star == "ZTFHC7":
+        ra = 289.023597
+        dec = -24.051733
+
+    magthresh, magthresh_field = np.inf, np.inf
+    magthresh_upper, magthresh_field_upper = -np.inf, -np.inf
+
+    if star == "PG1336":
+        lims = 50.0
+        prefixes = ["PG1336-018_20180605_053947.040477_o","PG1336-018_20180605_064012.017688_o","PG1336-018_20180605_064249.040982_o","PG1336-018_20180605_073853.042577_o"]
+        xstars = [535,515,515,487]
+        ystars = [607,515,515,535]
+        xstars_field = [787,768,768,743]
+        ystars_field = [326,244,244,260]
+    elif star == "1719an":
+        lims = 50.0
+        prefixes = ["1719an_20180605_082958.034124_o","1719an_20180605_091830.036272_o"]
+        xstars = [555,603]
+        ystars = [174,502]
+        xstars_field = [355,402]
+        ystars_field = [271,600]
+
+    elif star == "hz44":
+        lims = 50.0
+        prefixes = ["hz44_0_r_20180607","hz44_7_r_20180607"]
+        xstars = [614,577]
+        ystars = [546,538]
+        xstars_field = [299,230]
+        ystars_field = [155,150]
+
+    elif star == "1813a":
+        lims = 25.0
+        prefixes = ["1813_10_g_20180607"]
+        xstars = [900]
+        ystars = [640]
+        xstars_field = [300]
+        ystars_field = [565]
+
+    elif star == "1819a":
+        lims = 30.0
+        prefixes = ["1819a_10_g_20180607_062809.034490","1819a_10_g_20180607_072404.034087"]
+        xstars = [487,545]
+        ystars = [469,452]
+        xstars_field = [426,483]
+        ystars_field = [137,125]
+
+    elif star == "182li":
+        lims = 30.0
+        prefixes = ["182li_10_g_20180607"]
+        xstars = [565]
+        ystars = [655]
+        xstars_field = [461]
+        ystars_field = [661]
+    elif star == "SDSS-J14":
+        lims = 50.0
+        #prefixes = ["SDSS-J14_20180608_043912.034585_o","SDSS-J14_20180608_053913.036754_o"]
+        #xstars = [551,578]
+        #ystars = [519,567]
+        #xstars_field = [807,837]
+        #ystars_field = [809,859]
+
+        #prefixes = ["SDSS-J14_10_g_20180610_045410.042083","SDSS-J14_10_g_20180610_055452.040907"]
+        #xstars = [719,685]
+        #ystars = [471,436]
+        #xstars_field = [721,684]
+        #ystars_field = [296,262]
+
+        prefixes = ["J14_10_g_20180621_053832.042574","J14_10_g_20180621_061333.039880"]
+        xstars = [561,558]
+        ystars = [412,478]
+        xstars_field = [817,815]
+        ystars_field = [703,769]
+        magthresh, magthresh_field = -10, -10
+
+    elif star == "1711e":
+        lims = 30.0
+        prefixes = ["1711e_10_g_20180609_040356.034889","1711e_10_g_20180609_045622.042703"]
+        xstars = [540,536]
+        ystars = [591,653]
+        xstars_field = [384,379]
+        ystars_field = [663,715]
+    elif star == "1717ae":
+        lims = 10.0
+        prefixes = ["1717ae_10_g_20180609_060435.034149","1717ae_10_g_20180609_070408.034756"]
+        xstars = [406,370]
+        ystars = [563,508]
+        xstars_field = [587,551]
+        ystars_field = [568,514]
+    elif star == "1818k":
+        lims = 30.0
+        #prefixes = ["1818k_10_g_20180610_070206.036101","1818k_10_g_20180610_080231.043411","1818k_10_R_20180613_034802.035494"] 
+        #xstars = [506,475,535]
+        #ystars = [509,609,633]
+        #xstars_field = [513,482,543]
+        #ystars_field = [422,520,545]
+
+        prefixes = ["1818k_10_r_20180623_064440.043650"]
+        xstars = [452]
+        ystars = [511]
+        xstars_field = [507]
+        ystars_field = [657]
+        magthresh, magthresh_field = -8, -10
+
+    elif star == "1815f":
+        lims = 30.0
+        #prefixes = ["1815f_7_g_20180611_060014.044447","1815f_7_g_20180611_064500.040319","1815f_10_I_20180612_054743.034371","1815f_10_U_20180612_065225.038587","1815f_10_R_20180612_075055.033347"]
+        xstars = [412,727,551,577,702]
+        ystars = [624,443,457,543,448]
+        xstars_field = [234,548,372,398,502]
+        ystars_field = [770,593,607,693,599]
+        magthresh, magthresh_field = -11.5, -12
+        magthresh, magthresh_field = -5, -9
+
+        prefixes = ["1815f_10_g_20180621_071249.036041"]
+        xstars = [552]
+        ystars = [419]
+        xstars_field = [622]
+        ystars_field = [455]
+        magthresh, magthresh_field = -6.5, -9
+
+        lims = 20
+        prefixes = ["phase"]
+        xstars = [632]
+        ystars = [363]
+        xstars_field = [703]
+        ystars_field = [400]
+        magthresh, magthresh_field = 0.0, 0.0
+
+        xstars = [397]
+        ystars = [622]
+        xstars_field = [466]
+        ystars_field = [659]
+
+        xstars = [727]
+        ystars = [443]
+        xstars_field = [797]
+        ystars_field = [480]
+
+        #lims = 100
+        #prefixes = ["1815f_10_g_20180625_042716.053145"]
+        #xstars = [632,550]
+        #ystars = [365,415]
+        #xstars_field = [496,414]
+        #ystars_field = [779,829]
+        #magthresh, magthresh_field = 0, -10
+        #magthresh_upper = -8.7
+
+    elif star == "D6-2":
+        lims = 300.0
+        prefixes = ["D6-2_6_g_20180619_083940.033859"]
+        xstars = [497]
+        ystars = [514]
+        xstars_field = [634]
+        ystars_field = [580]
+        magthresh, magthresh_field = -9, -9
+
+        prefixes = ["D6-2_6_g_20180621_080902.025448"]
+        xstars = [894]
+        ystars = [520]
+        xstars_field = [975]
+        ystars_field = [593]
+        magthresh, magthresh_field = 0, 0
+
+        lims = 200.0
+        prefixes = ["D6-2_10_g_20180701_062450.034927"]
+        xstars = [502]
+        ystars = [520]
+        xstars_field = [638]
+        ystars_field = [585]
+        magthresh, magthresh_field = -10.75, -13
+        magthresh_upper, magthresh_field_upper = -11.1, -13.8
+
+    elif star == "D6-3":
+        lims = 50.0
+        prefixes = ["D6-3_7_g_20180619_065030.042884"]
+        xstars = [534]
+        ystars = [509]
+        xstars_field = [350]
+        ystars_field = [472]
+        magthresh, magthresh_field = -12, -13
+    elif star == "ATLAS18qqn":
+        lims = 50.0
+        prefixes = ["ATLAS18qqn_7_g_20180620_045350.038802","ATLAS18qqn_7_g_20180620_055327.044286","ATLAS18qqn_7_g_20180620_065359.040926","ATLAS18qqn_7_g_20180620_075419.041429","ATLAS18qqn_7_g_20180620_085453.040871"]
+        xstars = [538,407,507,489,495]
+        ystars = [482,486,531,595,651]
+        xstars_field = [650,519,618,600,605]
+        ystars_field = [319,322,366,433,486]
+        magthresh, magthresh_field = -10, -8
+    elif star == "MAXI-J1820-070":
+        lims = 50.0
+        prefixes = ["MAXI-J1820-070_8_g_20180622_045313.040008","MAXI-J1820-070_8_g_20180622_054756"]
+        xstars = [582,522]
+        ystars = [579,522]
+        xstars_field = [583,526]
+        ystars_field = [648,591]
+        magthresh, magthresh_field = -12, -12
+    elif star == "1715m":
+        lims = 50.0
+        prefixes = ["1715m_10_g_20180623_045420.034439"]
+        xstars = [616]
+        ystars = [457]
+        xstars_field = [341]
+        ystars_field = [81]
+        magthresh, magthresh_field = -8, -10
+    elif star == "ZTFHC1":
+        lims = 30.0
+        prefixes = ["ZTFHC1_10_g_20180623_071950.033999"]
+        xstars = [523]
+        ystars = [588]
+        xstars_field = [461]
+        ystars_field = [563]
+        magthresh, magthresh_field = -8, -11
+    elif star == "ZTFHC6":
+        lims = 30.0
+        prefixes = ["ZTFHC6_10_g_20180626_061558.037221"]
+        xstars = [511]
+        ystars = [533]
+        xstars_field = [557]
+        ystars_field = [627]
+        magthresh, magthresh_field = -11, -11
+    elif star == "ZTFHC7":
+        lims = 30.0
+        prefixes = ["ZTFHC7_10_g_20180627_080418.036682"]
+        xstars = [516]
+        ystars = [597]
+        xstars_field = [495]
+        ystars_field = [727]
+        magthresh, magthresh_field = 0, 0
+    elif star == "ZTF1":
+        lims = 80.0
+        prefixes = ["ZTF1_10_r_20180630_080800.036289"]
+        xstars = [401]
+        ystars = [529]
+        xstars_field = [444]
+        ystars_field = [265]
+        magthresh, magthresh_field = -9.5, -10
+    elif star == "ZTF2":
+        lims = 50.0
+        prefixes = ["ZTF2_10_g_20180624_072243.035496"]
+        xstars = [519]
+        ystars = [393]
+        #xstars_field = [693]
+        #ystars_field = [452]
+        xstars_field = [261]
+        ystars_field = [576]
+
+        prefixes = ["ZTF2_10_g_20180626_082932.033927"]
+        xstars = [487]
+        ystars = [467]
+        xstars_field = [663]
+        ystars_field = [521]
+        magthresh, magthresh_field = -11, -11
+    elif star == "ZTF3":
+        lims = 50.0
+        prefixes = ["ZTF3_10_g_20180624_083119.078592"]
+        xstars = [565]
+        ystars = [462]
+        xstars_field = [609]
+        ystars_field = [210]
+        magthresh, magthresh_field = -12, -12
+    elif star == "ZTF4":
+        lims = 50.0
+        prefixes = ["ZTF4_6_g_20180626_040002.033892"]
+        xstars = [705]
+        ystars = [701]
+        xstars_field = [191]
+        ystars_field = [748]
+        magthresh, magthresh_field = -11, -10
+    elif star == "ZTF5":
+        lims = 50.0
+        prefixes = ["ZTF5_10_g_20180630_063033.034732"]
+        xstars = [517]
+        ystars = [524]
+        xstars_field = [398]
+        ystars_field = [700]
+        magthresh, magthresh_field = 0, 0
+    elif star == "ZTF6":
+        lims = 80.0
+        prefixes = ["ZTF6_10_g_20180630_041624.039794"]
+        xstars = [548]
+        ystars = [430]
+        xstars_field = [474]
+        ystars_field = [627]
+        magthresh, magthresh_field = -10, -10
+    elif star == "ZTF7":
+        lims = 30.0
+        prefixes = ["ZTF7_10_g_20180627_061542.038530"]
+        xstars = [556]
+        ystars = [444]
+        xstars_field = [626]
+        ystars_field = [560]
+        magthresh, magthresh_field = -8, -8
+    elif star == "ZTF8":
+        lims = 50.0
+        prefixes = ["ZTF8_10_g_20180630_052450.037452"]
+        xstars = [587]
+        ystars = [606]
+        xstars_field = [470]
+        ystars_field = [552]
+        magthresh, magthresh_field = -10, -12
+        magthresh_upper = -12
+    elif star == "ZTF9":
+        lims = 50.0
+        prefixes = ["ZTF9_8_g_20180626_050607.044418"]
+        xstars = [446]
+        ystars = [437]
+        xstars_field = [359]
+        ystars_field = [463]
+        magthresh, magthresh_field = -12, -10
+    elif star == "ZTF10":
+        lims = 50.0
+        prefixes = ["ZTF10_10_g_20180701_051722.034655"]
+        xstars = [567]
+        ystars = [508]
+        xstars_field = [770]
+        ystars_field = [501]
+        magthresh, magthresh_field = -10, -10
+
+        prefixes = ["ZTF10_10_g_20180702_042809.040909","ZTF10_10_g0180702_051818.046368"]
+        xstars = [470,437]
+        ystars = [447,470]
+        xstars_field = [672,639]
+        ystars_field = [440,463]
+        magthresh, magthresh_field = -10, -12
+
+    elif star == "ZTF11":
+        lims = 50.0
+        prefixes = ["ZTF11_10_g_20180701_041338.040531"]
+        xstars = [580]
+        ystars = [500]
+        xstars_field = [540]
+        ystars_field = [411]
+        magthresh, magthresh_field = -6.5, -7
+
+    return ra, dec, lims, prefixes, xstars, ystars, xstars_field, ystars_field, magthresh, magthresh_field, magthresh_upper, magthresh_field_upper
+
+def makemovie(movieDir,fitsfiles,x=None,y=None):
+
+    cnt = 0
+    for ii in range(len(fitsfiles)):
+        hdulist = fits.open(fitsfiles[ii])
+        for jj in range(len(hdulist)):
+            if jj == 0: continue
+            header = hdulist[jj].header
+            data = hdulist[jj].data
+
+            vmin = np.percentile(data,5)
+            vmax = np.percentile(data,95)
+
+            plotName = os.path.join(movieDir,'image_%04d.png'%cnt)
+            plt.figure()
+            plt.imshow(data,vmin=vmin,vmax=vmax,cmap='gray')
+            if not x == None:
+                plt.xlim(x)
+                plt.ylim(y)
+            plt.show()
+            plt.savefig(plotName,dpi=200)             
+            plt.close()
+            cnt = cnt + 1
+  
+    moviefiles = os.path.join(movieDir,"image_%04d.png")
+    filename = os.path.join(movieDir,"movie.mpg")
+    ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
+    os.system(ffmpeg_command)
+    filename = os.path.join(movieDir,"movie.gif")
+    ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
+    os.system(ffmpeg_command)
+
+    #rm_command = "rm %s/*.png"%(movieDir)
+    #os.system(rm_command)
+
+    print(stop)
 
 # Parse command line
 opts = parse_commandline()
@@ -332,102 +814,7 @@ os.system(rm_command)
 rm_command = "rm *.bz2"
 os.system(rm_command)
 
-if opts.star == "M13":
-    ra = 249.976843
-    dec = 36.555625
-elif opts.star == "feige66":
-    ra = 189.347988
-    dec = 25.066633
-elif opts.star == "PG1336":
-    ra = 204.700620
-    dec = -2.030310
-elif opts.star == "1719an":
-    ra = 294.693083
-    dec = 58.698278
-elif opts.star == "182li":
-    ra = 325.093960
-    dec = 26.356780
-elif opts.star == "hz44":
-    ra = 200.896933
-    dec = 36.133206
-elif opts.star == "1813a":
-    ra = 207.08665
-    dec = 38.171530
-elif opts.star == "1819a":
-    ra = 297.255810
-    dec = 67.501560
-elif opts.star == "SDSS-J14":
-    ra = 212.826290
-    dec = 48.216000
-elif opts.star == "1711e":
-    ra = 167.141690
-    dec = 31.897930
-elif opts.star == "1717ae":
-    ra = 267.901830
-    dec = 14.738640
-elif opts.star == "1818k":
-    ra = 273.296292
-    dec = 42.864028
-elif opts.star == "1815f":
-    ra = 234.884000
-    dec = 50.460778
-elif opts.star == "D6-2":
-    ra = 324.612488
-    dec = 25.373711
-elif opts.star == "D6-3":
-    ra = 283.007854
-    dec = 62.036167
-elif opts.star == "ATLAS18qqn":
-    ra = 244.000917
-    dec = 22.268000
-elif opts.star == "MAXI-J1820-070":
-    ra = 275.091380
-    dec = 7.185300
-elif opts.star == "1715m":
-    ra = 235.050320
-    dec = 29.141340
-elif opts.star == "ZTFHC1":
-    ra = 291.201667
-    dec = -26.775694
-elif opts.star == "ZTF1":
-    ra = 246.428907
-    dec = 30.850281
-elif opts.star == "ZTF2":
-    ra = 262.004019
-    dec = 44.971073
-elif opts.star == "ZTF3":
-    ra = 280.239150
-    dec = 37.460777
-elif opts.star == "ZTF4":
-    ra = 218.441030
-    dec = 43.794303
-elif opts.star == "ZTF5":
-    ra = 259.387506
-    dec = 30.821821
-elif opts.star == "ZTF6":
-    ra = 221.0189237
-    dec = 59.602022
-elif opts.star == "ZTF7":
-    ra = 263.200192
-    dec = 22.996229
-elif opts.star == "ZTF8":
-    ra = 265.3541848
-    dec = 19.1568577
-elif opts.star == "ZTF9":
-    ra = 225.908785
-    dec = 58.996695
-elif opts.star == "ZTF10":
-    ra = 245.872770
-    dec = 32.486761
-elif opts.star == "ZTF11":
-    ra = 226.553315
-    dec = 46.537222
-elif opts.star == "ZTFHC6":
-    ra = 283.324116
-    dec = -26.754382
-elif opts.star == "ZTFHC7":
-    ra = 289.023597
-    dec = -24.051733
+ra, dec, lims, prefixes, xstars, ystars, xstars_field, ystars_field, magthresh, magthresh_field, magthresh_upper, magthresh_field_upper = star_info(opts.star)
 
 if not opts.fitsfiles == None:
     fitsfiles = sorted(glob.glob(opts.fitsfiles))
@@ -454,8 +841,17 @@ if not opts.fitsfiles == None:
         phaseDir = os.path.join(path_out_dir,'phase')
         if not os.path.isdir(phaseDir):
             os.makedirs(phaseDir)
-        phase_images(phaseDir,fitsfiles,opts.nphase,opts.phase)
-        fitsfiles = sorted(glob.glob(os.path.join(phaseDir,'phase.fits')))
+        phasefile = os.path.join(phaseDir,'phase.fits')
+        if not os.path.isfile(phasefile):
+            phase_images(phaseDir,fitsfiles,opts.nphase,opts.phase)
+        fitsfiles = sorted(glob.glob(phasefile))
+
+    if opts.doMakeMovie:
+        movieDir = os.path.join(path_out_dir,'movie')
+        if not os.path.isdir(movieDir):
+            os.makedirs(movieDir)
+
+        makemovie(movieDir,fitsfiles,x=[xstars[0]-50,xstars[0]+50],y=[ystars[0]-50,ystars[0]+50])
 
     for ii,fitsfile in enumerate(fitsfiles):
         print(ii,fitsfile)
@@ -475,7 +871,11 @@ if not opts.fitsfiles == None:
 
         if os.path.isfile(catfile): continue
 
-        correct_image(calibrationDir,fitsfile,scienceimage,
+        if opts.doNoCalibration:
+            system_command = "cp %s %s"%(fitsfile,scienceimage)
+            os.system(system_command)
+        else:
+            correct_image(calibrationDir,fitsfile,scienceimage,
                       opts.filter,opts.camsetting,opts.nimages)
 
         if not os.path.isfile(astimage):
@@ -524,6 +924,21 @@ if not opts.fitsfiles == None:
             axyfile = scienceimage.replace("fits","axy")
             hdulist = fits.open(axyfile)
 
+        if opts.doForcedPhotometry:
+            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=xstars[0],y=ystars[0],fwhm=10.0)
+            mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xstars_field[0],y=ystars_field[0],fwhm=8.0)
+
+            mag = mag_forced - mag_forced_field
+            magerr = np.sqrt(magerr_forced**2 + magerr_forced_field**2)
+            flux = flux_forced/flux_forced_field
+            fluxerr = flux*np.sqrt((fluxerr_forced/flux_forced)**2 + (fluxerr_forced_field/flux_forced_field)**2)
+
+            filename = scienceimage.replace(".fits",".forced")
+            fid = open(filename,'w')
+            for ii in range(len(mjd_forced)):
+                fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
+            fid.close()
+
         #ra, dec = ztfsub.utils.get_radec_from_header(scienceimage,ext=1)
 
         ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
@@ -554,13 +969,13 @@ if not opts.fitsfiles == None:
         #cat = cat[idx,:]
         #np.savetxt(catfile,cat,fmt='%.5f')
 
-        if os.path.isfile(scienceimage):
-            rm_command = "rm %s"%scienceimage
-            os.system(rm_command)
+        #if os.path.isfile(scienceimage):
+        #    rm_command = "rm %s"%scienceimage
+        #    os.system(rm_command)
 
-        if os.path.isfile(backfile):
-            rm_command = "rm %s"%backfile
-            os.system(rm_command)
+        #if os.path.isfile(backfile):
+        #    rm_command = "rm %s"%backfile
+        #    os.system(rm_command)
 
     cnt = 0
     for ii,fitsfile in enumerate(fitsfiles):
@@ -570,6 +985,7 @@ if not opts.fitsfiles == None:
         path_out_dir_tmp='%s/%s'%(path_out_dir,fitsfileSplit)
         scienceimage = '%s/science.fits'%(path_out_dir_tmp)
         catfile = scienceimage.replace(".fits",".cat")
+        forcedfile = scienceimage.replace(".fits",".forced")
 
         if opts.star in ["1815f","1819a","1711e","1717ae","1818k","SDSS-J14","D6-2","D6-3","ATLAS18qqn","MAXI-J1820-070","1715m","ZTFHC1","ZTF1","ZTF2","ZTF3","ZTF4","ZTF5","ZTF6","ZTF7","ZTF8","ZTF9","ZTF10","ZTF11","ZTFHC6","ZTFHC7"]:
             fitsfileBase = "_".join(fitsfileSplit.split("_")[:5])
@@ -595,12 +1011,27 @@ if not opts.fitsfiles == None:
             tbltemp['FILE_INDEX'] = ii
             tbltemp['fitsfile'] = fitsfileBase
             tbl = vstack([tbl,tbltemp])
+
+        if opts.doForcedPhotometry:
+            if cnt == 0:
+                tblforced = ascii.read(forcedfile,names=['MJD','mag','magerr','flux','fluxerr'])
+            else:
+                tbltemp = ascii.read(forcedfile,names=['MJD','mag','magerr','flux','fluxerr']) 
+                tblforced = vstack([tblforced,tbltemp])
+
         cnt = cnt + 1   
 
     catfile = '%s/catfile.dat'%(path_out_dir)
     ascii.write(tbl,catfile,overwrite=True)
 
+    if opts.doForcedPhotometry:
+        forcedfile = '%s/forced.dat'%(path_out_dir)
+        ascii.write(tblforced,forcedfile,overwrite=True)
+
 tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
+
+if opts.doForcedPhotometry:
+    tblforced = ascii.read(forcedfile,names=['MJD','mag','magerr','flux','fluxerr'])
 
 ra_deg = (np.max(tbl["RA"]) + np.min(tbl["RA"]))/2.0
 dec_deg = (np.max(tbl["Declination"]) + np.min(tbl["Declination"]))/2.0
@@ -622,325 +1053,7 @@ p = np.poly1d(z)
 
 if opts.doPlots:
 
-    magthresh, magthresh_field = np.inf, np.inf
-    magthresh_upper, magthresh_field_upper = -np.inf, -np.inf
     idx1s, idx2s = np.empty((0,1)), np.empty((0,1))
-    if opts.star == "PG1336":
-        lims = 50.0
-        prefixes = ["PG1336-018_20180605_053947.040477_o","PG1336-018_20180605_064012.017688_o","PG1336-018_20180605_064249.040982_o","PG1336-018_20180605_073853.042577_o"]
-        xstars = [535,515,515,487]
-        ystars = [607,515,515,535] 
-        xstars_field = [787,768,768,743] 
-        ystars_field = [326,244,244,260]
-    elif opts.star == "1719an":
-        lims = 50.0
-        prefixes = ["1719an_20180605_082958.034124_o","1719an_20180605_091830.036272_o"]
-        xstars = [555,603]
-        ystars = [174,502]
-        xstars_field = [355,402]
-        ystars_field = [271,600]
-
-    elif opts.star == "hz44":
-        lims = 50.0
-        prefixes = ["hz44_0_r_20180607","hz44_7_r_20180607"]
-        xstars = [614,577]
-        ystars = [546,538]
-        xstars_field = [299,230]
-        ystars_field = [155,150]
-
-    elif opts.star == "1813a":
-        lims = 25.0
-        prefixes = ["1813_10_g_20180607"]
-        xstars = [900]
-        ystars = [640]
-        xstars_field = [300]
-        ystars_field = [565]
-
-    elif opts.star == "1819a":
-        lims = 30.0
-        prefixes = ["1819a_10_g_20180607_062809.034490","1819a_10_g_20180607_072404.034087"]
-        xstars = [487,545]
-        ystars = [469,452]
-        xstars_field = [426,483]
-        ystars_field = [137,125]
-
-    elif opts.star == "182li":
-        lims = 30.0
-        prefixes = ["182li_10_g_20180607"]
-        xstars = [565]
-        ystars = [655]
-        xstars_field = [461]
-        ystars_field = [661]
-    elif opts.star == "SDSS-J14":
-        lims = 50.0
-        #prefixes = ["SDSS-J14_20180608_043912.034585_o","SDSS-J14_20180608_053913.036754_o"]
-        #xstars = [551,578]
-        #ystars = [519,567]
-        #xstars_field = [807,837]
-        #ystars_field = [809,859]
-
-        #prefixes = ["SDSS-J14_10_g_20180610_045410.042083","SDSS-J14_10_g_20180610_055452.040907"]
-        #xstars = [719,685]
-        #ystars = [471,436]
-        #xstars_field = [721,684]
-        #ystars_field = [296,262]
-
-        prefixes = ["J14_10_g_20180621_053832.042574","J14_10_g_20180621_061333.039880"]
-        xstars = [561,558]
-        ystars = [412,478]
-        xstars_field = [817,815]
-        ystars_field = [703,769]
-        magthresh, magthresh_field = -10, -10
-
-    elif opts.star == "1711e":
-        lims = 30.0
-        prefixes = ["1711e_10_g_20180609_040356.034889","1711e_10_g_20180609_045622.042703"]
-        xstars = [540,536]
-        ystars = [591,653]
-        xstars_field = [384,379]
-        ystars_field = [663,715]
-    elif opts.star == "1717ae":
-        lims = 10.0
-        prefixes = ["1717ae_10_g_20180609_060435.034149","1717ae_10_g_20180609_070408.034756"]
-        xstars = [406,370]
-        ystars = [563,508]
-        xstars_field = [587,551]
-        ystars_field = [568,514]
-    elif opts.star == "1818k":
-        lims = 30.0
-        #prefixes = ["1818k_10_g_20180610_070206.036101","1818k_10_g_20180610_080231.043411","1818k_10_R_20180613_034802.035494"] 
-        #xstars = [506,475,535]
-        #ystars = [509,609,633]
-        #xstars_field = [513,482,543]
-        #ystars_field = [422,520,545]
-
-        prefixes = ["1818k_10_r_20180623_064440.043650"]
-        xstars = [452]
-        ystars = [511]
-        xstars_field = [507]
-        ystars_field = [657]
-        magthresh, magthresh_field = -8, -10
-
-    elif opts.star == "1815f":
-        lims = 30.0
-        #prefixes = ["1815f_7_g_20180611_060014.044447","1815f_7_g_20180611_064500.040319","1815f_10_I_20180612_054743.034371","1815f_10_U_20180612_065225.038587","1815f_10_R_20180612_075055.033347"]
-        xstars = [412,727,551,577,702]
-        ystars = [624,443,457,543,448]
-        xstars_field = [234,548,372,398,502]
-        ystars_field = [770,593,607,693,599]
-        magthresh, magthresh_field = -11.5, -12
-        magthresh, magthresh_field = -5, -9
-
-        prefixes = ["1815f_10_g_20180621_071249.036041"]
-        xstars = [552]
-        ystars = [419]
-        xstars_field = [622]
-        ystars_field = [455]
-        magthresh, magthresh_field = -6.5, -9
-
-        prefixes = ["phase"]
-        xstars = [552]
-        ystars = [419]
-        xstars_field = [622]
-        ystars_field = [455]
-        magthresh, magthresh_field = -6.5, -9
-   
-        lims = 100
-        prefixes = ["1815f_10_g_20180625_042716.053145"]
-        xstars = [632,550]
-        ystars = [365,415]
-        xstars_field = [496,414]
-        ystars_field = [779,829]
-        magthresh, magthresh_field = 0, -10
-        magthresh_upper = -8.7
-
-    elif opts.star == "D6-2":
-        lims = 300.0
-        prefixes = ["D6-2_6_g_20180619_083940.033859"]
-        xstars = [497]
-        ystars = [514]
-        xstars_field = [634]
-        ystars_field = [580]
-        magthresh, magthresh_field = -9, -9
-
-        prefixes = ["D6-2_6_g_20180621_080902.025448"]
-        xstars = [894]
-        ystars = [520]
-        xstars_field = [975]
-        ystars_field = [593]
-        magthresh, magthresh_field = 0, 0
-
-        lims = 200.0
-        prefixes = ["D6-2_10_g_20180701_062450.034927"]
-        xstars = [502]
-        ystars = [520]
-        xstars_field = [638]
-        ystars_field = [585]
-        magthresh, magthresh_field = -10.75, -13
-        magthresh_upper, magthresh_field_upper = -11.1, -13.8
-
-    elif opts.star == "D6-3":
-        lims = 50.0
-        prefixes = ["D6-3_7_g_20180619_065030.042884"]
-        xstars = [534]
-        ystars = [509]
-        xstars_field = [350]
-        ystars_field = [472]
-        magthresh, magthresh_field = -12, -13
-    elif opts.star == "ATLAS18qqn":
-        lims = 50.0
-        prefixes = ["ATLAS18qqn_7_g_20180620_045350.038802","ATLAS18qqn_7_g_20180620_055327.044286","ATLAS18qqn_7_g_20180620_065359.040926","ATLAS18qqn_7_g_20180620_075419.041429","ATLAS18qqn_7_g_20180620_085453.040871"]
-        xstars = [538,407,507,489,495]
-        ystars = [482,486,531,595,651]
-        xstars_field = [650,519,618,600,605]
-        ystars_field = [319,322,366,433,486]
-        magthresh, magthresh_field = -10, -8
-    elif opts.star == "MAXI-J1820-070":
-        lims = 50.0
-        prefixes = ["MAXI-J1820-070_8_g_20180622_045313.040008","MAXI-J1820-070_8_g_20180622_054756"]
-        xstars = [582,522]
-        ystars = [579,522]
-        xstars_field = [583,526]
-        ystars_field = [648,591]
-        magthresh, magthresh_field = -12, -12
-    elif opts.star == "1715m":
-        lims = 50.0
-        prefixes = ["1715m_10_g_20180623_045420.034439"]
-        xstars = [616]
-        ystars = [457]
-        xstars_field = [341]
-        ystars_field = [81]
-        magthresh, magthresh_field = -8, -10
-    elif opts.star == "ZTFHC1":
-        lims = 30.0
-        prefixes = ["ZTFHC1_10_g_20180623_071950.033999"]
-        xstars = [523]
-        ystars = [588]
-        xstars_field = [461]
-        ystars_field = [563]
-        magthresh, magthresh_field = -8, -11
-    elif opts.star == "ZTFHC6":
-        lims = 30.0
-        prefixes = ["ZTFHC6_10_g_20180626_061558.037221"]
-        xstars = [511]
-        ystars = [533]
-        xstars_field = [557]
-        ystars_field = [627]
-        magthresh, magthresh_field = -11, -11
-    elif opts.star == "ZTFHC7":
-        lims = 30.0
-        prefixes = ["ZTFHC7_10_g_20180627_080418.036682"]
-        xstars = [516]
-        ystars = [597]
-        xstars_field = [495]
-        ystars_field = [727]
-        magthresh, magthresh_field = 0, 0
-    elif opts.star == "ZTF1":
-        lims = 80.0
-        prefixes = ["ZTF1_10_r_20180630_080800.036289"]
-        xstars = [401]
-        ystars = [529]
-        xstars_field = [444]
-        ystars_field = [265]
-        magthresh, magthresh_field = -9.5, -10
-    elif opts.star == "ZTF2":
-        lims = 50.0
-        prefixes = ["ZTF2_10_g_20180624_072243.035496"]
-        xstars = [519]
-        ystars = [393]
-        #xstars_field = [693]
-        #ystars_field = [452]
-        xstars_field = [261]
-        ystars_field = [576]
-
-        prefixes = ["ZTF2_10_g_20180626_082932.033927"]
-        xstars = [487]
-        ystars = [467]
-        xstars_field = [663]
-        ystars_field = [521]
-        magthresh, magthresh_field = -11, -11 
-    elif opts.star == "ZTF3":
-        lims = 50.0
-        prefixes = ["ZTF3_10_g_20180624_083119.078592"]
-        xstars = [565]
-        ystars = [462]
-        xstars_field = [609]
-        ystars_field = [210]
-        magthresh, magthresh_field = -12, -12 
-    elif opts.star == "ZTF4":
-        lims = 50.0
-        prefixes = ["ZTF4_6_g_20180626_040002.033892"]
-        xstars = [705]
-        ystars = [701]
-        xstars_field = [191]
-        ystars_field = [748]
-        magthresh, magthresh_field = -11, -10 
-    elif opts.star == "ZTF5":
-        lims = 50.0
-        prefixes = ["ZTF5_10_g_20180630_063033.034732"]
-        xstars = [517]
-        ystars = [524]
-        xstars_field = [398]
-        ystars_field = [700]
-        magthresh, magthresh_field = 0, 0
-    elif opts.star == "ZTF6":
-        lims = 80.0
-        prefixes = ["ZTF6_10_g_20180630_041624.039794"]
-        xstars = [548]
-        ystars = [430]
-        xstars_field = [474]
-        ystars_field = [627]
-        magthresh, magthresh_field = -10, -10
-    elif opts.star == "ZTF7":
-        lims = 30.0
-        prefixes = ["ZTF7_10_g_20180627_061542.038530"]
-        xstars = [556]
-        ystars = [444]
-        xstars_field = [626]
-        ystars_field = [560]
-        magthresh, magthresh_field = -8, -8
-    elif opts.star == "ZTF8":
-        lims = 50.0
-        prefixes = ["ZTF8_10_g_20180630_052450.037452"]
-        xstars = [587]
-        ystars = [606]
-        xstars_field = [470]
-        ystars_field = [552]
-        magthresh, magthresh_field = -10, -12
-        magthresh_upper = -12
-    elif opts.star == "ZTF9":
-        lims = 50.0
-        prefixes = ["ZTF9_8_g_20180626_050607.044418"]
-        xstars = [446]
-        ystars = [437]
-        xstars_field = [359]
-        ystars_field = [463]
-        magthresh, magthresh_field = -12, -10
-    elif opts.star == "ZTF10":
-        lims = 50.0
-        prefixes = ["ZTF10_10_g_20180701_051722.034655"]
-        xstars = [567] 
-        ystars = [508] 
-        xstars_field = [770]
-        ystars_field = [501]
-        magthresh, magthresh_field = -10, -10 
-
-        prefixes = ["ZTF10_10_g_20180702_042809.040909","ZTF10_10_g0180702_051818.046368"]
-        xstars = [470,437]
-        ystars = [447,470]
-        xstars_field = [672,639]
-        ystars_field = [440,463]
-        magthresh, magthresh_field = -10, -12 
-
-    elif opts.star == "ZTF11":
-        lims = 50.0
-        prefixes = ["ZTF11_10_g_20180701_041338.040531"]
-        xstars = [580]
-        ystars = [500]
-        xstars_field = [540]
-        ystars_field = [411]
-        magthresh, magthresh_field = -6.5, -7
-
     for prefix,xstar,ystar,xstar_field,ystar_field in zip(prefixes,xstars,ystars,xstars_field,ystars_field):
         idx = np.where(prefix==tbl["fitsfile"])[0]
         idx1 = np.where(np.sqrt((tbl[idx]['X']-xstar)**2 + (tbl[idx]['Y']-ystar)**2)<=lims)[0]
@@ -992,6 +1105,21 @@ if opts.doPlots:
         fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd1[ii],mag1[ii],magerr1[ii],flux1[ii],fluxerr1[ii]))
     fid.close()
  
+    if opts.doForcedPhotometry:
+        mjd_forced = tblforced['MJD'].data
+        mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
+        flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
+
+        plotName = os.path.join(path_out_dir,'mag_relative_forced.pdf')
+        fig = plt.figure(figsize=(20,8))
+        plt.errorbar(mjd_forced-mjd_forced[0],mag_forced,magerr_forced,fmt='ko')
+        plt.xlabel('Time from %.5f [days]'%mjd[0])
+        plt.ylabel('Magnitude [arb]')
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig(plotName)
+        plt.close()
+
     plotName = os.path.join(path_out_dir,'star.pdf')
     fig = plt.figure(figsize=(20,8))
     plt.errorbar(mjd1-mjd1[0],mag1,magerr1,fmt='ko')
@@ -1062,6 +1190,8 @@ if opts.doPlots:
         plt.ylim([0.2,0.3])
     elif opts.star == "ATLAS18qqn":
         plt.ylim([-2.48,-2.3])
+    elif opts.star == "1815f":
+        plt.ylim([1,5])
     else:
         plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
     #if opts.star == "PG1336":
