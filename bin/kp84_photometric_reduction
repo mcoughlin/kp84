@@ -29,6 +29,7 @@ def parse_commandline():
 
     parser.add_option("--dataDir",default="/Data3/archive_kped/20180611/1815f_7_g_20180611_064500.040319_o/")
 
+    parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
@@ -49,10 +50,13 @@ def parse_commandline():
     parser.add_option("--nphase",default=64,type=int)
 
     parser.add_option("--doCalibration",  action="store_true", default=False)
-
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
-
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
+
+    parser.add_option("--doSubtraction",  action="store_true", default=False)
+    parser.add_option("--subtractionDir",default="../subtraction")
+    parser.add_option("--subtractionSource",default="ps1")
+    parser.add_option("--image_size",default=1000,type=int)
 
     opts, args = parser.parse_args()
 
@@ -308,15 +312,41 @@ if not os.path.isdir(path_out_dir):
 if (opts.xstar<0) or (opts.ystar<0):
     if len(wcsfiles)>0:
         wcsfile = wcsfiles[0]
-        header = fits.getheader(wcsfile)
-        w = WCS(header)
+        wcs_header = fits.getheader(wcsfile)
+        w = WCS(wcs_header)
         x0,y0 = w.wcs_world2pix(ra,dec,1)
-        print(wcsfile,w,ra,dec,x0,y0)
-        print(stop)
     else:
         print("No WCS solution provided... please use --xstar and --ystar.")
 else:
     x0, y0 = opts.xstar, opts.ystar
+
+if opts.doSubtraction:
+    refimage = os.path.join(path_out_dir,'ref.fits')
+    if passband == "U":
+        refband = "u"
+    elif passband == "B":
+        refband = "g"
+    elif passband == "V":
+        refband = "r"
+    elif passband == "R":
+        refband = "i"
+    elif passband == "I":
+        refband = "z"
+    elif passband == "g":
+        refband = "g"
+    elif passband == "r":
+        refband = "r"
+
+    if not os.path.isfile(refimage):
+        if opts.subtractionSource == "sdss":
+            refgood = ztfsub.surveys.get_sdss(opts,refimage,ra,dec,refband)
+        elif opts.subtractionSource == "ps1":
+            refgood = ztfsub.surveys.get_ps1(opts,refimage,ra,dec,refband)
+        else:
+            print("Only PS1 and SDSS supported.")
+            exit(0)
+    else:
+        refgood = True
 
 if opts.doStack:
     stackDir = os.path.join(path_out_dir,'stack')
@@ -365,6 +395,39 @@ for ii,fitsfile in enumerate(fitsfiles):
         else:
             system_command = "cp %s %s"%(fitsfile,scienceimage)
             os.system(system_command)
+
+        if opts.doSubtraction:
+
+            tmpdir='%s/subtract'%(path_out_dir)
+            if not os.path.isdir(tmpdir):
+                os.makedirs(tmpdir)
+
+            hdulist = fits.open(fitsfile)
+            hdulistsub = copy.copy(hdulist)
+            for kk in range(len(hdulist)):
+                if kk == 0:
+                    hdu_primary = copy.copy(hdulist[kk])
+                    continue
+                else:
+                    hdu = copy.copy(hdulist[kk])
+                    hdu.header = wcs_header
+
+                tmpimage='%s/%04d.fits'%(tmpdir,kk)
+                hdulist2 = fits.HDUList(hdus=[hdu_primary,hdu])
+                hdulist2.writeto(tmpimage,output_verify='fix',overwrite=True)
+
+                ztfsub.utils.p60sdsssub(opts, tmpimage, refimage, [ra,dec],
+                    distortdeg=1, scthresh1=3.0,
+                    scthresh2=10.0, tu=5000, iu=5000, ig=2.3, tg=1.0,
+                    stamps=None, nsx=4, nsy=4, ko=0, bgo=0, radius=10,
+                    tlow=-5000.0, ilow=-5000.0, sthresh=5.0, ng=None, 
+                    aperture=10.0,
+                   defaultsDir=defaultsDir)
+
+                tmplist = fits.open(tmpimage)
+                hdulistsub[kk].data = tmplist[1].data
+            filename = scienceimage.replace(".fits",".sub.fits")
+            hdulist2.writeto(filename,output_verify='fix',overwrite=True)
 
         ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
 
@@ -509,6 +572,15 @@ if opts.doPlots:
         plt.xlabel('Time from %.5f [days]'%mjd[0])
         plt.ylabel('Magnitude [arb]')
         plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig(plotName)
+        plt.close()
+
+        plotName = os.path.join(path_out_dir,'flux_relative_forced.pdf')
+        fig = plt.figure(figsize=(20,8))
+        plt.errorbar(mjd_forced-mjd_forced[0],flux_forced,fluxerr_forced,fmt='ko')
+        plt.xlabel('Time from %.5f [days]'%mjd[0])
+        plt.ylabel('Flux')
         plt.tight_layout()
         plt.savefig(plotName)
         plt.close()
