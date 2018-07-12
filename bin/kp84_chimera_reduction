@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, optparse, shutil, glob, copy
+import os, sys, optparse, shutil, glob, copy, datetime
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -21,13 +21,16 @@ from astropy.io import fits
 import ztfsub.utils, ztfsub.surveys
 import ztfsub.plotting
 
+from skimage.feature import register_translation
+import image_registration
+
 def parse_commandline():
     """
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="/Data3/archive_kped/20180611/1815f_7_g_20180611_064500.040319_o/")
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/July5/,/Users/mcoughlin/Code/KP84/observing/July6/,/Users/mcoughlin/Code/KP84/observing/July7/")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")
@@ -47,7 +50,7 @@ def parse_commandline():
 
     parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--phase",default=0.004800835466385,type=float)
-    parser.add_option("--nphase",default=64,type=int)
+    parser.add_option("--nphase",default=128,type=int)
 
     parser.add_option("--doCalibration",  action="store_true", default=False)
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
@@ -195,35 +198,44 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
     hdulist_hold = []
     cnt = 0
 
-    fitsfiles = fitsfiles[:15]
-
+    #fitsfiles = fitsfiles[:3]
+ 
     for ii in range(len(fitsfiles)):
+
         print("%d/%d"%(ii,len(fitsfiles)))
         hdulist = fits.open(fitsfiles[ii])
         header = hdulist[0].header
         data = hdulist[0].data
 
+        nhdu, xshape, yshape = data.shape
+        dateobs = utcparser(hdulist[0].header["UTCSTART"])
+        mjd = dateobs.mjd
+        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+
         if cnt == 0:
             header = hdulist[0].header
             header["EXTEND"] = "T"
             hdulist_hold.append(fits.PrimaryHDU(header=header))
-          
-            xshape, yshape = hdulist[1].data.shape
             datas = np.zeros([xshape,yshape,nimages])
 
-        for jj in range(len(hdulist)-1):
-            dateobs = Time(hdulist[jj+1].header["DATE"])
-            mjd = dateobs.mjd
+            reference = hdulist[0].data[0,:,:]
+
+        for jj in range(nhdu):
+            mjd = mjdall[jj]
             mjd_mod = np.mod(mjd, phase)/phase
             idx = np.where((mjd_mod>=phase_array[:-1]) & (mjd_mod<=phase_array[1:]))[0][0] 
-            datas[:,:,idx] = datas[:,:,idx] + hdulist[jj+1].data
+            data = hdulist[0].data[jj,:,:]
+
+            shift, error, diffphase = register_translation(reference, data, upsample_factor=1)
+            shifted = image_registration.fft_tools.shiftnd(data, (shift[0], shift[1]))  
+            datas[:,:,idx] = datas[:,:,idx] + shifted
             phase_counts[idx] = phase_counts[idx] + 1
 
         cnt = cnt + 1
 
     hdulist = fits.open(fitsfiles[0])
     header = hdulist[0].header
-    dateobs = Time(hdulist[1].header["DATE"])
+    dateobs = utcparser(hdulist[0].header["UTCSTART"])
     mjd = dateobs.mjd
     mjds = mjd + phase*(phase_array[:-1] + phase_array[1:])/2.0
     for ii in range(nimages):
@@ -266,6 +278,39 @@ def makemovie(movieDir,fitsfiles,x=None,y=None):
     ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
     os.system(ffmpeg_command)
 
+def utcparser(utcstart):
+        """
+        Datetime parser for CHIMERA UTCSTART header keyword.
+
+        Parameters
+        ----------
+        utcstart : string
+            Datetime for start of frame (in UTC)
+
+        Returns
+        -------
+        dt : datetime struct
+            Datetime structure
+        """
+
+        MONTHS = {"Jan": 1, "Feb": 2, "March": 3, "April": 4, "May": 5, "June": 6, "July": 7, "Aug": 8, "Sept": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+
+        month, date, year, time = utcstart.split("-")
+        month = MONTHS[month]
+        date = int(date)
+        year = int(year)
+
+        hour, minu, sec = time.split(":")
+        hour = int(hour)
+        minu = int(minu)
+        sec, ms = sec.split(".")
+        sec = int(sec)
+        ms = int(ms) * 1000
+
+        dt = datetime.datetime(year, month, date, hour, minu, sec, ms)
+
+        return Time(dt)
+
 # Parse command line
 opts = parse_commandline()
 inputDir = opts.inputDir
@@ -279,7 +324,10 @@ dataDirSplit = list(filter(None,dataDir.split("/")))
 calibrationDir = "/"+"/".join(dataDirSplit[:-1])+"/calib"
 objectSplit = dataDirSplit[-1].split("_")
 
-star, camsetting, passband = objectSplit[0], int(objectSplit[1]), objectSplit[2] 
+#star, camsetting, passband = objectSplit[0], int(objectSplit[1]), objectSplit[2] 
+star = "1815f"
+
+
 observedFile = "%s/observed.dat"%inputDir
 lines = [line.rstrip('\n') for line in open(observedFile)]
 for ii,line in enumerate(lines):
@@ -294,12 +342,12 @@ for ii,line in enumerate(lines):
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
-fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits')))
-wcsfiles = glob.glob(os.path.join(opts.dataDir,'registration','*wcs*.fits'))
-sumfiles = glob.glob(os.path.join(opts.dataDir,'registration','*registered_sum.fits'))
+fitsfiles = []
+for dataDir in opts.dataDir.split(","):
+    fitsfiles = fitsfiles + sorted(glob.glob(os.path.join(dataDir,'*final.fits')))
 
 header = fits.getheader(fitsfiles[0],ext=0)
-T0 = header['DATE']
+T0 = header['UTCSTART']
 fitsfileSplit = fitsfiles[0].split("/")[-1].replace(".fits.fz","").replace(".fits","")
 
 path_out_dir='%s/%s'%(outputDir,fitsfileSplit)
@@ -310,11 +358,11 @@ if not os.path.isdir(path_out_dir):
     os.makedirs(path_out_dir)
 
 if (opts.xstar<0) or (opts.ystar<0):
-    if len(wcsfiles)>0:
-        wcsfile = wcsfiles[0]
+    if len(fitsfiles)>0:
+        wcsfile = fitsfiles[0]
         wcs_header = fits.getheader(wcsfile)
         w = WCS(wcs_header)
-        x0,y0 = w.wcs_world2pix(ra,dec,1)
+        x0,y0 = w.wcs_world2pix(ra,dec,1,1)
     else:
         print("No WCS solution provided... please use --xstar and --ystar.")
 else:
@@ -650,7 +698,8 @@ if opts.doPlots:
     plt.errorbar(mjd-mjd[0],flux,fluxerr,fmt='ko')
     plt.xlabel('Time from %.5f [days]'%mjd[0])
     plt.ylabel('Flux Ratio')
-    plt.ylim([np.percentile(flux,5)*0.9,np.percentile(flux,95)*1.1])
+    #plt.ylim([np.percentile(flux,5)*0.9,np.percentile(flux,95)*1.1])
+    plt.ylim([-0.05,0.25])
     plt.tight_layout()
     plt.savefig(plotName)
     plt.close()
