@@ -26,6 +26,7 @@ import ztfsub.plotting
 
 import scipy
 from scipy.optimize import curve_fit
+from scipy.optimize import least_squares
 
 def parse_commandline():
     """
@@ -38,7 +39,7 @@ def parse_commandline():
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
-    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180603/M13_t40055672_o_8.fits")
+    parser.add_option("-f","--fitsfile",default="/Users/mcoughlin/Code/KP84/observing/20180603/M13_t40055672_o_9.fits")
     parser.add_option("-s","--star",default="M13")    
     parser.add_option("-m","--minmag",default=-10,type=float)
 
@@ -102,16 +103,41 @@ if opts.doOverwrite:
 if not os.path.isdir(path_out_dir):
     os.makedirs(path_out_dir)
 
-scienceimage = '%s/%s/science.fits'%(outputDir,fitsfileSplit)
-if not os.path.isfile(scienceimage):
-    cp_command = "cp %s %s"%(fitsfile,scienceimage)
-    os.system(cp_command)
-
-ra, dec = ztfsub.utils.get_radec_from_wcs(scienceimage)
+#ra, dec = ztfsub.utils.get_radec_from_wcs(scienceimage)
 
 if opts.star == "M13":
-    ra = 249.976843
-    dec = 36.555625
+    ra = 250.420833
+    dec = 36.459722
+
+ra = ra - 0.02 + 0.002 - 0.002 + 0.00006 + 0.00001123
+dec = dec + 0.01 - 0.006 + 0.0003 + 0.00001 - 0.00000027
+
+scienceimage = '%s/%s/science.fits'%(outputDir,fitsfileSplit)
+if not os.path.isfile(scienceimage):
+    hdul = fits.open(fitsfile)
+
+    hdul[0].header["CRPIX1"] = 512.01747788136    
+    hdul[0].header["CRPIX2"] = 512.00243766197
+    hdul[0].header["CD1_1"] =  -7.115705105717E-05
+    hdul[0].header["CD1_2"] =   5.551011250603E-07 
+    hdul[0].header["CD2_1"] =  5.0944990006261E-07 
+    hdul[0].header["CD2_2"] =  7.1179202572928E-05  
+    hdul[0].header["CDELT1"]  = 1.0
+    hdul[0].header["CDELT2"]  = 1.0 
+    hdul[0].header["CUNIT1"]  = 'deg'
+    hdul[0].header["CUNIT2"]  = 'deg' 
+    hdul[0].header["CTYPE1"]  = 'RA---TAN'
+    hdul[0].header["CTYPE2"]  = 'DEC--TAN'
+    hdul[0].header["CRVAL1"]  = ra 
+    hdul[0].header["CRVAL2"]  = dec
+    hdul[0].header["LONPOLE"] = 180.0
+    hdul[0].header["LATPOLE"] = dec
+    hdul[0].header["RADESYS"] = 'ICRS'
+
+    hdul.writeto(scienceimage,output_verify='fix',overwrite=True)
+
+    #cp_command = "cp %s %s"%(fitsfile,scienceimage)
+    #os.system(cp_command)
 
 if opts.doAstrometryNet:
     ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100)
@@ -119,58 +145,115 @@ if opts.doAstrometryNet:
 ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground)
 catfile = scienceimage.replace(".fits",".cat")
 cat = np.loadtxt(catfile)
-xs, ys, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms_world, fwhms = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13]
+xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
 
-fwhmmax = 5e-3
+fwhmmax = 1e-3
 xmin = 0
 xmax = 10000
 
-idx = np.where((fwhms <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= minmag))[0]
+idx = np.where((fwhms_world <= fwhmmax) & (xs >= xmin) & (xs <= xmax) & (mags <= np.min(mags)+6) & (mags >= np.min(mags)+1))[0]
 cat = cat[idx,:]
 np.savetxt(catfile,cat,fmt='%.5f')
 
-tbl = ascii.read(catfile,names=['X','Y','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM'])
+tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM','FWHM_World','EXT'])
 
-ra_deg = (np.max(cat[:,4]) + np.min(cat[:,4]))/2.0
-dec_deg = (np.max(cat[:,5]) + np.min(cat[:,5]))/2.0
-
-result = ps1_query(ra_deg, dec_deg, 1.0, maxmag=20,
+result = ps1_query(ra, dec, 20.0/60.0, maxmag=16.0,
                maxsources=10000)
 
 coo_kp84 = SkyCoord(tbl['RA']*u.deg, tbl['Declination']*u.deg)
 coo_ps1 = SkyCoord(result['RAJ2000'], result['DEJ2000'])
 idx_ps1, d2d_ps1, d3d_ps1 = coo_kp84.match_to_catalog_sky(coo_ps1)
+dra, ddec = coo_kp84.spherical_offsets_to(coo_ps1[idx_ps1])
 
-def linear_fit(x):
-    return m * x + b
-xdata, ydata, yerr = np.array(result[idx_ps1]["gmag"]), np.array(tbl["mag"]), np.array(tbl["magerr"])
-#y_fit = linear_fit(xdata, 1, 2)
-#popt, pcov = curve_fit(linear_fit, xdata, ydata, sigma=yerr, p0=[1.0,-50.0], bounds=([-100.0,-100.0],[100.0, 100.0]))
+ra_ps1 = coo_ps1.ra
+dec_ps1 = coo_ps1.dec
 
-z = np.polyfit(xdata, ydata, 1)
+sizevals = np.sqrt(dra.deg**2 + ddec.deg**2)
+idx = np.where(sizevals<=5e-4)[0]
+idx_ps1, d2d_ps1, d3d_ps1 = idx_ps1[idx], d2d_ps1[idx], d3d_ps1[idx]
+dra, ddec = dra[idx], ddec[idx]
+tbl = tbl[idx]
+
+print("RA offset: %.8f"%(np.median(dra.deg)))
+print("Declination offset: %.8f"%(np.median(ddec.deg)))
+
+ps1mag = "rmag"
+xdata, ydata, yerr = np.array(result[idx_ps1][ps1mag]), np.array(tbl["mag"]), np.array(tbl["magerr"])
+idx = np.where(~np.isnan(xdata))[0]
+
+def fun(x, t, y):
+    return x[0] * t + x[1] - y
+
+z = np.polyfit(ydata[idx], xdata[idx], 1.0)
 p = np.poly1d(z)
 
+res_robust = least_squares(fun, [1.0,23.0], loss='soft_l1', f_scale=10.0, args=(ydata[idx], xdata[idx]))
+print(res_robust)
+
 if opts.doPlots:
+    plotName = os.path.join(path_out_dir,'radec.pdf')
+    plt.figure()
+    plt.plot(ra_ps1,dec_ps1,'bo')
+    plt.plot(tbl['RA'], tbl['Declination'],'rx')
+    plt.xlabel('RA')
+    plt.ylabel('Declination')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    catfile = scienceimage.replace(".fits",".cat")
+    plotName = os.path.join(path_out_dir,'fits.pdf')
+    #ztfsub.plotting.plot_image(scienceimage,plotName,catfile=catfile)
+    #ztfsub.plotting.plot_image(scienceimage,plotName)
+
+    fig = plt.figure(figsize=(10,10))
+    f1 = aplpy.FITSFigure(scienceimage,figure=fig)
+    f1.set_tick_labels_font(size='medium')
+    f1.set_axis_labels_font(size='medium')
+    f1.show_grayscale()
+    f1.show_circles(tbl['RA'],tbl['Declination'],tbl['FWHM_World'],zorder=99,linestyle='dashed', edgecolor='red')
+    f1.show_circles(ra_ps1[idx_ps1],dec_ps1[idx_ps1],1.5/3600.0,zorder=99,linestyle='dashed', edgecolor='green')
+  
+    sizevals = np.sqrt((ra_ps1[idx_ps1].deg - dra.deg)**2 + (dec_ps1[idx_ps1].deg - ddec.deg)**2)
+    f1.show_arrows(ra_ps1[idx_ps1].deg,dec_ps1[idx_ps1].deg,-10*dra.deg,-10*ddec.deg)
+    #5/3600.0*np.ones(idx_ps1.shape),5/3600.0*np.ones(idx_ps1.shape))
+    #dra,ddec)
+    fig.canvas.draw()
+    plt.savefig(plotName)
+    plt.close()
+
     plotName = os.path.join(path_out_dir,'match.pdf')
-    plt.hist(d2d_ps1.arcsec, histtype='step', range=(0,100))
-    plt.xlabel('separation [arcsec]')
+    plt.hist(d2d_ps1.arcsec, histtype='step', range=(0,1))
+    plt.xlabel('Separation [arcsec]')
+    plt.xlabel('Counts')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'distortion.pdf')
+    plt.quiver(ra_ps1[idx_ps1].deg,dec_ps1[idx_ps1].deg,dra.deg,ddec.deg)
+    plt.xlabel('RA [deg]')
+    plt.xlabel('Declination [deg]')
     plt.tight_layout()
     plt.savefig(plotName)
     plt.close()
 
     plotName = os.path.join(path_out_dir,'colors.pdf')
-    plt.errorbar(result[idx_ps1]["rmag"],tbl["mag"],tbl["magerr"],fmt='ko')
-    plt.plot(result[idx_ps1]["rmag"],p(result[idx_ps1]["rmag"]),'r--')
-    plt.xlabel('PS1 (r) [mag]')
-    plt.ylabel('KP84 (r) [mag]')
-    plt.xlim([12,20])
-    plt.ylim([-18,-8])
+    plt.figure()    
+    plt.errorbar(tbl["mag"],result[idx_ps1][ps1mag],xerr=tbl["magerr"],fmt='ko')
+    plt.plot(tbl["mag"],p(tbl["mag"]),'r--')
+    plt.xlabel('KP84 (r) [mag]')
+    plt.ylabel('PS1 (r) [mag]')
+    plt.text(-12,15,'PS1 = KP84 + %.5f'%(z[0]))
     plt.gca().invert_xaxis()
     plt.gca().invert_yaxis()
+    plt.ylim([11,17])
+    plt.xlim([-15,-9])
+    plt.plot([-15,-9],[11,17],'k--')
+    plt.gca().set_aspect('equal', adjustable='box')
     plt.savefig(plotName)
     plt.close()
 
-if opts.doPlots:
     plotName = os.path.join(path_out_dir,'AoverB.pdf')
     plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["A"]/tbl["B"])
     plt.xlabel('X [pixels]')
@@ -180,8 +263,9 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
+    vmin, vmax = 0, 20
     plotName = os.path.join(path_out_dir,'fwhm.pdf')
-    plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["FWHM_World"])
+    plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["FWHM_World"],vmin=vmin,vmax=vmax)
     plt.xlabel('X [pixels]')
     plt.ylabel('Y [pixels]')
     cbar = plt.colorbar()
@@ -189,10 +273,54 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
-    catfile = scienceimage.replace(".fits",".cat")
-    plotName = os.path.join(path_out_dir,'fits.pdf')
-    #ztfsub.plotting.plot_image(scienceimage,plotName,catfile=catfile)
-    ztfsub.plotting.plot_image(scienceimage,plotName)
+    bins = np.linspace(1,2.5,50)
+    hist1, bin_edges = np.histogram(tbl["A"]/tbl["B"],bins=bins)
+    bins1 = (bin_edges[:-1]+bin_edges[1:])/2.0
+    bins = np.linspace(4,16,50)
+    hist2, bin_edges = np.histogram(tbl["FWHM"],bins=bins)
+    bins2 = (bin_edges[:-1]+bin_edges[1:])/2.0
+    plotName = os.path.join(path_out_dir,'hist.pdf')
+    fig = plt.figure()
+    ax1 = fig.add_subplot(111)
+    ax2 = ax1.twiny()
+    ax1.step(bins1, hist1, 'b', where='mid')
+    ax2.step(bins2, hist2, 'r', where='mid')
+    ax1.set_xlabel('Point Spread Function shape [A/B]',color='b')
+    ax2.set_xlabel('Full Width Half Max [pixels]',color='r')
+    ax1.set_ylabel('Counts')
+    for tl in ax1.get_xticklabels():
+        tl.set_color('b')
+    for tl in ax2.get_xticklabels():
+        tl.set_color('r')
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'quiver.pdf')
+    plt.figure()
+    fig = plt.figure(figsize=(8, 6))
+    ax0 = plt.subplot2grid((3,3), (1, 0), colspan=2, rowspan=2)
+    drs, dds = [], []
+    for dr,dd,ds in zip(dra.arcsec,ddec.arcsec,d2d_ps1.arcsec):
+        ax0.quiver(0,0,ds*dr/np.sqrt(dr**2+dd**2),ds*dd/np.sqrt(dr**2+dd**2),angles='xy', scale_units='xy', scale=1, width=0.001, headwidth=10.0, headlength=10.0, headaxislength=10.0)
+        drs.append(ds*dr/np.sqrt(dr**2+dd**2))
+        dds.append(ds*dd/np.sqrt(dr**2+dd**2))
+    plt.xlim([-1.0,1.0])
+    plt.ylim([-1.0,1.0])
+    plt.xlabel('RA [arcsec]')
+    plt.ylabel('Declination [arcsec]')
+    ax1 = plt.subplot2grid((3, 3), (0, 0), colspan=2, sharex=ax0)
+    bins = np.linspace(-1.0,1.0,50)
+    hist1, bin_edges = np.histogram(drs,bins=bins)
+    hist2, bin_edges = np.histogram(dds,bins=bins)
+    bins = (bin_edges[:-1]+bin_edges[1:])/2.0
+    ax1.step(bins, hist1, 'k', where='mid')    
+    ax2 = plt.subplot2grid((3, 3), (1, 2), rowspan=2, sharey=ax0)
+    ax2.step(hist2, bins, 'k', where='mid')
+    fig.subplots_adjust(hspace=0,wspace=0)   
+    plt.setp(ax1.get_xticklabels(), visible=False)
+    plt.setp(ax2.get_yticklabels(), visible=False)
+    plt.savefig(plotName)
+    plt.close()
 
 #rm_command = "rm %s/*.fits"%path_out_dir
 #os.system(rm_command)

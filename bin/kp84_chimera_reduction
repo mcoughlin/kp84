@@ -231,6 +231,8 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
             datas[:,:,idx] = datas[:,:,idx] + shifted
             phase_counts[idx] = phase_counts[idx] + 1
 
+        print(ii,np.mean(phase_counts))
+
         cnt = cnt + 1
 
     hdulist = fits.open(fitsfiles[0])
