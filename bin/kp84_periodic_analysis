@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, glob
+import numpy as np
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt 
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+
+from gatspy.periodic import LombScargle, LombScargleFast
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--dataDir",default="../data")
+    parser.add_option("-o","--outputDir",default="../output")
+    #parser.add_option("--object",default="1815f_r")
+    #parser.add_option("--object",default="ZTF5")
+    #parser.add_option("--object",default="1817x")
+    #parser.add_option("--object",default="1622ca")
+    parser.add_option("--object",default="1520av")
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+    parser.add_option("--doOverwrite",  action="store_true", default=False)
+
+    parser.add_option("--doPhase",  action="store_true", default=False)
+    #parser.add_option("-p","--phase",default=0.004800835466385,type=float)
+    #parser.add_option("-p","--phase",default=0.1,type=float)
+    #parser.add_option("-p","--phase",default=25.7682304382324/2.0,type=float)
+    #parser.add_option("-p","--phase",default=0.026507580652833,type=float)
+    parser.add_option("-p","--phase",default=6.47129/2.0,type=float)
+
+    parser.add_option("--datasource",default="PTF")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+object = opts.object
+dataDir = opts.dataDir
+outputDir = opts.outputDir
+phase = opts.phase
+
+path_out_dir='%s/%s'%(outputDir,opts.object)
+
+if opts.doOverwrite:
+    rm_command = "rm -rf %s"%path_out_dir
+    os.system(rm_command)
+
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+filename = os.path.join(dataDir,'%s.tbl'%object)
+if opts.datasource == "ZTF":
+    t = Table.read(filename,format='ipac')
+elif opts.datasource == "PTF":
+    t = Table.read(filename,comment="#",format="ascii",names=("lcType","filterID","fieldID","chipID","sourceID","mjd","mag","magerr","sextractorFlags","ipacFlags","relPhotFlags","limitMag"))
+else:
+    print("Filetype is unknown...")
+    exit(0)
+
+mjd, mag, magerr = t["mjd"], t["mag"], t["magerr"]
+
+ls = LombScargleFast(silence_warnings=True)
+#ls = LombScargle()
+#ls.optimizer.period_range = (0.001,0.1)
+ls.optimizer.period_range = (1,100)
+ls.fit(mjd,mag,magerr)
+period = ls.best_period
+#phase = period
+print("Best period: " + str(period) + " days")
+
+harmonics = np.array([1,2,3,4])*phase
+filename = os.path.join(path_out_dir,'harmonics.dat')
+fid = open(filename,'w')
+for harmonic in harmonics:
+    periodogram = ls.periodogram(harmonic)
+    fid.write('%.5e %.5e\n'%(harmonic,periodogram))
+fid.close()
+harmonics = np.loadtxt(filename)
+
+if opts.doPlots:
+    plotName = os.path.join(path_out_dir,'phot.pdf')
+    plt.figure(figsize=(12,8))
+    plt.errorbar(mjd-mjd[0],mag,yerr=magerr,fmt='bo')
+    plt.xlabel('Time from %.5f [days]'%mjd[0])
+    plt.ylabel('Magnitude [ab]')
+    plt.gca().invert_yaxis()
+    plt.savefig(plotName)
+    plt.close() 
+
+    plotName = os.path.join(path_out_dir,'periodogram.pdf')
+    #periods = np.logspace(-3,-1,10000)
+    periods = np.logspace(0,2,10000)
+    periodogram = ls.periodogram(periods)
+    plt.figure(figsize=(12,8))
+    plt.loglog(periods,periodogram)
+    if opts.doPhase:
+        plt.plot([phase,phase],[0,np.max(periodogram)],'r--')
+    plt.xlabel("Period [days]")
+    plt.ylabel("Power")
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'harmonics.pdf')
+    plt.figure(figsize=(12,8))
+    plt.loglog(harmonics[:,0],harmonics[:,1],'bo')
+    plt.xlabel("Period [days]")
+    plt.ylabel("Power")
+    plt.savefig(plotName)
+    plt.close()
+
+    if opts.doPhase:
+        mjd_mod = np.mod(mjd, phase)/phase
+        plotName = os.path.join(path_out_dir,'phase.pdf')
+        plt.figure(figsize=(12,8))
+        plt.errorbar(mjd_mod,mag,yerr=magerr,fmt='bo')
+        plt.xlabel('Phase')
+        plt.ylabel('Magnitude [ab]')
+        plt.gca().invert_yaxis()
+        plt.savefig(plotName)
+        plt.close()         

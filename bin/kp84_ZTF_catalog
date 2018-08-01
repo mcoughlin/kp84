@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, glob
+import numpy as np
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt 
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
+
+from gatspy.periodic import LombScargle, LombScargleFast
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--dataDir",default="../data")
+    parser.add_option("-o","--outputDir",default="../output")
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+    parser.add_option("--doOverwrite",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+dataDir = opts.dataDir
+outputDir = opts.outputDir
+
+path_out_dir='%s/%s'%(outputDir,'catalog')
+
+if opts.doOverwrite:
+    rm_command = "rm -rf %s"%path_out_dir
+    os.system(rm_command)
+
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+filenamecat = os.path.join(path_out_dir,'catalog.tbl')
+if not os.path.isfile(filenamecat):
+    filename = os.path.join(dataDir,'catalog.tbl')
+    lines = [line.rstrip('\n') for line in open(filename)]
+    fid = open(filenamecat,'w')
+    for ii,line in enumerate(lines):
+        lineSplit = line.split(",")
+        if not len(lineSplit) == 4: continue
+
+        try:
+            ra, dec = float(lineSplit[0]), float(lineSplit[1])
+            period, sig = float(lineSplit[2]), float(lineSplit[3])
+        except:
+            continue
+
+        if np.isnan(sig): continue
+        if period >= 0.1: continue
+        if sig < 20.0: continue
+
+        fid.write('%.5f, %.5f, %.5e, %.5f\n'%(ra, dec, period, sig))
+    fid.close()
+
+t = Table.read(filenamecat,format='csv',names=('ra','dec','period','sig'))
+ra, dec, period, sig = t["ra"], t["dec"], t["period"], t["sig"]
+
+if opts.doPlots:
+    plotName = os.path.join(path_out_dir,'scatter.pdf')
+    plt.figure(figsize=(12,8))
+    plt.scatter(period,sig,s=20,c='b')
+    plt.xlabel('Period [days]')
+    plt.ylabel('Significance')
+    plt.savefig(plotName)
+    plt.close() 
+
