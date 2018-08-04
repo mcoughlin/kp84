@@ -21,20 +21,24 @@ from astropy.io import fits
 import ztfsub.utils, ztfsub.surveys
 import ztfsub.plotting
 
+from skimage.feature import register_translation
+import image_registration
+
 def parse_commandline():
     """
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="/Data3/archive_kped/20180611/1815f_7_g_20180611_064500.040319_o/")
+    #parser.add_option("--dataDir",default="/Data3/archive_kped/20180611/1815f_7_g_20180611_064500.040319_o/")
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/20180804/ZTFHC10_10_g_20180804_042052.034227_o/")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
 
-    parser.add_option("-n","--nimages",default=16,type=int)
+    parser.add_option("-n","--nimages",default=1,type=int)
     parser.add_option("-x","--xstar",default=-1,type=float)
     parser.add_option("-y","--ystar",default=-1,type=float)
     parser.add_option("--xstar_field",default=-1,type=float)
@@ -46,12 +50,14 @@ def parse_commandline():
     parser.add_option("--doStack",  action="store_true", default=False)
 
     parser.add_option("--doPhase",  action="store_true", default=False)
-    parser.add_option("-p","--phase",default=0.004800835466385,type=float)
+    #parser.add_option("-p","--phase",default=0.004800835466385,type=float)
+    parser.add_option("-p","--phase",default=0.0044,type=float)
     parser.add_option("--nphase",default=64,type=int)
 
     parser.add_option("--doCalibration",  action="store_true", default=False)
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
+    parser.add_option("--doRegistration",  action="store_true", default=False)
 
     parser.add_option("--doSubtraction",  action="store_true", default=False)
     parser.add_option("--subtractionDir",default="../subtraction")
@@ -62,34 +68,9 @@ def parse_commandline():
 
     return opts
 
-def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
-               maxsources=10000):
-    """
-    Query Pan-STARRS @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
-                             'gmag','rmag','imag','zmag','ymag'],
-                    column_filters={"gmag":
-                                    ("<%f" % maxmag),
-                                   "imag":
-                                    ("<%f" % maxmag)},
-                    row_limit = maxsources)
-
-    field = SkyCoord(ra=ra_deg, dec=dec_deg,
-                           unit=(u.deg, u.deg),
-                           frame='icrs')
-    return vquery.query_region(field,
-                               width=("%fd" % rad_deg),
-                               catalog="II/349/ps1")[0]
-
 def dark_image(calibrationDir,camsetting):
 
-    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d.fits'%camsetting))
+    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d*.fits'%camsetting))
     for ii, darkfile in enumerate(darkfiles):
         hdulist = fits.open(darkfile)
         if ii == 0:
@@ -107,7 +88,7 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
                   filt,camsetting,nimages):
     dark = dark_image(calibrationDir,camsetting)
 
-    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s.fits'%filt))
+    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s*.fits'%filt))
     for ii, flatfile in enumerate(flatfiles):
         hdulist = fits.open(flatfile)
         if ii == 0:
@@ -185,7 +166,7 @@ def stack_images(stackDir,fitsfiles,nimages):
         hdulist2 = fits.HDUList(hdus=hdulist2)
         hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
 
-def phase_images(phaseDir,fitsfiles,nimages,phase):
+def phase_images(phaseDir,fitsfiles,nimages,phase,doRegistration=False):
 
     fitsfilename = os.path.join(phaseDir,'phase.fits')
 
@@ -195,7 +176,7 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
     hdulist_hold = []
     cnt = 0
 
-    fitsfiles = fitsfiles[:15]
+    #fitsfiles = fitsfiles[:2]
 
     for ii in range(len(fitsfiles)):
         print("%d/%d"%(ii,len(fitsfiles)))
@@ -211,12 +192,22 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
             xshape, yshape = hdulist[1].data.shape
             datas = np.zeros([xshape,yshape,nimages])
 
+            if doRegistration:
+                reference = hdulist[1].data
+
         for jj in range(len(hdulist)-1):
             dateobs = Time(hdulist[jj+1].header["DATE"])
             mjd = dateobs.mjd
             mjd_mod = np.mod(mjd, phase)/phase
             idx = np.where((mjd_mod>=phase_array[:-1]) & (mjd_mod<=phase_array[1:]))[0][0] 
-            datas[:,:,idx] = datas[:,:,idx] + hdulist[jj+1].data
+            data = hdulist[jj+1].data
+
+            if doRegistration:
+                shift, error, diffphase = register_translation(reference, data, upsample_factor=1)
+                shifted = image_registration.fft_tools.shiftnd(data, (shift[0], shift[1]))
+                datas[:,:,idx] = datas[:,:,idx] + shifted
+            else:
+                datas[:,:,idx] = datas[:,:,idx] + data
             phase_counts[idx] = phase_counts[idx] + 1
 
         cnt = cnt + 1
@@ -294,7 +285,10 @@ for ii,line in enumerate(lines):
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
-fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits')))
+if opts.doRegistration:
+    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits')))
+else:
+    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits')))
 wcsfiles = glob.glob(os.path.join(opts.dataDir,'registration','*wcs*.fits'))
 sumfiles = glob.glob(os.path.join(opts.dataDir,'registration','*registered_sum.fits'))
 
@@ -364,7 +358,7 @@ if opts.doPhase:
         os.makedirs(phaseDir)
     phasefile = os.path.join(phaseDir,'phase.fits')
     if not os.path.isfile(phasefile):
-        phase_images(phaseDir,fitsfiles,opts.nphase,opts.phase)
+        phase_images(phaseDir,fitsfiles,opts.nphase,opts.phase,doRegistration=opts.doRegistration)
     fitsfiles = sorted(glob.glob(phasefile))
 
 if opts.doMakeMovie:
@@ -391,7 +385,7 @@ for ii,fitsfile in enumerate(fitsfiles):
 
         if opts.doCalibration:
             correct_image(calibrationDir,fitsfile,scienceimage,
-                  opts.filter,opts.camsetting,opts.nimages)
+                          passband,camsetting,opts.nimages)
         else:
             system_command = "cp %s %s"%(fitsfile,scienceimage)
             os.system(system_command)

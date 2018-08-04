@@ -30,7 +30,8 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180731-80")
+    #parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180731-80")
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180802-160")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")

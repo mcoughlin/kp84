@@ -8,7 +8,7 @@ from astropy.io import fits
 #fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/ZTFHC7_10_g_20180627_080418.036682_o_stack.fits"
 #fitsfiles = fitsfiles[:5]
 
-fitsfiles = ["/Users/mcoughlin/Code/KP84/observing/20180702/ZTF18abcvxfs_10_r_20180702_040522.035795_o.fits"]
+fitsfiles = ["/Users/mcoughlin/Code/KP84/observing/20180804/ZTFHC10_10_g_20180804_042052.034227_o/registration/ZTFHC10_10_g_20180804_042052.034227_o.fits"]
 fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/stack.fits"
 
 hdulist2 = []

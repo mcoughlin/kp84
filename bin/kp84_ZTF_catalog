@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt 
+from matplotlib.colors import LogNorm
+matplotlib.rcParams.update({'font.size': 22})
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -54,12 +56,12 @@ if not os.path.isfile(filenamecat):
 
         try:
             ra, dec = float(lineSplit[0]), float(lineSplit[1])
-            period, sig = float(lineSplit[2]), float(lineSplit[3])
+            period, sig = 1.0/float(lineSplit[2]), float(lineSplit[3])
         except:
             continue
 
         if np.isnan(sig): continue
-        if period >= 0.1: continue
+        if period >= 100.0: continue
         if sig < 20.0: continue
 
         fid.write('%.5f, %.5f, %.5e, %.5f\n'%(ra, dec, period, sig))
@@ -70,10 +72,28 @@ ra, dec, period, sig = t["ra"], t["dec"], t["period"], t["sig"]
 
 if opts.doPlots:
     plotName = os.path.join(path_out_dir,'scatter.pdf')
-    plt.figure(figsize=(12,8))
+    fig = plt.figure(figsize=(12,8))
+    ax = fig.add_subplot(1, 1, 1)
     plt.scatter(period,sig,s=20,c='b')
     plt.xlabel('Period [days]')
     plt.ylabel('Significance')
+    plt.xlim([0.001,100])
+    ax.set_xscale('log')
     plt.savefig(plotName)
     plt.close() 
+
+    xedges, yedges = np.logspace(-3, 2, 100), np.linspace(20, 100, 100)
+    hist, xedges, yedges = np.histogram2d(period,sig, (xedges, yedges))
+    plotName = os.path.join(path_out_dir,'hist.pdf')
+    fig = plt.figure(figsize=(12,8))
+    ax = fig.add_subplot(1, 1, 1)
+    plt.pcolor(xedges, yedges, hist.T,norm=LogNorm(vmin=1, vmax=100), cmap='PuBu_r')
+    plt.xlabel('Period [days]')
+    plt.ylabel('Significance')
+    plt.xlim([0.001,100])
+    cbar = plt.colorbar()
+    cbar.set_label('Counts')
+    ax.set_xscale('log')
+    plt.savefig(plotName)
+    plt.close()
 
