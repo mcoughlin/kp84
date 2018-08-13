@@ -50,7 +50,6 @@ def parse_commandline():
     parser.add_option("--doStack",  action="store_true", default=False)
 
     parser.add_option("--doPhase",  action="store_true", default=False)
-    #parser.add_option("-p","--phase",default=0.004800835466385,type=float)
     parser.add_option("-p","--phase",default=0.0044,type=float)
     parser.add_option("--nphase",default=64,type=int)
 
@@ -137,7 +136,7 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
 
     hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
 
-def stack_images(stackDir,fitsfiles,nimages): 
+def stack_images(stackDir,fitsfiles,nimages,doRegistration=False): 
     
     cnt = 0
     for ii in range(len(fitsfiles)):
@@ -145,6 +144,11 @@ def stack_images(stackDir,fitsfiles,nimages):
         if os.path.isfile(scienceimage): continue
 
         hdulist = fits.open(fitsfiles[ii])
+
+        if cnt == 0:
+            if doRegistration:
+                reference = hdulist[1].data
+
         hdulist2 = []
         cnt = 1
         for ii in range(len(hdulist)):
@@ -155,7 +159,13 @@ def stack_images(stackDir,fitsfiles,nimages):
                     hdulist_hold = copy.copy(hdulist[ii])
                     xshape, yshape = hdulist_hold.data.shape
                     data = np.empty([xshape,yshape,0])
-                data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
+
+                if doRegistration:
+                    shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
+                    shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
+                    data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+                else:
+                    data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
                 cnt = cnt + 1
 
                 if cnt == nimages:
@@ -347,7 +357,7 @@ if opts.doStack:
     if not os.path.isdir(stackDir):
         os.makedirs(stackDir)
     if opts.nimages > 1:
-        stack_images(stackDir,fitsfiles,opts.nimages) 
+        stack_images(stackDir,fitsfiles,opts.nimages,doRegistration=opts.doRegistration) 
         fitsfiles = sorted(glob.glob(os.path.join(stackDir,'*.fits*')))
     else:
         print("You asked to stack but with --nimages 1... passing.")
