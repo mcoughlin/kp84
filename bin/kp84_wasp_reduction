@@ -103,6 +103,28 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
 
     hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
 
+def get_gain(fitsfile, xstar, ystar):
+
+    hdulist = fits.open(fitsfile)
+    NAXIS1 = hdulist[0].header["NAXIS1"]
+    NAXIS2 = hdulist[0].header["NAXIS2"]
+
+    if (xstar > NAXIS1):
+        if (ystar > NAXIS2):
+            quad = 3
+        else:
+            quad = 2
+    else:
+        if (ystar > NAXIS2):
+            quad = 1
+        else:
+            quad = 0
+     
+    gains = np.array([6.04,5.85,5.94,5.84])
+    gain = gains[quad]
+
+    return gain
+
 # Parse command line
 opts = parse_commandline()
 inputDir = opts.inputDir
@@ -111,6 +133,8 @@ defaultsDir = opts.defaultsDir
 fitsfile = opts.filename
 xstar = opts.xstar
 ystar = opts.ystar
+
+gain = get_gain(fitsfile,xstar,ystar)
 
 fitsfileSplit = list(filter(None,fitsfile.split("/")))[-1].replace(".fits","")
 if not os.path.isdir(outputDir):
@@ -152,7 +176,7 @@ if not os.path.isfile(catfile):
         forcedfile = scienceimage.replace(".fits",".forced")
         if not os.path.isfile(forcedfile):
 
-            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0)
+            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0,gain=gain)
 
             fid = open(forcedfile,'w')
             fid.write('%.10f %.10f %.10f %.10f\n'%(mag_forced,magerr_forced,flux_forced,fluxerr_forced))
