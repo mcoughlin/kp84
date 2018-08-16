@@ -12,7 +12,7 @@ def file_filename(filename,dataDirs):
             if filepathSplit[-1].replace('_','').lower() == filename.replace('_','').lower():
                 return filepath
 
-dataDirs = ["/Users/mcoughlin/Code/KP84/observing/1stMar","/Users/mcoughlin/Code/KP84/observing/10thNov"]
+dataDirs = ["/Users/mcoughlin/Code/KP84/observing/1stMar","/Users/mcoughlin/Code/KP84/observing/10thNov","/Users/mcoughlin/Code/KP84/observing/27thApr"]
 
 filename = '../input/DeltaDopedSensitivityData.csv' 
 lines = [line.rstrip('\n') for line in open(filename)]
@@ -24,14 +24,17 @@ fid = open(outfile,'w')
 for line in lines:
     lineSplit = line.split(",")
     #lineSplit = list(filter(None,lineSplit))
+    if "Observation" in lineSplit[0]: continue
+    if "Folder" in lineSplit[0]: continue
 
     if lineSplit[3] == "?": continue
     if lineSplit[4] == "?": continue
-    filename, xstar, ystar = lineSplit[1], int(lineSplit[3]), int(lineSplit[4])
+ 
+    filename, filt, xstar, ystar, analysisType = lineSplit[1], lineSplit[2], int(lineSplit[3]), int(lineSplit[4]), int(lineSplit[5])
+
+    filt = filt.replace("'",'')
 
     filepath = file_filename(filename,dataDirs)
-    print(filename,filepath)
-
     fitsfileSplit = filepath.split("/")[-1].replace(".fits","")
     path_out_dir='%s/%s/'%(outputDir,fitsfileSplit)
 
@@ -39,8 +42,9 @@ for line in lines:
     catfile = scienceimage.replace(".fits",".forced")
 
     if not os.path.isfile(catfile):
-        system_command = "python kp84_wasp_reduction --doPlots --doForcedPhotometry --filename %s --xstar %d --ystar %d"%(filepath, xstar, ystar)
-        print(system_command,catfile)
+    #if True:
+        system_command = "python kp84_wasp_reduction --doCalibration --doPlots --doForcedPhotometry --filename %s --xstar %d --ystar %d --filt %s --analysisType %d"%(filepath, xstar, ystar, filt, analysisType)
+        print(system_command)
         os.system(system_command)
 
     data_out = np.loadtxt(catfile)

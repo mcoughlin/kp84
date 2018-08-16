@@ -39,6 +39,8 @@ def parse_commandline():
 
     parser.add_option("-x","--xstar",default=-1,type=float)
     parser.add_option("-y","--ystar",default=-1,type=float)
+    parser.add_option("-f","--filt",default='r')
+    parser.add_option("-a","--analysisType",default=1,type=int)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
@@ -51,59 +53,29 @@ def parse_commandline():
     return opts
 
 def correct_image(calibrationDir,fitsfile,scienceimage,
-                  filt,camsetting,nimages):
-    dark = dark_image(calibrationDir,camsetting)
+                  filt,analysisType):
 
-    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s.fits'%filt))
-    for ii, flatfile in enumerate(flatfiles):
-        hdulist = fits.open(flatfile)
-        if ii == 0:
-            xshape, yshape = hdulist[0].data.shape
-            flat = np.empty([xshape,yshape,0])
-        for hdu in hdulist: 
-            flat = np.append(flat,np.expand_dims(hdu.data,axis=2),axis=2)
-    flat = np.median(flat,axis=2)
+    if (analysisType == 1) or (analysisType == 2):
+        imageType = "Science"
+    else:
+        imageType = "Guider"
+
+    biasfile = os.path.join(calibrationDir,"master%sBias.fits"%imageType)
+    dark = fits.open(biasfile)
+    flatfile = os.path.join(calibrationDir,"master%s%sflat.fits"%(imageType,filt.upper()))
+    flat = fits.open(flatfile)
+   
+    dark = dark[0].data
+    flat = flat[0].data
 
     IFminusIB = flat - dark
     m = np.mean(IFminusIB)
 
-    hdulist = fits.open(fitsfile,memmap=True)
-    for ii in range(len(hdulist)):
-        if ii == 0: continue
-        hdulist[ii].data = ((hdulist[ii].data - dark)*m)/IFminusIB
+    hdulist = fits.open(fitsfile)
+    hdulist[0].data = ((hdulist[0].data - dark)*m)/IFminusIB
+    hdulist.writeto(scienceimage,output_verify='fix',overwrite=True)
 
-    if nimages == 1:
-        hdulist2 = hdulist
-    else:
-        hdulist2 = []
-        cnt = 1
-        for ii in range(len(hdulist)):
-            if ii == 0:
-                hdulist2.append(hdulist[ii])
-            else:
-                if cnt == 1:
-                    hdulist_hold = copy.copy(hdulist[ii])
-                    xshape, yshape = hdulist_hold.data.shape
-                    data = np.empty([xshape,yshape,0])
-                data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
-                cnt = cnt + 1            
-
-                if cnt == nimages:
-                    hdulist_hold.data = np.mean(data,axis=2)
-                    hdulist2.append(hdulist_hold)
-                    cnt = 1    
-
-        hdulist2 = fits.HDUList(hdus=hdulist2)
-
-    keywords_to_remove = ["RAD","DECD","TELRA","TELDEC","TELRAD","TELDECD","CRPIX1","CRPIX2","CRVAL1","CRVAL2","CD1_1","CD1_2","CD2_1","CD2_2","CCD_ROT","PIXSCALX","PIXSCALY","CUNIT1","CUNIT2","WCSAXES","WCSNAME","RADESYS","WCSVERS","CTYPE1","CTYPE2","RA","DEC"]
-    for ii in range(len(hdulist2)):
-        for keyword in keywords_to_remove:
-            if keyword in hdulist2[ii].header:
-                del hdulist2[ii].header[keyword]
-
-    hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
-
-def get_gain(fitsfile, xstar, ystar):
+def get_gain(fitsfile, xstar, ystar, analysisType):
 
     hdulist = fits.open(fitsfile)
     NAXIS1 = hdulist[0].header["NAXIS1"]
@@ -120,8 +92,14 @@ def get_gain(fitsfile, xstar, ystar):
         else:
             quad = 0
      
-    gains = np.array([6.04,5.85,5.94,5.84])
-    gain = gains[quad]
+    if analysisType == 1:
+        gains = np.array([5.85,5.84,6.04,5.94])
+        gain = gains[quad]
+    elif analysisType == 2:
+        gains = np.array([6.04,5.85,5.94,5.84])
+        gain = gains[quad]
+    elif analysisType == 3:
+        gain = 5.25
 
     return gain
 
@@ -133,8 +111,18 @@ defaultsDir = opts.defaultsDir
 fitsfile = opts.filename
 xstar = opts.xstar
 ystar = opts.ystar
+filt = opts.filt
+analysisType = opts.analysisType
 
-gain = get_gain(fitsfile,xstar,ystar)
+fitsfileSplit = fitsfile.split("/")
+dates = ["10thNov","1stMar","27thApr"]
+for ii,cut in enumerate(fitsfileSplit):
+    for date in dates:
+        if cut == date:
+            idx = ii+1
+            break
+calibrationDir = "/".join(fitsfileSplit[:idx] + ["Cals"])
+gain = get_gain(fitsfile,xstar,ystar,analysisType)
 
 fitsfileSplit = list(filter(None,fitsfile.split("/")))[-1].replace(".fits","")
 if not os.path.isdir(outputDir):
@@ -157,7 +145,7 @@ if not os.path.isfile(catfile):
 
     if opts.doCalibration:
         correct_image(calibrationDir,fitsfile,scienceimage,
-              opts.filter,opts.camsetting,opts.nimages)
+                      filt, analysisType)
     else:
         system_command = "cp %s %s"%(fitsfile,scienceimage)
         os.system(system_command)
