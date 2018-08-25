@@ -1,0 +1,172 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy, datetime
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, vstack
+from astropy.io import ascii
+from astropy.time import Time
+from astropy.wcs import WCS
+
+from astroquery.vizier import Vizier
+
+import h5py    
+from astropy.io import fits
+
+import ztfsub.utils, ztfsub.surveys
+import ztfsub.plotting
+
+from skimage.feature import register_translation
+import image_registration
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--filename",default="/Users/mcoughlin/Code/KP84/observing/1stMar/hz44/throughputTest_U/THROUGHPUT_TEST_U_27.fits")
+
+    parser.add_option("-t","--tmpDir",default="/tmp")
+    parser.add_option("-i","--inputDir",default="../input")
+    parser.add_option("-o","--outputDir",default="../output/WASP")
+    parser.add_option("-d","--defaultsDir",default="../defaults")
+
+    parser.add_option("-x","--xstar",default=-1,type=float)
+    parser.add_option("-y","--ystar",default=-1,type=float)
+    parser.add_option("-f","--filt",default='r')
+    parser.add_option("-a","--analysisType",default=1,type=int)
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+    parser.add_option("--doSubtractBackground",  action="store_true", default=False)
+    parser.add_option("--doOverwrite",  action="store_true", default=False)
+    parser.add_option("--doCalibration",  action="store_true", default=False)
+    parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def correct_image(calibrationDir,fitsfile,scienceimage,
+                  filt,analysisType):
+
+    if (analysisType == 1) or (analysisType == 2):
+        imageType = "Science"
+    else:
+        imageType = "Guider"
+
+    biasfile = os.path.join(calibrationDir,"master%sBias.fits"%imageType)
+    dark = fits.open(biasfile)
+    flatfile = os.path.join(calibrationDir,"master%s%sflat.fits"%(imageType,filt.upper()))
+    flat = fits.open(flatfile)
+   
+    dark = dark[0].data
+    flat = flat[0].data
+
+    IFminusIB = flat - dark
+    m = np.mean(IFminusIB)
+
+    hdulist = fits.open(fitsfile)
+    hdulist[0].data = ((hdulist[0].data - dark)*m)/IFminusIB
+    hdulist.writeto(scienceimage,output_verify='fix',overwrite=True)
+
+def get_gain(fitsfile, xstar, ystar, analysisType):
+
+    hdulist = fits.open(fitsfile)
+    NAXIS1 = hdulist[0].header["NAXIS1"]
+    NAXIS2 = hdulist[0].header["NAXIS2"]
+
+    if (xstar > NAXIS1/2.0):
+        if (ystar > NAXIS2/2.0):
+            quad = 3
+        else:
+            quad = 2
+    else:
+        if (ystar > NAXIS2/2.0):
+            quad = 1
+        else:
+            quad = 0
+     
+    if analysisType == 1:
+        gains = np.array([5.85,5.84,6.04,5.94])
+        gain = gains[quad]
+    elif analysisType == 2:
+        gains = np.array([6.04,5.85,5.94,5.84])
+        gain = gains[quad]
+    elif analysisType == 3:
+        gain = 5.25
+
+    return gain
+
+# Parse command line
+opts = parse_commandline()
+inputDir = opts.inputDir
+outputDir = opts.outputDir
+defaultsDir = opts.defaultsDir
+fitsfile = opts.filename
+xstar = opts.xstar
+ystar = opts.ystar
+filt = opts.filt
+analysisType = opts.analysisType
+
+fitsfileSplit = fitsfile.split("/")
+dates = ["10thNov","1stMar","27thApr"]
+for ii,cut in enumerate(fitsfileSplit):
+    for date in dates:
+        if cut == date:
+            idx = ii+1
+            break
+calibrationDir = "/".join(fitsfileSplit[:idx] + ["Cals"])
+gain = get_gain(fitsfile,xstar,ystar,analysisType)
+
+fitsfileSplit = list(filter(None,fitsfile.split("/")))[-1].replace(".fits","")
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+path_out_dir='%s/%s'%(outputDir,fitsfileSplit)
+if opts.doOverwrite:
+    rm_command = "rm -rf %s"%path_out_dir
+    os.system(rm_command)
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+x0, y0 = opts.xstar, opts.ystar
+
+scienceimage = '%s/science.fits'%(path_out_dir)
+catfile = scienceimage.replace(".fits",".cat")
+backfile = scienceimage.replace(".fits",".background.fits")
+
+if not os.path.isfile(catfile):
+
+    if opts.doCalibration:
+        correct_image(calibrationDir,fitsfile,scienceimage,
+                      filt, analysisType)
+    else:
+        system_command = "cp %s %s"%(fitsfile,scienceimage)
+        os.system(system_command)
+
+    ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+
+    cat = np.loadtxt(catfile)
+    if not cat.size:
+        print('No sources?!?')
+        exit(0)
+
+    xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
+
+    cat = np.loadtxt(catfile)
+    if opts.doForcedPhotometry:
+        forcedfile = scienceimage.replace(".fits",".forced")
+        if not os.path.isfile(forcedfile):
+
+            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0,gain=gain)
+
+            fid = open(forcedfile,'w')
+            fid.write('%.10f %.10f %.10f %.10f\n'%(mag_forced,magerr_forced,flux_forced,fluxerr_forced))
+            fid.close()
+

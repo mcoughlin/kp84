@@ -30,7 +30,7 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/July5/,/Users/mcoughlin/Code/KP84/observing/July6/,/Users/mcoughlin/Code/KP84/observing/July7/")
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/1718r_20180706")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")
@@ -167,14 +167,22 @@ def stack_images(stackDir,fitsfiles,nimages):
         if os.path.isfile(scienceimage): continue
 
         hdulist = fits.open(fitsfiles[ii])
+        header = hdulist[0].header
+        data = hdulist[0].data
+
+        nhdu, xshape, yshape = data.shape
+        dateobs = utcparser(hdulist[0].header["UTCSTART"])
+        mjd = dateobs.mjd
+        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+
         hdulist2 = []
         cnt = 1
-        for ii in range(len(hdulist)):
+        for ii in range(nhdu):
             if ii == 0:
                 hdulist2.append(hdulist[ii])
             else:
                 if cnt == 1:
-                    hdulist_hold = copy.copy(hdulist[ii])
+                    hdulist_hold = copy.copy(hdulist[0])
                     xshape, yshape = hdulist_hold.data.shape
                     data = np.empty([xshape,yshape,0])
                 data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
@@ -488,12 +496,18 @@ for ii,fitsfile in enumerate(fitsfiles):
 
         hdulist = fits.open(scienceimage)
         if len(hdulist) == 1:
-            dateobs = Time(hdulist[0].header["DATE"])
+            if opts.doPhase:
+                dateobs = Time(hdulist[0].header["DATE"])
+            else:
+                dateobs = utcparser(hdulist[0].header["UTCSTART"])
             mjds = dateobs.mjd*np.ones(xs.shape)
         else:
             mjds = np.zeros(xs.shape)
             for jj in range(len(hdulist)-1):
-                dateobs = Time(hdulist[jj+1].header["DATE"])
+                if opts.doPhase:
+                    dateobs = Time(hdulist[jj+1].header["DATE"])
+                else:
+                    dateobs = utcparser(hdulist[jj+1].header["UTCSTART"])
                 idx = np.where(extnumber==jj+1)[0]
                 mjds[idx] = dateobs.mjd
 
