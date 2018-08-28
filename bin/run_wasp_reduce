@@ -44,11 +44,10 @@ for line in lines:
     fitsfileSplit = filepath.split("/")[-1].replace(".fits","")
     path_out_dir='%s/%s/%s/'%(outputDir,currentFolder,fitsfileSplit)
 
-    scienceimage = '%s/%s/science.fits'%(outputDir,fitsfileSplit)
+    scienceimage = '%s/science.fits'%(path_out_dir)
     catfile = scienceimage.replace(".fits",".forced")
 
     if not os.path.isfile(catfile):
-    #if True:
         system_command = "python kp84_wasp_reduction --doCalibration --doPlots --doForcedPhotometry --filename %s --xstar %d --ystar %d --filt %s --analysisType %d --currentFolder %s"%(filepath, xstar, ystar, filt, analysisType,currentFolder)
         print(system_command)
         os.system(system_command)

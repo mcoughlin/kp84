@@ -47,6 +47,7 @@ def parse_commandline():
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False)
     parser.add_option("--doStack",  action="store_true", default=False)
+    parser.add_option("--doRegister",  action="store_true", default=False) 
 
     parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--phase",default=0.004800835466385,type=float)
@@ -159,6 +160,36 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
 
     hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
 
+def register_images(registerDir,fitsfiles):
+
+    cnt = 0
+    for ii in range(len(fitsfiles)):
+        filename = fitsfiles[ii].split("/")[-1]
+        filename = filename.replace(".fits","_%s.fits"%ii)
+        scienceimage = os.path.join(registerDir,filename)
+        if os.path.isfile(scienceimage): continue
+
+        hdulist = fits.open(fitsfiles[ii])
+        header = hdulist[0].header
+        data = hdulist[0].data
+
+        if cnt == 0:
+            reference = hdulist[0].data[0,:,:]
+
+        nhdu, xshape, yshape = data.shape
+        hdulist2 = copy.copy(hdulist)
+        cnt = 1
+        for jj in range(nhdu):
+            thisdata = data[jj,:,:]
+
+            shift, error, diffphase = register_translation(reference, thisdata, upsample_factor=1)
+            shifted = image_registration.fft_tools.shiftnd(thisdata, (shift[0], shift[1]))
+            data[jj,:,:] = shifted
+
+        hdulist2[0].data = data
+        hdulist2 = fits.HDUList(hdus=hdulist2)
+        hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
+
 def stack_images(stackDir,fitsfiles,nimages): 
     
     cnt = 0
@@ -169,6 +200,9 @@ def stack_images(stackDir,fitsfiles,nimages):
         hdulist = fits.open(fitsfiles[ii])
         header = hdulist[0].header
         data = hdulist[0].data
+
+        if cnt == 0:
+            reference = hdulist[0].data[0,:,:]
 
         nhdu, xshape, yshape = data.shape
         dateobs = utcparser(hdulist[0].header["UTCSTART"])
@@ -415,6 +449,14 @@ if opts.doStack:
         fitsfiles = sorted(glob.glob(os.path.join(stackDir,'*.fits*')))
     else:
         print("You asked to stack but with --nimages 1... passing.")
+
+if opts.doRegister:
+    registerDir = os.path.join(path_out_dir,'register')
+    if not os.path.isdir(registerDir):
+        os.makedirs(registerDir)
+    if opts.nimages > 1:
+        register_images(registerDir,fitsfiles)
+        fitsfiles = sorted(glob.glob(os.path.join(registerDir,'*.fits*')))
 
 if opts.doPhase:
     phaseDir = os.path.join(path_out_dir,'phase')
