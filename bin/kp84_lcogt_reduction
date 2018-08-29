@@ -31,6 +31,7 @@ def parse_commandline():
     parser = optparse.OptionParser()
 
     #parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180731-80")
+    #parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180802-160")
     parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180802-160")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
@@ -65,31 +66,6 @@ def parse_commandline():
     opts, args = parser.parse_args()
 
     return opts
-
-def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
-               maxsources=10000):
-    """
-    Query Pan-STARRS @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
-                             'gmag','rmag','imag','zmag','ymag'],
-                    column_filters={"gmag":
-                                    ("<%f" % maxmag),
-                                   "imag":
-                                    ("<%f" % maxmag)},
-                    row_limit = maxsources)
-
-    field = SkyCoord(ra=ra_deg, dec=dec_deg,
-                           unit=(u.deg, u.deg),
-                           frame='icrs')
-    return vquery.query_region(field,
-                               width=("%fd" % rad_deg),
-                               catalog="II/349/ps1")[0]
 
 def dark_image(calibrationDir,camsetting):
 
@@ -283,14 +259,13 @@ defaultsDir = opts.defaultsDir
 dataDir = opts.dataDir
 xstar = opts.xstar
 ystar = opts.ystar
+star = opts.star
 
 dataDirSplit = list(filter(None,dataDir.split("/")))
 calibrationDir = "/"+"/".join(dataDirSplit[:-1])+"/calib"
 objectSplit = dataDirSplit[-1].split("_")
 
 #star, camsetting, passband = objectSplit[0], int(objectSplit[1]), objectSplit[2] 
-star = "ZTFHC10"
-
 
 observedFile = "%s/observed.dat"%inputDir
 lines = [line.rstrip('\n') for line in open(observedFile)]
