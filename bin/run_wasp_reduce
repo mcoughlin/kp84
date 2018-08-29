@@ -15,9 +15,16 @@ def file_filename(currentFolder,filename,dataDirs):
 
 dataDirs = ["/Users/mcoughlin/Code/KP84/observing/1stMar","/Users/mcoughlin/Code/KP84/observing/1stMar2","/Users/mcoughlin/Code/KP84/observing/10thNov","/Users/mcoughlin/Code/KP84/observing/27thApr"]
 
+doDifferential = False
+doDifferential = True
+
 filename = '../input/DeltaDopedSensitivityData.csv' 
 lines = [line.rstrip('\n') for line in open(filename)]
-outputDir = '../output/WASP'
+
+if doDifferential:
+    outputDir = '../output/WASP_differential'
+else:
+    outputDir = '../output/WASP'
 
 outfile = os.path.join(outputDir,'phot.dat')
 fid = open(outfile,'w')
@@ -32,7 +39,7 @@ for line in lines:
     if lineSplit[3] == "?": continue
     if lineSplit[4] == "?": continue
  
-    filename, filt, xstar, ystar, analysisType = lineSplit[1], lineSplit[2], int(lineSplit[3]), int(lineSplit[4]), int(lineSplit[5])
+    filename, filt, xstar, ystar, xstar_field, ystar_field, analysisType = lineSplit[1], lineSplit[2], int(lineSplit[3]), int(lineSplit[4]), int(lineSplit[5]), int(lineSplit[6]), int(lineSplit[7])
 
     if not ((lineSplit[0] == "") or (lineSplit[0] == None)):
         currentFolder = lineSplit[0]
@@ -40,15 +47,19 @@ for line in lines:
     filt = filt.replace("'",'')
 
     filepath = file_filename(currentFolder,filename,dataDirs)
-    print(currentFolder,filename)
     fitsfileSplit = filepath.split("/")[-1].replace(".fits","")
     path_out_dir='%s/%s/%s/'%(outputDir,currentFolder,fitsfileSplit)
 
     scienceimage = '%s/science.fits'%(path_out_dir)
     catfile = scienceimage.replace(".fits",".forced")
 
+    if doDifferential and ((xstar_field == -1) or (ystar_field == -1)): continue
+
     if not os.path.isfile(catfile):
-        system_command = "python kp84_wasp_reduction --doCalibration --doPlots --doForcedPhotometry --filename %s --xstar %d --ystar %d --filt %s --analysisType %d --currentFolder %s"%(filepath, xstar, ystar, filt, analysisType,currentFolder)
+        if doDifferential:
+            system_command = "python kp84_wasp_reduction --doCalibration --doPlots --doForcedPhotometry --filename %s --xstar %d --ystar %d --xstar_field %d --ystar_field %d --filt %s --analysisType %d --currentFolder %s --doDifferential --outputDir %s"%(filepath, xstar, ystar, xstar_field, ystar_field, filt, analysisType,currentFolder,outputDir)
+        else:
+            system_command = "python kp84_wasp_reduction --doCalibration --doPlots --doForcedPhotometry --filename %s --xstar %d --ystar %d --filt %s --analysisType %d --currentFolder %s --outputDir %s"%(filepath, xstar, ystar, filt, analysisType,currentFolder,outputDir)
         print(system_command)
         os.system(system_command)
 

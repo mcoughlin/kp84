@@ -40,6 +40,8 @@ def parse_commandline():
 
     parser.add_option("-x","--xstar",default=-1,type=float)
     parser.add_option("-y","--ystar",default=-1,type=float)
+    parser.add_option("--xstar_field",default=-1,type=float)
+    parser.add_option("--ystar_field",default=-1,type=float)
     parser.add_option("-f","--filt",default='r')
     parser.add_option("-a","--analysisType",default=1,type=int)
 
@@ -48,6 +50,7 @@ def parse_commandline():
     parser.add_option("--doOverwrite",  action="store_true", default=False)
     parser.add_option("--doCalibration",  action="store_true", default=False)
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
+    parser.add_option("--doDifferential",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -114,6 +117,8 @@ defaultsDir = opts.defaultsDir
 fitsfile = opts.filename
 xstar = opts.xstar
 ystar = opts.ystar
+xstar_field = opts.xstar_field
+ystar_field = opts.ystar_field
 filt = opts.filt
 analysisType = opts.analysisType
 currentFolder = opts.currentFolder
@@ -140,6 +145,7 @@ if not os.path.isdir(path_out_dir):
     os.makedirs(path_out_dir)
 
 x0, y0 = opts.xstar, opts.ystar
+xfield, yfield = xstar_field, ystar_field
 
 scienceimage = '%s/science.fits'%(path_out_dir)
 catfile = scienceimage.replace(".fits",".cat")
@@ -170,7 +176,20 @@ if not os.path.isfile(catfile):
 
             mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0,gain=gain)
 
-            fid = open(forcedfile,'w')
-            fid.write('%.10f %.10f %.10f %.10f\n'%(mag_forced,magerr_forced,flux_forced,fluxerr_forced))
-            fid.close()
+            if opts.doDifferential:
+                mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=10.0,gain=gain)
+
+                mag = mag_forced - mag_forced_field
+                magerr = np.sqrt(magerr_forced**2 + magerr_forced_field**2)
+                flux = flux_forced/flux_forced_field
+                fluxerr = flux*np.sqrt((fluxerr_forced/flux_forced)**2 + (fluxerr_forced_field/flux_forced_field)**2)
+
+                fid = open(forcedfile,'w')
+                fid.write('%.10f %.10f %.10f %.10f\n'%(mag,magerr,flux,fluxerr))
+                fid.close()
+            else:
+                fid = open(forcedfile,'w')
+                fid.write('%.10f %.10f %.10f %.10f\n'%(mag_forced,magerr_forced,flux_forced,fluxerr_forced))
+                fid.close()
+
 
