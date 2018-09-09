@@ -24,6 +24,8 @@ import ztfsub.plotting
 from skimage.feature import register_translation
 import image_registration
 
+import PythonPhot as pp
+
 def parse_commandline():
     """
     Parse the options given on the command-line.
@@ -174,9 +176,19 @@ if not os.path.isfile(catfile):
         forcedfile = scienceimage.replace(".fits",".forced")
         if not os.path.isfile(forcedfile):
 
-            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0,gain=gain)
+            hdulist=fits.open(scienceimage)
+            image = hdulist[0].data
+
+            fwhm=30.0
+            # coords are close in both images, but not exactly
+            # let's centroid them
+            x0,y0 = pp.cntrd.cntrd(image,x0,y0,fwhm,verbose=False)
+
+            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=fwhm,gain=gain)
 
             if opts.doDifferential:
+                xfield,yfield = pp.cntrd.cntrd(image,xfield,yfield,fwhm,verbose=False)
+
                 mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=10.0,gain=gain)
 
                 mag = mag_forced - mag_forced_field

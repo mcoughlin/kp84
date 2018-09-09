@@ -32,12 +32,14 @@ def parse_commandline():
 
     #parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180731-80")
     #parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180802-160")
-    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180802-160")
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/lcogtdata-20180829-130")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
     parser.add_option("-d","--defaultsDir",default="../defaults")
+
+    parser.add_option("-s","--star",default="ZTF1819q")
 
     parser.add_option("-n","--nimages",default=1,type=int)
     parser.add_option("-x","--xstar",default=-1,type=float)
@@ -265,8 +267,6 @@ dataDirSplit = list(filter(None,dataDir.split("/")))
 calibrationDir = "/"+"/".join(dataDirSplit[:-1])+"/calib"
 objectSplit = dataDirSplit[-1].split("_")
 
-#star, camsetting, passband = objectSplit[0], int(objectSplit[1]), objectSplit[2] 
-
 observedFile = "%s/observed.dat"%inputDir
 lines = [line.rstrip('\n') for line in open(observedFile)]
 for ii,line in enumerate(lines):
@@ -425,12 +425,15 @@ for ii,fitsfile in enumerate(fitsfiles):
 
         hdulist = fits.open(scienceimage)
         if len(hdulist) == 1:
-            dateobs = Time(hdulist[0].header["DATE"])
+            dateobs = Time(hdulist[0].header["DATE-OBS"])
+            mjds = dateobs.mjd*np.ones(xs.shape)
+        elif len(hdulist) == 3:
+            dateobs = Time(hdulist[0].header["DATE-OBS"])
             mjds = dateobs.mjd*np.ones(xs.shape)
         else:
             mjds = np.zeros(xs.shape)
             for jj in range(len(hdulist)-1):
-                dateobs = Time(hdulist[jj+1].header["DATE"])
+                dateobs = Time(hdulist[jj+1].header["DATE-OBS"])
                 idx = np.where(extnumber==jj+1)[0]
                 mjds[idx] = dateobs.mjd
 
@@ -458,8 +461,7 @@ for ii,fitsfile in enumerate(fitsfiles):
             fluxerr = flux*np.sqrt((fluxerr_forced/flux_forced)**2 + (fluxerr_forced_field/flux_forced_field)**2)
 
             fid = open(forcedfile,'w')
-            for ii in range(len(mjd_forced)):
-                fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
+            fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced,mag,magerr,flux,fluxerr))
             fid.close()
 
 cnt = 0
