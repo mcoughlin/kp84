@@ -59,7 +59,7 @@ def parse_commandline():
     parser.add_option("--doImages",  action="store_true", default=False)
 
     parser.add_option("-t", "--temperature", help="Temperature.", default=-10,type=int)
-    parser.add_option("-N", "--nimages", help="Number of images.", default=60,type=int)
+    parser.add_option("-N", "--nimages", help="Number of images.", default=1,type=int)
     parser.add_option("-d", "--duration", help="Duration.", default=1.0,type=float)
 
     parser.add_option("-v", "--verbose", action="store_true", default=False,

@@ -1,0 +1,33 @@
+
+import time
+import requests
+from bs4 import BeautifulSoup
+
+def get_status():
+    webpage = "http://www-kpno.kpno.noao.edu/cgi-bin/Mtn_Weather/SiteHeader.pl"
+    page = requests.get(webpage)
+
+    # Create a BeautifulSoup object
+    soup = BeautifulSoup(page.text, 'html.parser')
+
+    status, status_string = -2, "Missing status"
+    strings_to_match = ["Domes are OPEN","Domes are CLOSED","No Status"]
+    dome_statuses = [1, 0, -1]
+
+    table = soup.find_all("td")
+    for row in table:
+        for string_to_match, dome_status in zip(strings_to_match,dome_statuses):
+            if string_to_match in str(row):
+                status = dome_status
+                status_string = string_to_match
+                break
+    return status, status_string
+
+previous_status = -2
+while True:
+    status, status_string = get_status()
+    if not status == previous_status:
+        print("Status change: %s"%status_string)
+    previous_status = status
+    time.sleep(10)
+
