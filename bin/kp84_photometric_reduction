@@ -13,8 +13,6 @@ from astropy.io import ascii
 from astropy.time import Time
 from astropy.wcs import WCS
 
-from astroquery.vizier import Vizier
-
 import h5py    
 from astropy.io import fits
 
@@ -290,7 +288,7 @@ for ii,line in enumerate(lines):
     if obj == star:
         break
     if ii == len(lines)-1:
-        print("%s missing from observed list, please add.")
+        print("%s missing from observed list, please add."%obj)
         exit(0)
 
 if not os.path.isdir(outputDir):

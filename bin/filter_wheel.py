@@ -38,9 +38,9 @@ masks = ["clear","U","B","V","R"]
 
 if opts.doGetFilterList:
     cnt = 0
-    print "Number, filter, mask"
+    print("Number, filter, mask")
     for filt, mask in zip(filters,masks):
-        print "%d, %s, %s"%(cnt,filt,mask)
+        print("%d, %s, %s"%(cnt,filt,mask))
         cnt = cnt + 1
     exit(0)
 
@@ -57,8 +57,8 @@ if opts.doGetPosition:
     mask = pos/5
     filt = np.mod(pos,5)
 
-    print "Mask: %d"%mask
-    print "Filter: %d"%filt
+    print("Mask: %d"%mask)
+    print("Filter: %d"%filt)
 
 if opts.doPosition:
     position = 5 * opts.mask + opts.filter
@@ -68,7 +68,7 @@ if opts.doPosition:
     mask = pos/5
     filt = np.mod(pos,5)
 
-    print "Mask: %d"%mask
-    print "Filter: %d"%filt
+    print("Mask: %d"%mask)
+    print("Filter: %d"%filt)
 
 
