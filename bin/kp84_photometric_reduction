@@ -297,7 +297,7 @@ if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
 if opts.doRegistration:
-    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits')))
+    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits.fz')))
 else:
     fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits')))
 wcsfiles = glob.glob(os.path.join(opts.dataDir,'registration','*wcs*.fits'))
