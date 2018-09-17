@@ -281,7 +281,9 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
     header = hdulist[0].header
     dateobs = utcparser(hdulist[0].header["UTCSTART"])
     mjd = dateobs.mjd
-    mjds = mjd + phase*(phase_array[:-1] + phase_array[1:])/2.0
+    mjd_phase = np.mod(mjd, phase)/phase
+
+    mjds = mjd - phase*((phase_array[:-1] + phase_array[1:])/2.0 - mjd_phase) + 1.5/86400.0
     for ii in range(nimages):
         header["DATE"] = Time(mjds[ii],format='mjd').iso 
         data = datas[:,:,ii]/phase_counts[ii]

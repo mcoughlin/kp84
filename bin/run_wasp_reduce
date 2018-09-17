@@ -16,7 +16,7 @@ def file_filename(currentFolder,filename,dataDirs):
 dataDirs = ["/Users/mcoughlin/Code/KP84/observing/1stMar","/Users/mcoughlin/Code/KP84/observing/1stMar2","/Users/mcoughlin/Code/KP84/observing/10thNov","/Users/mcoughlin/Code/KP84/observing/27thApr"]
 
 doDifferential = False
-#doDifferential = True
+doDifferential = True
 
 filename = '../input/DeltaDopedSensitivityData.csv' 
 lines = [line.rstrip('\n') for line in open(filename)]
