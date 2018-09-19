@@ -60,7 +60,9 @@ def parse_commandline():
     parser.add_option("--doSubtraction",  action="store_true", default=False)
     parser.add_option("--subtractionDir",default="../subtraction")
     parser.add_option("--subtractionSource",default="ps1")
-    parser.add_option("--image_size",default=4000,type=int)
+    parser.add_option("--image_size",default=500,type=int)
+
+    parser.add_option("--doAstrometryNet",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -167,7 +169,7 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False):
                     data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
                 cnt = cnt + 1
 
-                if cnt == nimages:
+                if cnt == nimages+1:
                     hdulist_hold.data = np.mean(data,axis=2)
                     hdulist2.append(hdulist_hold)
                     cnt = 1 
@@ -389,8 +391,10 @@ for ii,fitsfile in enumerate(fitsfiles):
         os.makedirs(path_out_dir_tmp)
 
     scienceimage = '%s/science.fits'%(path_out_dir_tmp)
+    scienceimage_fz = '%s/science.fits.fz'%(path_out_dir_tmp)
     catfile = scienceimage.replace(".fits",".cat")
     backfile = scienceimage.replace(".fits",".background.fits")
+    subfile = scienceimage.replace(".fits",".sub.fits")
 
     if not os.path.isfile(catfile):
 
@@ -398,8 +402,18 @@ for ii,fitsfile in enumerate(fitsfiles):
             correct_image(calibrationDir,fitsfile,scienceimage,
                           passband,camsetting,opts.nimages)
         else:
-            system_command = "cp %s %s"%(fitsfile,scienceimage)
-            os.system(system_command)
+            if "fits.fz" in fitsfile:
+                system_command = "cp %s %s"%(fitsfile,scienceimage_fz)
+                os.system(system_command)
+
+                system_command = "funpack %s"%(scienceimage_fz)
+                os.system(system_command)
+            else:
+                system_command = "cp %s %s"%(fitsfile,scienceimage)
+                os.system(system_command)
+
+        if opts.doAstrometryNet:
+            ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100,cutedges=200)
 
         if opts.doSubtraction:
 
@@ -409,32 +423,47 @@ for ii,fitsfile in enumerate(fitsfiles):
 
             hdulist = fits.open(fitsfile)
             hdulistsub = copy.copy(hdulist)
-            for kk in range(len(hdulist)):
-                if kk == 0:
-                    hdu_primary = copy.copy(hdulist[kk])
-                    continue
-                else:
-                    hdu = copy.copy(hdulist[kk])
-                    hdu.header = wcs_header
 
-                tmpimage='%s/%04d.fits'%(tmpdir,kk)
-                hdulist2 = fits.HDUList(hdus=[hdu_primary,hdu])
-                hdulist2.writeto(tmpimage,output_verify='fix',overwrite=True)
+            if len(hdulist) > 1:
+                for kk in range(len(hdulist)):
+                    if kk == 0:
+                        hdu_primary = copy.copy(hdulist[kk])
+                        continue
+                    else:
+                        hdu = copy.copy(hdulist[kk])
+                        hdu.header = wcs_header
 
-                ztfsub.utils.p60sdsssub(opts, tmpimage, refimage, [ra,dec],
+                    tmpimage='%s/%04d.fits'%(tmpdir,kk)
+                    hdulist2 = fits.HDUList(hdus=[hdu_primary,hdu])
+                    hdulist2.writeto(tmpimage,output_verify='fix',overwrite=True)
+
+                    ztfsub.utils.p60sdsssub(opts, tmpimage, refimage, [ra,dec],
+                        distortdeg=1, scthresh1=3.0,
+                        scthresh2=10.0, tu=60000, iu=60000, ig=2.3, tg=1.0,
+                        stamps=None, nsx=4, nsy=4, ko=0, bgo=0, radius=10,
+                        tlow=-5000.0, ilow=-5000.0, sthresh=5.0, ng=None, 
+                        aperture=10.0,
+                        defaultsDir=defaultsDir)
+
+                    tmplist = fits.open(tmpimage)
+                    hdulistsub[kk].data = tmplist[1].data
+
+                hdulistsub.writeto(subfile,output_verify='fix',overwrite=True)
+
+            else:
+           
+                ztfsub.utils.p60sdsssub(opts, scienceimage, refimage, [ra,dec],
                     distortdeg=1, scthresh1=3.0,
                     scthresh2=10.0, tu=60000, iu=60000, ig=2.3, tg=1.0,
                     stamps=None, nsx=4, nsy=4, ko=0, bgo=0, radius=10,
-                    tlow=-5000.0, ilow=-5000.0, sthresh=5.0, ng=None, 
+                    tlow=-5000.0, ilow=-5000.0, sthresh=5.0, ng=None,
                     aperture=10.0,
-                   defaultsDir=defaultsDir)
+                    defaultsDir=defaultsDir)
 
-                tmplist = fits.open(tmpimage)
-                hdulistsub[kk].data = tmplist[1].data
-            filename = scienceimage.replace(".fits",".sub.fits")
-            hdulist2.writeto(filename,output_verify='fix',overwrite=True)
-
-        ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+        if opts.doSubtraction:
+            ztfsub.utils.sextractor(subfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+        else:
+            ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
 
         cat = np.loadtxt(catfile)
         if not cat.size: continue
@@ -475,10 +504,25 @@ for ii,fitsfile in enumerate(fitsfiles):
             flux = flux_forced/flux_forced_field
             fluxerr = flux*np.sqrt((fluxerr_forced/flux_forced)**2 + (fluxerr_forced_field/flux_forced_field)**2)
 
-            fid = open(forcedfile,'w')
-            for ii in range(len(mjd_forced)):
-                fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
-            fid.close()
+            try:
+                fid = open(forcedfile,'w')
+                for ii in range(len(mjd_forced)):
+                    fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
+                fid.close()
+            except:
+                fid = open(forcedfile,'w')
+                fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced,mag_forced,magerr_forced,flux_forced,fluxerr_forced))
+                fid.close()
+
+    if os.path.isfile(scienceimage):
+        rm_command = "rm %s"%scienceimage
+        os.system(rm_command)
+    if os.path.isfile(scienceimage_fz):
+        rm_command = "rm %s"%scienceimage_fz
+        os.system(rm_command)
+    if os.path.isfile(backfile):
+        rm_command = "rm %s"%backfile
+        os.system(rm_command)
 
 cnt = 0
 for ii,fitsfile in enumerate(fitsfiles):
