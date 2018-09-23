@@ -141,7 +141,18 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
     hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
 
 def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_size=-1,x=None,y=None): 
-    
+
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").split("_")  
+        if fitsfileSplit[-1] == "o":
+            nums.append(-1)
+        else:
+            nums.append(int(fitsfileSplit[-1]))
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
+ 
+    shiftx, shifty = 0, 0
+
     cnt = 0
     for ii in range(len(fitsfiles)):
         scienceimage = os.path.join(stackDir,fitsfiles[ii].split("/")[-1])
@@ -173,10 +184,21 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_si
                         yhigh = int(y + registration_size/2)
 
                         shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], hdulist[ii].data[xlow:xhigh,ylow:yhigh], upsample_factor=1)
+                        shiftx, shifty = shift[0], shift[1]
                     else:
-                        shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
- 
-                    shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
+                        # shift by last images's shift
+                        shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shiftx, shifty))                        
+
+                        shift, error, diffphase = register_translation(reference, shifted, upsample_factor=1)
+
+                        shiftmax = 5
+                        shifttot = np.sqrt(shift[0]**2 + shift[1]**2)
+                                  
+                        if shifttot <= shiftmax:
+                            shiftx = shiftx + shift[0]
+                            shifty = shifty + shift[1]
+
+                    shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shiftx,shifty))
                     data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
                 else:
                     data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
@@ -200,7 +222,7 @@ def phase_images(phaseDir,fitsfiles,nimages,phase,doRegistration=False,registrat
     hdulist_hold = []
     cnt = 0
 
-    #fitsfiles = fitsfiles[:2]
+    shiftx, shifty = 0, 0
 
     for ii in range(len(fitsfiles)):
         print("%d/%d"%(ii,len(fitsfiles)))
@@ -235,9 +257,23 @@ def phase_images(phaseDir,fitsfiles,nimages,phase,doRegistration=False,registrat
                     yhigh = int(y + registration_size/2)
 
                     shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], data[xlow:xhigh,ylow:yhigh], upsample_factor=1)
+                    shiftx, shifty = shift[0], shift[1]
                 else:
-                    shift, error, diffphase = register_translation(reference, data, upsample_factor=1)
-                shifted = image_registration.fft_tools.shiftnd(data, (shift[0], shift[1]))
+
+                    # shift by last images's shift
+                    shifted = image_registration.fft_tools.shiftnd(data, (shiftx, shifty))
+
+                    shift, error, diffphase = register_translation(reference, shifted, upsample_factor=1)
+
+                    shiftmax = 5
+                    shifttot = np.sqrt(shift[0]**2 + shift[1]**2)
+
+                    if shifttot <= shiftmax:
+                        shiftx = shiftx + shift[0]
+                        shifty = shifty + shift[1]
+
+                shifted = image_registration.fft_tools.shiftnd(data, (shiftx,shifty))
+
                 datas[:,:,idx] = datas[:,:,idx] + shifted
             else:
                 datas[:,:,idx] = datas[:,:,idx] + data
@@ -261,6 +297,15 @@ def phase_images(phaseDir,fitsfiles,nimages,phase,doRegistration=False,registrat
     hdulist2.writeto(fitsfilename,output_verify='ignore',overwrite=True)
 
 def makemovie(movieDir,fitsfiles,x=None,y=None):
+
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").split("_")
+        if fitsfileSplit[-1] == "o":
+            nums.append(-1)
+        else:
+            nums.append(int(fitsfileSplit[-1]))
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
 
     cnt = 0
     for ii in range(len(fitsfiles)):

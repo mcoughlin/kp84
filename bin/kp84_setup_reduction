@@ -10,7 +10,7 @@ def parse_commandline():
 
     parser.add_option("--KPED_data",default="/nas_data/KPED_data")
     parser.add_option("--setupDir",default="/Data3/archive_kped/data/reductions/")    
-    parser.add_option("--day",default="20180922")
+    parser.add_option("--day",default="20180923")
 
     opts, args = parser.parse_args()
 
@@ -50,7 +50,7 @@ for filename in filenames:
         if notTransient:
             fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet\n'%(folderName,day,filenameSplit[0]))
         else:
-            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName,day,filenameSplit[0]))
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction --doDifferential\n'%(folderName,day,filenameSplit[0]))
 
     mv_command = "mv %s %s"%(filename,folderName_registration)
     os.system(mv_command)
