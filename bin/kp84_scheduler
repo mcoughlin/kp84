@@ -34,8 +34,8 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
     parser.add_option("-o","--outputDir",default="../output_observing")
-    parser.add_option("-s","--tstart",default="2018-09-12 03:00")
-    parser.add_option("-e","--tend",default="2018-09-12 12:00")
+    parser.add_option("-s","--tstart",default="2018-09-26 03:00")
+    parser.add_option("-e","--tend",default="2018-09-26 12:00")
 
     opts, args = parser.parse_args()
 
@@ -234,6 +234,8 @@ for schedule in priority_schedule.to_table():
 
     data_out[tar][filt] = np.vstack((data_out[tar][filt],vals))
 
+cnt = 0
+
 filename = os.path.join(outputDir,'schedule.csv')
 fid = open(filename,'w')
 for schedule in priority_schedule.to_table():
@@ -247,7 +249,30 @@ for schedule in priority_schedule.to_table():
 
     expt = int(schedule["duration (minutes)"]*60.0)
 
-    fid.write('%s %.5f %.5f %s %.5f %.5f %d\n'%(tar,target["ra"][0],target["dec"][0],filt,obsstart.mjd,obsend.mjd,expt))
+    c = SkyCoord(ra=target["ra"][0]*u.degree, dec=target["dec"][0]*u.degree,
+                 frame='icrs')
+    ra = c.ra.to_string(unit=u.hour, sep=':')
+    dec = c.dec.to_string(unit=u.degree, sep=':')
+
+    if filt == "g":
+        filt = "FILTER_SLOAN_G"
+    elif filt == "r":
+        filt = "FILTER_SLOAN_R"
+    elif filt == "U":
+        filt = "FILTER_JOHNSON_U"
+    elif filt == "B":
+        filt = "FILTER_JOHNSON_B"
+    elif filt == "V":
+        filt = "FILTER_JOHNSON_V"
+    elif filt == "I":
+        filt = "FILTER_JOHNSON_I"
+
+    # REQUEST_ID, PROGRAM_ID, FIELD_ID, OBJ_RA, OBJ_DEC, EQUINOX, RA_RATE, DEC_RATE, EXPTIME, PROGRAM_PI, COMMENT
+
+    #fid.write('%s %.5f %.5f %s %.5f %.5f %d\n'%(tar,target["ra"][0],target["dec"][0],filt,obsstart.mjd,obsend.mjd,expt))
+
+    fid.write('%08d 0 0 %s %s %s 2000 0.0 0.0 %.5f PI %s\n'%(cnt,ra,dec,filt,expt,tar))
+    cnt = cnt+1
 
 fid.close()
 
