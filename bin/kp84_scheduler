@@ -271,7 +271,7 @@ for schedule in priority_schedule.to_table():
 
     #fid.write('%s %.5f %.5f %s %.5f %.5f %d\n'%(tar,target["ra"][0],target["dec"][0],filt,obsstart.mjd,obsend.mjd,expt))
 
-    fid.write('%08d 0 0 %s %s %s 2000 0.0 0.0 %.5f PI %s\n'%(cnt,ra,dec,filt,expt,tar))
+    fid.write('%08d 0 0 %s %s 2000 0.0 0.0 %.5f PI %s_%s\n'%(cnt,ra,dec,expt,tar,filt))
     cnt = cnt+1
 
 fid.close()
