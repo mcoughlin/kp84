@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, glob
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--KPED_data",default="/nas_data/KPED_data")
+    parser.add_option("--setupDir",default="/Data3/archive_kped/data/reductions/")    
+    parser.add_option("--day",default="20180923")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+KPED_data = opts.KPED_data
+setupDir = opts.setupDir
+day = opts.day
+
+outputDir = os.path.join(setupDir,day)
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+dataDir = os.path.join(KPED_data,day)
+cp_command = "cp %s/*.fits.fz %s"%(dataDir,outputDir)
+os.system(cp_command)
+
+# first unpack single image files (i.e. transients)
+funpack_command = "cd %s; funpack -D ZTF*.fits.fz"%(outputDir)
+os.system(funpack_command)
+
+filenames = glob.glob('%s/*.fits'%outputDir) + glob.glob('%s/*.fits.fz'%outputDir)
+fid = open('run_analysis.sh','w')
+for filename in filenames:
+    notTransient = "fits.fz" in filename
+
+    filenameSplit = filename.split('/')
+    filenameSplit = filenameSplit[-1].split('_')
+    folderName = "%s/%s/%s_%s_%s"%(outputDir,filenameSplit[0],filenameSplit[0],filenameSplit[1],filenameSplit[2])
+    folderName_registration = "%s/registration"%(folderName)
+    if not os.path.isdir(folderName_registration):
+        os.makedirs(folderName_registration)
+
+        if notTransient:
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet\n'%(folderName,day,filenameSplit[0]))
+        else:
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction --doDifferential\n'%(folderName,day,filenameSplit[0]))
+
+    mv_command = "mv %s %s"%(filename,folderName_registration)
+    os.system(mv_command)
+fid.close()
+
+chmod_command = "chmod -R 777 %s"%outputDir
+os.system(chmod_command) 
