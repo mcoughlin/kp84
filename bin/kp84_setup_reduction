@@ -48,9 +48,9 @@ for filename in filenames:
         os.makedirs(folderName_registration)
 
         if notTransient:
-            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet\n'%(folderName,day,filenameSplit[0]))
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doDifferential\n'%(folderName,day,filenameSplit[0]))
         else:
-            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction --doDifferential\n'%(folderName,day,filenameSplit[0]))
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName,day,filenameSplit[0]))
 
     mv_command = "mv %s %s"%(filename,folderName_registration)
     os.system(mv_command)

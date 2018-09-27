@@ -144,7 +144,7 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_si
 
     nums = []
     for fitsfile in fitsfiles:
-        fitsfileSplit = fitsfile.replace(".fits.fz","").split("_")  
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")  
         if fitsfileSplit[-1] == "o":
             nums.append(-1)
         else:
@@ -300,7 +300,7 @@ def makemovie(movieDir,fitsfiles,x=None,y=None):
 
     nums = []
     for fitsfile in fitsfiles:
-        fitsfileSplit = fitsfile.replace(".fits.fz","").split("_")
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
         if fitsfileSplit[-1] == "o":
             nums.append(-1)
         else:
@@ -504,7 +504,7 @@ for ii,fitsfile in enumerate(fitsfiles):
                 os.system(system_command)
 
         if opts.doAstrometryNet:
-            ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100,cutedges=100)
+            ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100,cutedges=-1)
 
         if opts.doSubtraction:
 
@@ -590,6 +590,7 @@ for ii,fitsfile in enumerate(fitsfiles):
             mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0)
 
             if opts.doDifferential:            
+
                 mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=10.0)
 
                 mag = mag_forced - mag_forced_field
@@ -795,7 +796,7 @@ if opts.doPlots:
     plt.errorbar(mjd-mjd[0],mag,magerr,fmt='ko')
     plt.xlabel('Time from %.5f [days]'%mjd[0])
     plt.ylabel('Magnitude [arb]')
-    plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
+    #plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.savefig(plotName)
