@@ -3,6 +3,27 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
+import os, sys, optparse, shutil
+from requests import Request
+
+from twilio.rest import Client
+from twilio.twiml.voice_response import Say, Sms
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--doCall",  action="store_true", default=False)
+    parser.add_option("--doText",  action="store_true", default=False)
+
+    parser.add_option("-p","--phone")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
 def get_status():
     webpage = "http://www-kpno.kpno.noao.edu/cgi-bin/Mtn_Weather/SiteHeader.pl"
     page = requests.get(webpage)
@@ -23,11 +44,32 @@ def get_status():
                 break
     return status, status_string
 
+opts = parse_commandline()
+
+if opts.doCall or opts.doText:
+    client = Client()
+    from_=os.environ.get('TWILIO_FROM')
+
 previous_status = -2
 while True:
     status, status_string = get_status()
     if not status == previous_status:
         print("Status change: %s"%status_string)
+
+        if opts.doCall or opts.doText:
+            message = 'Greetings human, this is KPED Notices. Your dome status is: %s!'%status_string
+            r = Request('GET', 'http://twimlets.com/message', params={'Message':message} )
+            url = r.prepare().url
+
+            if opts.doText:
+                client.messages.create(to=opts.phone,
+                                       from_=from_,
+                                       body=message)
+            if opts.doCall:
+                client.calls.create(to=opts.phone,
+                       from_=from_,
+                       url=url)
+ 
     previous_status = status
     time.sleep(10)
 
