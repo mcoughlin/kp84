@@ -28,32 +28,91 @@ if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
 dataDir = os.path.join(KPED_data,day)
-cp_command = "cp %s/*.fits.fz %s"%(dataDir,outputDir)
-os.system(cp_command)
+filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
+for filename in filenames:
+    filenameSplit = filename.split('/')    
+    outfile = "%s/%s"%(outputDir,filenameSplit[-1])
+    if not os.path.isfile(outfile):
+        cp_command = "cp %s %s"%(filename,outputDir)
+        os.system(cp_command)
 
 # first unpack single image files (i.e. transients)
 funpack_command = "cd %s; funpack -D ZTF*.fits.fz"%(outputDir)
 os.system(funpack_command)
 
 filenames = glob.glob('%s/*.fits'%outputDir) + glob.glob('%s/*.fits.fz'%outputDir)
-fid = open('run_analysis.sh','w')
-for filename in filenames:
-    notTransient = "fits.fz" in filename
 
+objs = []
+for filename in filenames:
     filenameSplit = filename.split('/')
     filenameSplit = filenameSplit[-1].split('_')
-    folderName = "%s/%s/%s_%s_%s"%(outputDir,filenameSplit[0],filenameSplit[0],filenameSplit[1],filenameSplit[2])
-    folderName_registration = "%s/registration"%(folderName)
-    if not os.path.isdir(folderName_registration):
-        os.makedirs(folderName_registration)
+    obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
+
+    if obj not in objs:
+        objs.append(obj)
+
+fid = open('run_analysis.sh','w')
+
+for obj in objs:
+    fitsfiles = glob.glob('%s/%s*'%(outputDir,obj)) 
+    notTransient = "fits.fz" in fitsfiles[0]
+    objsplit = obj.split("_")   
+
+    if len(fitsfiles) <= 15:
+        folderName = "%s/%s/%s"%(outputDir,objsplit[0],obj)
+        folderName_registration = "%s/registration"%(folderName)
+
+        if not os.path.isdir(folderName_registration):
+            os.makedirs(folderName_registration)
 
         if notTransient:
-            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doDifferential\n'%(folderName,day,filenameSplit[0]))
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doDifferential\n'%(folderName,day,objsplit[0]))
         else:
-            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName,day,filenameSplit[0]))
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName,day,objsplit[0]))
 
-    mv_command = "mv %s %s"%(filename,folderName_registration)
-    os.system(mv_command)
+        mv_command = "mv %s/%s* %s"%(outputDir,obj,folderName_registration)
+        os.system(mv_command)
+    else:
+
+        nums = []
+        for fitsfile in fitsfiles:
+            fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+            if fitsfileSplit[-1] == "o":
+                nums.append(-1)
+            else:
+                nums.append(int(fitsfileSplit[-1]))
+        fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
+
+        folderName_1 = "%s/%s/%s_1"%(outputDir,objsplit[0],obj)
+        folderName_registration_1 = "%s/registration"%(folderName_1)
+        if not os.path.isdir(folderName_registration_1):
+            os.makedirs(folderName_registration_1)
+        folderName_2 = "%s/%s/%s_2"%(outputDir,objsplit[0],obj)
+        folderName_registration_2 = "%s/registration"%(folderName_2)
+        if not os.path.isdir(folderName_registration_2):
+            os.makedirs(folderName_registration_2)
+
+        if notTransient:
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doDifferential\n'%(folderName_1,day,objsplit[0]))
+
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doDifferential\n'%(folderName_2,day,objsplit[0]))
+
+        else:
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName_1,day,objsplit[0]))
+
+            fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName_2,day,objsplit[0]))
+  
+        fitsfiles_1 = fitsfiles[:len(fitsfiles)//2]
+        fitsfiles_2 = fitsfiles[len(fitsfiles)//2:]
+
+        for filename_1 in fitsfiles_1:
+            mv_command = "mv %s %s"%(filename_1,folderName_registration_1)
+            os.system(mv_command) 
+
+        for filename_2 in fitsfiles_2:
+            mv_command = "mv %s %s"%(filename_2,folderName_registration_2)
+            os.system(mv_command)
+
 fid.close()
 
 chmod_command = "chmod -R 777 %s"%outputDir
