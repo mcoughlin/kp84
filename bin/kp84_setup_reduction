@@ -11,6 +11,7 @@ def parse_commandline():
     parser.add_option("--KPED_data",default="/nas_data/KPED_data")
     parser.add_option("--setupDir",default="/Data3/archive_kped/data/reductions/")    
     parser.add_option("--day",default="20180923")
+    parser.add_option("--objname",default=None)
 
     opts, args = parser.parse_args()
 
@@ -28,7 +29,10 @@ if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
 dataDir = os.path.join(KPED_data,day)
-filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
+if not opts.objname == None:
+    filenames = glob.glob('%s/%s*.fits'%(dataDir,opts.objname)) + glob.glob('%s/%s*.fits.fz'%(dataDir,objname))
+else:
+    filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
 for filename in filenames:
     filenameSplit = filename.split('/')    
     outfile = "%s/%s"%(outputDir,filenameSplit[-1])
@@ -37,8 +41,8 @@ for filename in filenames:
         os.system(cp_command)
 
 # first unpack single image files (i.e. transients)
-funpack_command = "cd %s; funpack -D ZTF*.fits.fz"%(outputDir)
-os.system(funpack_command)
+#funpack_command = "cd %s; funpack -D ZTF*.fits.fz"%(outputDir)
+#os.system(funpack_command)
 
 filenames = glob.glob('%s/*.fits'%outputDir) + glob.glob('%s/*.fits.fz'%outputDir)
 
@@ -55,10 +59,11 @@ fid = open('run_analysis.sh','w')
 
 for obj in objs:
     fitsfiles = glob.glob('%s/%s*'%(outputDir,obj)) 
-    notTransient = "fits.fz" in fitsfiles[0]
+    #notTransient = "fits.fz" in fitsfiles[0]
+    notTransient = False
     objsplit = obj.split("_")   
 
-    if len(fitsfiles) <= 15:
+    if len(fitsfiles) <= 30:
         folderName = "%s/%s/%s"%(outputDir,objsplit[0],obj)
         folderName_registration = "%s/registration"%(folderName)
 
