@@ -7,30 +7,23 @@ from astropy.io import fits
 from skimage.feature import register_translation
 import image_registration
 
-#fitsfiles = glob.glob("/Users/mcoughlin/Code/KP84/observing/20180627/ZTFHC7_10_g_20180627_080418.036682*.fits")
-#fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/ZTFHC7_10_g_20180627_080418.036682_o_stack.fits"
-#fitsfiles = fitsfiles[:5]
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
 
-fitsfiles = ["/Users/mcoughlin/Code/KP84/observing/20180804/ZTFHC10_10_g_20180804_042052.034227_o/registration/ZTFHC10_10_g_20180804_042052.034227_o.fits"]
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/stack.fits"
+    parser.add_option("-i","--inputfiles",default="/Users/mcoughlin/Desktop/PTF1615ap_1_r_20181005_021345.013321_o*")
+    parser.add_option("-o","--outputfile",default="/Users/mcoughlin/Desktop/PTF1615ap_1_r_20181005_021345.013321_o_stack.fits")
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_r_20180807_111121.034742_o/registration/*.fits"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_r_20180807_111121.034742_o/stack.fits"
+    opts, args = parser.parse_args()
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_g_20180807_111751.035561_o/registration/*.fits"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_g_20180807_111751.035561_o/stack.fits"
+    return opts
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_I_20180807_112446.034657_o/registration/*.fits"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_I_20180807_112446.034657_o/stack.fits"
-
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_I_*"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_I.fits"
-
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_g_*"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_g.fits"
-
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_r_*"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_r.fits"
+opts = parse_commandline()
+inputfiles = opts.inputfiles
+outputfile = opts.outputfile
+fitsfiles = sorted(glob.glob(inputfiles))
 
 hdulist2 = []
 cnt = 1
@@ -56,6 +49,6 @@ for jj in range(len(fitsfiles)):
 hdulist_hold.data = data
 #hdulist_hold.data = np.mean(data,axis=2)
 hdulist2 = fits.HDUList(hdus=hdulist_hold)
-hdulist2.writeto(fitsfile_stack,output_verify='fix',overwrite=True)
+hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
 
 
