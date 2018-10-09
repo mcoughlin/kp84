@@ -58,7 +58,7 @@ for filename in filenames:
 fid = open('run_analysis.sh','w')
 
 for obj in objs:
-    fitsfiles = glob.glob('%s/%s*'%(outputDir,obj)) 
+    fitsfiles = sorted(glob.glob('%s/%s*'%(outputDir,obj))) 
     #notTransient = "fits.fz" in fitsfiles[0]
     notTransient = False
     objsplit = obj.split("_")   

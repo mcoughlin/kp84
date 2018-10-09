@@ -47,7 +47,7 @@ def parse_commandline():
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False)
     parser.add_option("--doStack",  action="store_true", default=False)
-    parser.add_option("--doRegister",  action="store_true", default=False) 
+    parser.add_option("--doRegistration",  action="store_true", default=False) 
 
     parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--phase",default=0.004800835466385,type=float)
@@ -61,6 +61,8 @@ def parse_commandline():
     parser.add_option("--subtractionDir",default="../subtraction")
     parser.add_option("--subtractionSource",default="ps1")
     parser.add_option("--image_size",default=4000,type=int)
+
+    parser.add_option("--doSaveImages",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -162,10 +164,20 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
 
 def register_images(registerDir,fitsfiles):
 
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+        try:
+            num = int(fitsfileSplit[-2][-2:])
+        except:
+            num = int(fitsfileSplit[-2][-1:])
+        nums.append(num)
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
+
     cnt = 0
     for ii in range(len(fitsfiles)):
         filename = fitsfiles[ii].split("/")[-1]
-        filename = filename.replace(".fits","_%s.fits"%ii)
+        #filename = filename.replace(".fits","_%s.fits"%ii)
         scienceimage = os.path.join(registerDir,filename)
         if os.path.isfile(scienceimage): continue
 
@@ -273,8 +285,6 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
             datas[:,:,idx] = datas[:,:,idx] + shifted
             phase_counts[idx] = phase_counts[idx] + 1
 
-        print(ii,np.mean(phase_counts))
-
         cnt = cnt + 1
 
     hdulist = fits.open(fitsfiles[0])
@@ -294,20 +304,32 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
 
 def makemovie(movieDir,fitsfiles,x=None,y=None):
 
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+        try:
+            num = int(fitsfileSplit[-2][-2:])
+        except:
+            num = int(fitsfileSplit[-2][-1:])
+        nums.append(num)
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
+
     cnt = 0
     for ii in range(len(fitsfiles)):
         hdulist = fits.open(fitsfiles[ii])
-        for jj in range(len(hdulist)):
-            if jj == 0: continue
-            header = hdulist[jj].header
-            data = hdulist[jj].data
+        header = hdulist[0].header
+        data = hdulist[0].data
 
-            vmin = np.percentile(data,5)
-            vmax = np.percentile(data,95)
+        nhdu, xshape, yshape = data.shape
+        for jj in range(nhdu):
+            thisdata = data[jj,:,:]
+
+            vmin = np.percentile(thisdata,5)
+            vmax = np.percentile(thisdata,95)
 
             plotName = os.path.join(movieDir,'image_%04d.png'%cnt)
             plt.figure()
-            plt.imshow(data,vmin=vmin,vmax=vmax,cmap='gray')
+            plt.imshow(thisdata,vmin=vmin,vmax=vmax,cmap='gray')
             if not x == None:
                 plt.xlim(x)
                 plt.ylim(y)
@@ -452,13 +474,23 @@ if opts.doStack:
     else:
         print("You asked to stack but with --nimages 1... passing.")
 
-if opts.doRegister:
+if opts.doRegistration:
     registerDir = os.path.join(path_out_dir,'register')
     if not os.path.isdir(registerDir):
         os.makedirs(registerDir)
     if opts.nimages > 1:
         register_images(registerDir,fitsfiles)
         fitsfiles = sorted(glob.glob(os.path.join(registerDir,'*.fits*')))
+
+        nums = []
+        for fitsfile in fitsfiles:
+            fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+            try:
+                num = int(fitsfileSplit[-2][-2:])
+            except:
+                num = int(fitsfileSplit[-2][-1:])
+            nums.append(num)
+        fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
 
 if opts.doPhase:
     phaseDir = os.path.join(path_out_dir,'phase')
@@ -474,7 +506,7 @@ if opts.doMakeMovie:
     if not os.path.isdir(movieDir):
         os.makedirs(movieDir)
 
-    makemovie(movieDir,fitsfiles,x=[x0-50,x0+50],y=[y0-50,y0+50])
+    #makemovie(movieDir,fitsfiles,x=[x0-50,x0+50],y=[y0-50,y0+50])
 
 for ii,fitsfile in enumerate(fitsfiles):
     print(ii,fitsfile)
@@ -486,6 +518,7 @@ for ii,fitsfile in enumerate(fitsfiles):
         os.makedirs(path_out_dir_tmp)
 
     scienceimage = '%s/science.fits'%(path_out_dir_tmp)
+    scienceimage_fz = '%s/science.fits.fz'%(path_out_dir_tmp)
     catfile = scienceimage.replace(".fits",".cat")
     backfile = scienceimage.replace(".fits",".background.fits")
 
@@ -582,6 +615,17 @@ for ii,fitsfile in enumerate(fitsfiles):
             for ii in range(len(mjd_forced)):
                 fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
             fid.close()
+
+    if not opts.doSaveImages:
+        if os.path.isfile(scienceimage):
+            rm_command = "rm %s"%scienceimage
+            os.system(rm_command)
+        if os.path.isfile(scienceimage_fz):
+            rm_command = "rm %s"%scienceimage_fz
+            os.system(rm_command)
+        if os.path.isfile(backfile):
+            rm_command = "rm %s"%backfile
+            os.system(rm_command)
 
 cnt = 0
 for ii,fitsfile in enumerate(fitsfiles):
