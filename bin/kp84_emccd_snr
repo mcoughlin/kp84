@@ -1,0 +1,153 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, glob
+import numpy as np
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt 
+matplotlib.rcParams.update({'font.size': 22})
+from matplotlib.pyplot import cm
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-o","--outputDir",default="../output/sim")
+    parser.add_option("--doPlots",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def snrnorm(M = 1, vc = 1, D = 1, K = 1, sigma_N = 1, t = 1):
+    return M*t / np.sqrt((M+vc+D+K)*t+sigma_N**2)
+
+def snrlin(M = 1, vc = 1, D = 1, K = 1, sigma_em = 1, gA = 1, t = 1):
+    return M*t / np.sqrt(2*(M+vc+D+K)*t + (sigma_em/gA)**2)    
+
+# Parse command line
+opts = parse_commandline()
+outputDir = opts.outputDir
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+# signal photons
+M = np.logspace(-1,3,100)
+# mean CICIR per pixel
+vc = 0.01
+# read noise
+sigma_N = 3.5
+sigma_em = 40.0
+# Dark current
+D = 0.0005
+# sky
+K = 1
+# EM Gain
+gA = 200
+
+# integration time
+t = 1
+
+snorm1 = snrnorm(M = M, vc = vc, D = D, K = K, sigma_N = sigma_N, t = t)
+slin1 = snrlin(M = M, vc = vc, D = D, K = K, sigma_em = sigma_em, gA = gA, t = t)
+
+# integration time
+t = 10
+
+snorm10 = snrnorm(M = M, vc = vc, D = D, K = K, sigma_N = sigma_N, t = t)
+slin10 = snrlin(M = M, vc = vc, D = D, K = K, sigma_em = sigma_em, gA = gA, t = t)
+
+if opts.doPlots:
+    plotName = os.path.join(outputDir,'snr.pdf')
+    plt.figure(figsize=(12,8))
+    plt.loglog(M,snorm1,'b',label='Conventional')
+    plt.loglog(M,slin1,'k',label='EMCCD')
+    plt.xlabel('Signal Photons')
+    plt.ylabel('Signal SNR')
+    plt.legend(loc='best')
+    plt.savefig(plotName)
+    plt.close() 
+
+# now for the binary simulation
+
+# total observation time (8 hrs in seconds) 
+T = 8*60.0*60.0
+# amount of time in the ecclipse
+tecc = 30.0
+# readout time 
+tread = 55.0
+# period of the binary
+tbinary = 7.2*60.0
+
+def lorentz(x, p):
+    I, gamma, x0 = p
+    return I * gamma**2 / ((x - x0)**2 + gamma**2)
+
+tall = np.arange(0,T,1.0)
+mag = 0 + 0.3*np.sin(2*np.pi*(tall-tall[0])/tbinary)
+ecclipse_times = tbinary/4.0 + (tbinary/2.0) * np.arange(int(T/(tbinary/2)))
+for ii,ecclipse_time in enumerate(ecclipse_times):
+    if np.mod(ii,2) == 0:
+        amp = 1.0
+    else:
+        amp = 0.5
+    lor = lorentz(tall,(amp,4,ecclipse_time))
+    mag = mag+lor
+tobs = np.arange(0,T,tecc+tread)
+
+if opts.doPlots:
+    plotName = os.path.join(outputDir,'exposures.pdf')
+    plt.figure(figsize=(12,8))
+    for ii in range(len(tobs)-1):
+        tmin, tmax = tobs[ii],tobs[ii+1]
+        idx = np.where((tall >= tmin) & (tall <= tmax))[0]
+        mave = np.mean(mag[idx])
+        plt.plot(tall[idx],mave*np.ones(idx.shape),'k')
+    plt.plot(tall,mag,'gray')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Magnitude')
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close() 
+
+    plotName = os.path.join(outputDir,'exposures_mod.pdf')
+    colors_names=cm.rainbow(np.linspace(0,1,len(tobs)-1))
+    plt.figure(figsize=(12,8))
+    for ii in range(len(tobs)-1):
+        tmin, tmax = tobs[ii],tobs[ii+1]-tread
+        idx = np.where((tall >= tmin) & (tall <= tmax))[0]
+        mave = np.mean(mag[idx])  
+
+        tmod = np.mod(tall[idx],tbinary)
+
+        if tmod[-1] < tmod[0]:
+            idx1 = np.arange(np.argmax(tmod)).astype(int)
+            tmod1 = tmod[idx1]
+            idx2 = np.arange(np.argmax(tmod)+1,len(tmod)).astype(int)
+            tmod2 = tmod[idx2]
+            plt.plot(tmod1,mave*np.ones(tmod1.shape),color=colors_names[ii])
+            plt.plot(tmod2,mave*np.ones(tmod2.shape),color=colors_names[ii])
+        else:
+            plt.plot(tmod,mave*np.ones(tmod.shape),color=colors_names[ii])
+
+        #idx1 = np.where(np.mod(tall[idx],tbinary) <= 1)[0]
+        #idx2 = np.where(np.mod(tall[idx],tbinary) <= tbinary-1)[0]
+     
+        #if (len(idx1) > 0 ) and (len(idx2) > 0):
+        #    continue
+    tallsort = np.mod(tall,tbinary)
+    idx = np.argsort(tallsort)
+    tallsort = np.sort(tallsort)
+
+    plt.plot(tallsort,mag[idx],'o',c='gray')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Magnitude')
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
