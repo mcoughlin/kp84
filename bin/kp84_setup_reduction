@@ -20,6 +20,7 @@ def parse_commandline():
 # Parse command line
 opts = parse_commandline()
 KPED_data = opts.KPED_data
+objname = opts.objname
 setupDir = opts.setupDir
 day = opts.day
 
@@ -60,7 +61,7 @@ fid = open('run_analysis.sh','w')
 for obj in objs:
     fitsfiles = sorted(glob.glob('%s/%s*'%(outputDir,obj))) 
     #notTransient = "fits.fz" in fitsfiles[0]
-    notTransient = False
+    notTransient = True
     objsplit = obj.split("_")   
 
     if len(fitsfiles) <= 30:
