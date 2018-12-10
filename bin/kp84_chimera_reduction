@@ -506,7 +506,7 @@ if opts.doMakeMovie:
     if not os.path.isdir(movieDir):
         os.makedirs(movieDir)
 
-    #makemovie(movieDir,fitsfiles,x=[x0-50,x0+50],y=[y0-50,y0+50])
+    makemovie(movieDir,fitsfiles,x=[x0-50,x0+50],y=[y0-50,y0+50])
 
 for ii,fitsfile in enumerate(fitsfiles):
     print(ii,fitsfile)

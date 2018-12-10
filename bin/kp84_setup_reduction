@@ -64,7 +64,7 @@ for obj in objs:
     notTransient = True
     objsplit = obj.split("_")   
 
-    if len(fitsfiles) <= 30:
+    if len(fitsfiles) <= 100:
         folderName = "%s/%s/%s"%(outputDir,objsplit[0],obj)
         folderName_registration = "%s/registration"%(folderName)
 

@@ -456,11 +456,23 @@ if not os.path.isdir(outputDir):
 if opts.doRegistration:
     fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits.fz')))
 else:
-    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits')))
+    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits.fz')))
 wcsfiles = glob.glob(os.path.join(opts.dataDir,'registration','*wcs*.fits'))
 sumfiles = glob.glob(os.path.join(opts.dataDir,'registration','*registered_sum.fits'))
 
 header = fits.getheader(fitsfiles[0],ext=0)
+if not 'DATE' in header:
+    print('Trying to unpack the files...')
+    for fitsfile in fitsfiles:
+        system_command = 'funpack %s'%fitsfile
+        os.system(system_command)
+
+        system_command = 'rm %s'%fitsfile
+        os.system(system_command)
+        
+    fitsfiles = sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*_registered_0*.fits'))) + sorted(glob.glob(os.path.join(opts.dataDir,'registration','*.fits.fz')))
+    header = fits.getheader(fitsfiles[0],ext=0)
+
 T0 = header['DATE']
 fitsfileSplit = fitsfiles[0].split("/")[-1].replace(".fits.fz","").replace(".fits","")
 
@@ -599,6 +611,7 @@ for ii,fitsfile in enumerate(fitsfiles):
     scienceimage = '%s/science.fits'%(path_out_dir_tmp)
     scienceimage_fz = '%s/science.fits.fz'%(path_out_dir_tmp)
     catfile = scienceimage.replace(".fits",".cat")
+    catfile_zp = scienceimage.replace(".fits",".catzp")
     backfile = scienceimage.replace(".fits",".background.fits")
     subfile = scienceimage.replace(".fits",".sub.fits")
 
@@ -668,6 +681,8 @@ for ii,fitsfile in enumerate(fitsfiles):
 
         if opts.doSubtraction:
             ztfsub.utils.sextractor(subfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+            if opts.doZP:
+                ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile_zp,backfile=backfile)
         else:
             ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
 
@@ -676,8 +691,15 @@ for ii,fitsfile in enumerate(fitsfiles):
 
         xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
 
+        if opts.doZP and opts.doSubtraction:
+            catzp = np.loadtxt(catfile_zp)
+            xs_zp, ys_zp, fluxes_zp, fluxerrs_zp, mags_zp, magerrs_zp, ras_zp, decs_zp, A_zp, B_zp, A_world_zp, B_world_zp, theta_zp, theta_world_zp, fwhms_zp, fwhms_world_zp, extnumber_zp = catzp[:,0], catzp[:,1], catzp[:,2], catzp[:,3], catzp[:,4], catzp[:,5], catzp[:,6], catzp[:,7], catzp[:,8], catzp[:,9], catzp[:,10], catzp[:,11], catzp[:,12], catzp[:,13], catzp[:,14], catzp[:,15], catzp[:,16]
+
         if opts.doZP:
-            imX = np.vstack((ras,decs)).T
+            if opts.doZP and opts.doSubtraction:
+                imX = np.vstack((ras_zp,decs_zp)).T
+            else:
+                imX = np.vstack((ras,decs)).T
             stX = np.vstack((np.array(ps1_ra),np.array(ps1_dec))).T
             max_radius = 1.5 / 3600  # 1 arcsec
             dist, ind_im = crossmatch_angular(imX, stX, max_radius)
@@ -693,9 +715,14 @@ for ii,fitsfile in enumerate(fitsfiles):
 
             # getting ZP
             ZP_mag = []
-            for ii in range(len(ind_im)):
-                if ind_im[ii] < len(ps1_mag) and np.abs(magerrs[ii])<0.025 :
-                    ZP_mag.append(-mags[ii]+ps1_mag[ind_im[ii]])
+            if opts.doZP and opts.doSubtraction:
+                for ii in range(len(ind_im)):
+                    if ind_im[ii] < len(ps1_mag) and np.abs(magerrs_zp[ii])<0.025 :
+                        ZP_mag.append(-mags_zp[ii]+ps1_mag[ind_im[ii]])
+            else:
+                for ii in range(len(ind_im)):
+                    if ind_im[ii] < len(ps1_mag) and np.abs(magerrs[ii])<0.025 :
+                        ZP_mag.append(-mags[ii]+ps1_mag[ind_im[ii]])
 
             print('number of standars used:', len(ZP_mag))
             print('ZP = ',np.round(np.mean(ZP_mag),3),'+-',np.round(np.std(ZP_mag),3))#,np.mean(ZP_mag)-np.median(ZP_mag))
@@ -813,17 +840,21 @@ if opts.doForcedPhotometry:
 
 lims = 25
 idx1s = np.where(np.sqrt((tbl['X']-x0)**2 + (tbl['Y']-y0)**2)<=lims)[0]
-idx2s = np.where(np.sqrt((tbl['X']-xfield)**2 + (tbl['Y']-yfield)**2)<=lims)[0]
 idx1s = idx1s.astype(int)
-idx2s = idx2s.astype(int)
+if opts.doDifferential:
+    idx2s = np.where(np.sqrt((tbl['X']-xfield)**2 + (tbl['Y']-yfield)**2)<=lims)[0]
+    idx2s = idx2s.astype(int)
 
-x1, x2 = tbl[idx1s]['X'].data, tbl[idx2s]['X'].data
-y1, y2 = tbl[idx1s]['Y'].data, tbl[idx2s]['Y'].data
-mjd1, mjd2 = tbl[idx1s]['MJD'].data, tbl[idx2s]['MJD'].data
-mag1, mag2 = tbl[idx1s]['mag'].data, tbl[idx2s]['mag'].data
-magerr1, magerr2 = tbl[idx1s]['magerr'].data, tbl[idx2s]['magerr'].data
-flux1, flux2 = tbl[idx1s]['flux'].data, tbl[idx2s]['flux'].data
-fluxerr1, fluxerr2 = tbl[idx1s]['fluxerr'].data, tbl[idx2s]['fluxerr'].data
+x1, y1 = tbl[idx1s]['X'].data, tbl[idx1s]['Y'].data
+mjd1 = tbl[idx1s]['MJD'].data
+mag1, magerr1 = tbl[idx1s]['mag'].data, tbl[idx1s]['magerr'].data
+flux1, fluxerr1 = tbl[idx1s]['flux'].data, tbl[idx1s]['fluxerr'].data
+
+if opts.doDifferential:
+    x2, y2 = tbl[idx2s]['X'].data, tbl[idx2s]['Y'].data
+    mjd2 = tbl[idx2s]['MJD'].data
+    mag2, magerr2 = tbl[idx2s]['mag'].data, tbl[idx2s]['magerr'].data
+    flux2, fluxerr2 = tbl[idx2s]['flux'].data, tbl[idx2s]['fluxerr'].data
 
 mjd, mag, magerr, flux, fluxerr = [], [], [], [], [] 
 for ii in range(len(mjd1)):
