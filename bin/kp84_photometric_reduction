@@ -724,7 +724,7 @@ for ii,fitsfile in enumerate(fitsfiles):
                     if ind_im[ii] < len(ps1_mag) and np.abs(magerrs[ii])<0.025 :
                         ZP_mag.append(-mags[ii]+ps1_mag[ind_im[ii]])
 
-            print('number of standars used:', len(ZP_mag))
+            print('number of standards used:', len(ZP_mag))
             print('ZP = ',np.round(np.mean(ZP_mag),3),'+-',np.round(np.std(ZP_mag),3))#,np.mean(ZP_mag)-np.median(ZP_mag))
             mags = mags + np.mean(ZP_mag)
 
