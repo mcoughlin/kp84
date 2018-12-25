@@ -1,0 +1,89 @@
+
+import os, sys, optparse, shutil
+import numpy as np
+import pandas as pd
+
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+from matplotlib.gridspec import GridSpec
+import matplotlib.patches as patches
+
+from astropy.io import fits
+from astropy.wcs import WCS
+
+import seaborn as sns; sns.set()
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    #parser.add_option("--fitsfile",default="/media/Data/mcoughlin/WASP/1815F_HAlpha_2.fits")
+    parser.add_option("--fitsfile",default="/home/mcoughlin/WASP_stack.fits")
+    parser.add_option("-o","--outputDir",default="../output/wasp")
+    parser.add_option("--x",default=3733,type=float)
+    parser.add_option("--y",default=4265,type=float)
+    parser.add_option("--image_size",default=30,type=int)
+    parser.add_option("--doPlots",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+outputDir = opts.outputDir
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+hdulist = fits.open(opts.fitsfile)
+data = hdulist[0].data.T
+xmin = int(opts.x-opts.image_size/2)
+xmax = int(opts.x+opts.image_size/2)
+ymin = int(opts.y-opts.image_size/2)
+ymax = int(opts.y+opts.image_size/2)
+data = data[xmin:xmax,ymin:ymax]
+data_x = np.sum(data,axis=0)
+data_y = np.sum(data,axis=1)
+
+x = np.arange(opts.image_size)-opts.image_size/2
+y = np.arange(opts.image_size)-opts.image_size/2
+X, Y = np.meshgrid(x,y)
+
+hdulist = fits.open(opts.fitsfile)
+if opts.doPlots:
+    plotName = os.path.join(outputDir,'slices.pdf')
+    fig = plt.figure()
+    #ax = sns.heatmap(data,cmap="gray")
+
+    gs = GridSpec(4,4)
+    ax_joint = fig.add_subplot(gs[1:4,0:3])
+    ax_marg_x = fig.add_subplot(gs[0,0:3])
+    ax_marg_y = fig.add_subplot(gs[1:4,3])
+
+    ax_joint.pcolor(X,Y,data,cmap='gray')
+    ax_marg_x.plot(x,data_x,'k')
+    ax_marg_y.plot(data_y,y,'k')
+
+    # Turn off tick labels on marginals
+    plt.setp(ax_marg_x.get_xticklabels(), visible=False)
+    plt.setp(ax_marg_x.get_yticklabels(), visible=False)
+    plt.setp(ax_marg_y.get_xticklabels(), visible=False)
+    plt.setp(ax_marg_y.get_yticklabels(), visible=False)
+
+    # Set labels on joint
+    #ax_joint.set_xlabel('Joint x label')
+    #ax_joint.set_ylabel('Joint y label')
+
+    # Set labels on marginals
+    #ax_marg_y.set_xlabel('Marginal x label')
+    #ax_marg_x.set_ylabel('Marginal y label')
+    plt.show()
+
+    plt.savefig(plotName)
+    plt.close()
+
+
