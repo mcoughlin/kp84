@@ -1,0 +1,105 @@
+
+import os, sys, optparse, shutil, time
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+Vizier.ROW_LIMIT = -1
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_xray")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def swift_query(maxsources=1000000): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['1SXPS', 'RAJ2000', 'DEJ2000', 'Err90', 
+                             'Det', 'CR0', 'E_CR0', 'e_CR0',
+                             'HR1', 'E_HR1', 'e_HR1',
+                             'HR2', 'E_HR2', 'e_HR2'], 
+                    column_filters={"Det": ("==0")}, 
+                    row_limit = maxsources) 
+
+    sources = vquery.get_catalogs("IX/43/sources")
+    return sources[0]
+
+def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=25,
+               maxsources=1):
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS',
+                             'phot_g_mean_mag','phot_r_mean_mag',
+                             'Plx', 'e_Plx', 'BP-RP'],
+                    column_filters={"phot_g_mean_mag":
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="I/345/gaia2")
+        return source[0]
+    except:
+        return []
+
+# Parse command line
+opts = parse_commandline()
+cat = swift_query(maxsources=1000000)
+
+if not os.path.isdir(opts.outputDir):
+    os.makedirs(opts.outputDir)
+
+filename = os.path.join(opts.outputDir,'xray.dat')
+fid = open(filename,'w')
+names, ras, decs, errs, CR0s = cat['_1SXPS'], cat['RAJ2000'], cat['DEJ2000'], cat['Err90'], cat['CR0']
+for name, ra, dec, err, cr0 in zip(names, ras, decs, errs, CR0s):
+    if dec < -30: continue
+
+    time.sleep(0.5)
+    gaia = gaia_query(ra, dec, 5/3600.0)
+    if not gaia:
+        d = np.nan
+    else:
+        mu = 5*(np.log10(gaia['Plx']) - 2)
+        d = 10**((mu/5.0 + 1))
+
+    fid.write('%s %.5f %.5f %.5f %.5e %.5e\n'%(name, ra, dec, err, cr0, cr0*4.0*np.pi*d**2))
+fid.close()
+
+
