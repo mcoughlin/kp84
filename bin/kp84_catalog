@@ -206,18 +206,19 @@ if opts.doPlots:
     #ztfsub.plotting.plot_image(scienceimage,plotName,catfile=catfile)
     #ztfsub.plotting.plot_image(scienceimage,plotName)
 
-    fig = plt.figure(figsize=(10,10))
+    fig = plt.figure(figsize=(12,10))
     f1 = aplpy.FITSFigure(scienceimage,figure=fig)
-    f1.set_tick_labels_font(size='medium')
-    f1.set_axis_labels_font(size='medium')
-    f1.show_grayscale()
+    f1.set_tick_labels_font(size='xx-large')
+    f1.set_axis_labels_font(size='xx-large')
+    f1.show_grayscale(invert=True)
     f1.show_circles(tbl['RA'],tbl['Declination'],tbl['FWHM_World'],zorder=99,linestyle='dashed', edgecolor='red')
     f1.show_circles(ra_ps1[idx_ps1],dec_ps1[idx_ps1],1.5/3600.0,zorder=99,linestyle='dashed', edgecolor='green')
   
     sizevals = np.sqrt((ra_ps1[idx_ps1].deg - dra.deg)**2 + (dec_ps1[idx_ps1].deg - ddec.deg)**2)
     f1.show_arrows(ra_ps1[idx_ps1].deg,dec_ps1[idx_ps1].deg,-10*dra.deg,-10*ddec.deg)
-    #5/3600.0*np.ones(idx_ps1.shape),5/3600.0*np.ones(idx_ps1.shape))
-    #dra,ddec)
+    f1.axis_labels.set_xtext('Right Ascension')
+    f1.axis_labels.set_ytext('Declination')
+
     fig.canvas.draw()
     plt.savefig(plotName)
     plt.close()
@@ -273,6 +274,9 @@ if opts.doPlots:
     plt.savefig(plotName)
     plt.close()
 
+    color1 = 'coral'
+    color2 = 'cornflowerblue'
+
     bins = np.linspace(1,2.5,50)
     hist1, bin_edges = np.histogram(tbl["A"]/tbl["B"],bins=bins)
     bins1 = (bin_edges[:-1]+bin_edges[1:])/2.0
@@ -283,15 +287,20 @@ if opts.doPlots:
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     ax2 = ax1.twiny()
-    ax1.step(bins1, hist1, 'b', where='mid')
-    ax2.step(bins2, hist2, 'r', where='mid')
-    ax1.set_xlabel('Point Spread Function shape [A/B]',color='b')
-    ax2.set_xlabel('Full Width Half Max [pixels]',color='r')
+    lns1 = ax1.step(bins1, hist1, color1, where='mid', label = "A/B")
+    lns2 = ax2.step(bins2, hist2, color2, dashes=[6, 2], where='mid', label = "FWHM")
+    ax1.set_xlabel('Point Spread Function shape [A/B]',color=color1)
+    ax2.set_xlabel('Full Width Half Max [pixels]',color=color2)
     ax1.set_ylabel('Counts')
     for tl in ax1.get_xticklabels():
-        tl.set_color('b')
+        tl.set_color(color1)
     for tl in ax2.get_xticklabels():
-        tl.set_color('r')
+        tl.set_color(color2)
+ 
+    # added these three lines
+    lns = lns1+lns2
+    labs = [l.get_label() for l in lns]
+    ax1.legend(lns, labs, loc="best")
     plt.savefig(plotName)
     plt.close()
 

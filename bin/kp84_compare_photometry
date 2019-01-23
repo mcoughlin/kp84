@@ -59,19 +59,25 @@ for photfile in photfiles:
     data_out[name] = data
 
 if opts.doPlots:
-    bins = np.linspace(-1.28,-1.25,30)
+    color1 = 'coral'
+    color2 = 'cornflowerblue'
+
+    bins = np.linspace(-1.29,-1.24,20)
     hist1, bin_edges = np.histogram(data_out["0"][:,1],bins=bins)
     hist2, bin_edges = np.histogram(data_out["7"][:,1],bins=bins)
-    print(np.median(data_out["0"][:,2]),np.median(data_out["7"][:,2]))
+
+    hist1 = hist1/np.sum(hist1)
+    hist2 = hist2/np.sum(hist2)
+
     bins = (bin_edges[:-1]+bin_edges[1:])/2.0
     plotName = os.path.join(outputDir,'hist.pdf')
     fig = plt.figure()
-    plt.step(bins, hist1, 'b', where='mid', label="CCD")
-    plt.step(bins, hist2, 'r', where='mid', label="EMCCD")
+    plt.step(bins, hist1, color1, where='mid', label="CCD")
+    plt.step(bins, hist2, color2, dashes=[6, 2], where='mid', label="EMCCD")
     plt.xlabel('Relative Magnitude [mag]')
-    plt.ylabel('Counts')
+    plt.ylabel('Probability Density Function')
     leg1 = plt.legend()
-    plt.ylim([0,25])
+    plt.ylim([0,0.8])
     plt.savefig(plotName)
     plt.close()
 
