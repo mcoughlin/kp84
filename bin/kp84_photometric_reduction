@@ -171,7 +171,7 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
         hdulist2 = []
         for jj in range(len(hdulist)):
             if jj == 0:
-                hdulist2.append(hdulist[jj])
+                hdulist2.append(copy.copy(hdulist[jj]))
             else:
                 hdulist_hold = copy.copy(hdulist[jj])
                 if registration_size > 0:
@@ -197,11 +197,15 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
                         shifty = shifty + shift[1]
 
                 shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx,shifty))
-                hdulist_hold.data = shifted
+                #hdulist_hold.data = shifted
+                hdulist_hold = fits.ImageHDU(shifted)
+                hdulist_hold.header['DATE'] = hdulist[jj].header['DATE'] 
                 hdulist2.append(hdulist_hold)
 
+            cnt = cnt + 1
+
         hdulist2 = fits.HDUList(hdus=hdulist2)
-        hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
+        hdulist2.writeto(scienceimage,output_verify='warn',overwrite=True)
 
 def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_size=-1,x=None,y=None): 
 
@@ -229,12 +233,12 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_si
 
         hdulist2 = []
         cnt = 1
-        for ii in range(len(hdulist)):
-            if ii == 0:
-                hdulist2.append(hdulist[ii])
+        for jj in range(len(hdulist)):
+            if jj == 0:
+                hdulist2.append(hdulist[jj])
             else:
                 if cnt == 1:
-                    hdulist_hold = copy.copy(hdulist[ii])
+                    hdulist_hold = copy.copy(hdulist[jj])
                     xshape, yshape = hdulist_hold.data.shape
                     data = np.empty([xshape,yshape,0])
 
@@ -246,11 +250,11 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_si
                         ylow = int(y - registration_size/2)
                         yhigh = int(y + registration_size/2)
 
-                        shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], hdulist[ii].data[xlow:xhigh,ylow:yhigh], upsample_factor=1)
+                        shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], hdulist[jj].data[xlow:xhigh,ylow:yhigh], upsample_factor=1)
                         shiftx, shifty = shift[0], shift[1]
                     else:
                         # shift by last images's shift
-                        shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shiftx, shifty))                        
+                        shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx, shifty))                        
 
                         shift, error, diffphase = register_translation(reference, shifted, upsample_factor=1)
 
@@ -261,10 +265,10 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_si
                             shiftx = shiftx + shift[0]
                             shifty = shifty + shift[1]
 
-                    shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shiftx,shifty))
+                    shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx,shifty))
                     data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
                 else:
-                    data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
+                    data = np.append(data,np.expand_dims(hdulist[jj].data,axis=2),axis=2)
                 cnt = cnt + 1
 
                 if cnt == nimages+1:
@@ -735,9 +739,10 @@ for ii,fitsfile in enumerate(fitsfiles):
         else:
             mjds = np.zeros(xs.shape)
             for jj in range(len(hdulist)-1):
-                dateobs = Time(hdulist[jj+1].header["DATE"])
-                idx = np.where(extnumber==jj+1)[0]
-                mjds[idx] = dateobs.mjd
+                if "DATE" in hdulist[jj+1].header:
+                    dateobs = Time(hdulist[jj+1].header["DATE"])
+                    idx = np.where(extnumber==jj+1)[0]
+                    mjds[idx] = dateobs.mjd
 
         cat = np.vstack((cat.T,mjds.T)).T
         np.savetxt(catfile,cat,fmt='%.5f')        
@@ -898,6 +903,12 @@ if opts.doPlots:
         plt.errorbar(mjd_forced-mjd_forced[0],mag_forced,magerr_forced,fmt='ko')
         plt.xlabel('Time from %.5f [days]'%mjd_forced[0])
         plt.ylabel('Magnitude [arb]')
+        ymed = np.nanmedian(mag_forced)
+        y10, y90 = np.nanpercentile(mag_forced,10), np.nanpercentile(mag_forced,90)
+        ystd = np.nanmedian(magerr_forced)
+        ymin = y10 - 3*ystd
+        ymax = y90 + 3*ystd
+        plt.ylim([ymin,ymax])
         plt.gca().invert_yaxis()
         plt.tight_layout()
         plt.savefig(plotName)
