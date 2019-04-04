@@ -87,7 +87,7 @@ fid = open(filename,'w')
 ras, decs = cat['RAJ2000'], cat['DEJ2000']
 for ra, dec in zip(ras, decs):
 
-    ra  = Angle(ra, unit=u.deg).deg
+    ra  = Angle(ra, unit=u.hour).deg
     dec = Angle(dec, unit=u.deg).deg
 
     if dec < -30: continue
