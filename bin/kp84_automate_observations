@@ -4,6 +4,10 @@ import os, sys, optparse, glob, time
 import sh
 import numpy as np
 
+import requests
+from bs4 import BeautifulSoup
+from requests import Request
+
 import astropy
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -28,6 +32,26 @@ def parse_commandline():
     opts, args = parser.parse_args()
 
     return opts
+
+def get_status():
+    webpage = "http://www-kpno.kpno.noao.edu/cgi-bin/Mtn_Weather/SiteHeader.pl"
+    page = requests.get(webpage)
+
+    # Create a BeautifulSoup object
+    soup = BeautifulSoup(page.text, 'html.parser')
+
+    status, status_string = -2, "Missing status"
+    strings_to_match = ["Domes are OPEN","Domes are CLOSED","No Status"]
+    dome_statuses = [1, 0, -1]
+
+    table = soup.find_all("td")
+    for row in table:
+        for string_to_match, dome_status in zip(strings_to_match,dome_statuses):
+            if string_to_match in str(row):
+                status = dome_status
+                status_string = string_to_match
+                break
+    return status, status_string
 
 def convert_to_hex(val, delimiter=':', force_sign=False):
     """
@@ -90,6 +114,17 @@ def run_screen(proctype, command, checkComplete = False, dt=0.0):
     if dt > 0:
         time.sleep(dt)
 
+def setup_filter(filt):
+
+    command, checkComplete = 'b', False
+    run_screen('filterd', command, checkComplete=checkComplete)
+
+    filts = {'c': 1, 'r': 2, 'g': 3, 'I': 4, 'd': 5, 'U': 6, 'B': 7, 'V': 8, 'R': 9}
+
+    command, checkComplete = '%d' % filts[filt], True
+    run_screen('filterd', command, checkComplete=checkComplete)
+    print("Filter rotating")
+
 def startup_camera():
 
     command, checkComplete = '0', True
@@ -102,7 +137,7 @@ def startup_camera():
 
 def start_exposure(name, mode, filt, exposure_time, exposure_segment):
 
-    # FIX ME: filter change
+    setup_filter(filt)
 
     print("Setting up observation...")
     command, checkComplete = 'a', False
@@ -158,7 +193,7 @@ def get_obs(obs):
         window_start, window_end = Time(window_start), Time(window_end)
         exposure_time = row['exposure_time']
         dt = (window_end.mjd - nt.mjd)*86400.0
-       
+    
         if (nt >= window_start) and (nt <= window_end) and (dt > exposure_time):
             priorities.append(row['priority'])
     if len(priorities) == 0:
@@ -193,19 +228,26 @@ if opts.doCameraObservations:
             print('No observations available in the current window...')
             continue
         row = obs[ii]
+        print('Observing: %s' % row['name'])
+
         start_exposure(row['name'], row['mode'], row['filter'],
                        row['exposure_time'], row['exposure_segment'])
 
+        exposure_time = row['exposure_time']
         exposure_start = Time.now()        
         exposure_end = exposure_start + TimeDelta((row['exposure_time'])*u.s)
 
         window_end = row['window_end'] 
         window_end = Time(window_end)
 
-        while (window_end > Time.now()) or (exposure_end < Time.now()):
+        while (window_end > Time.now()) or (exposure_end > Time.now()):
+            status, status_string = get_status()
+            if status <= 0:
+                close_dome()
             continue
-       
+
         end_exposure() 
-        obs['observed'][ii] = 1        
-    print(obs)
-    print(stop)
+        obs['observed'][ii] = 1
+
+        idx = np.where(obs["observed"] == 0)[0]
+    print('All possible observations performed...')
