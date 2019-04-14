@@ -290,9 +290,9 @@ if opts.doCameraObservations:
 
         while (window_end > Time.now()) or (exposure_end > Time.now()):
             status, status_string = get_status()
-            #if status <= 0:
-            #    close_dome()
-            #    break
+            if status <= 0:
+                close_dome()
+                break
 
         end_exposure() 
         obs['observed'][ii] = 1
