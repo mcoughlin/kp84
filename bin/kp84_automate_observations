@@ -20,6 +20,7 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
+    parser.add_option("--doOpenTelescope",  action="store_true", default=False)
     parser.add_option("--doCameraStartup",  action="store_true", default=False)
     parser.add_option("--doCameraObservations",  action="store_true", default=False)
 
@@ -135,6 +136,46 @@ def startup_camera():
     run_screen('vicd', command, checkComplete=checkComplete) 
     print("Camera cooling")
 
+def open_dome():
+
+    print("Opening dome...")
+    command, checkComplete = 'a', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 'e', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 2, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 'east', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 'e', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+    command, checkComplete = 'i', False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = "31:57:36", True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+    command, checkComplete = 'm', True
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+
+    command, checkComplete = 0, True
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+
+def close_dome():
+
+    print("Moving dome to zenith...")
+    command, checkComplete = 'i', False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = "31:57:36", True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+    command, checkComplete = 'n', True
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+
 def start_exposure(name, mode, filt, exposure_time, exposure_segment):
 
     setup_filter(filt)
@@ -213,6 +254,13 @@ config['screen']['tcsd'] = tcsd
 config['screen']['vicd'] = vicd
 config['screen']['filterd'] = filterd
 
+if opts.doOpenTelescope:
+    status, status_string = get_status()
+    if status <= 0:
+        print('Domes are not open... exiting.')
+        exit(0)
+    open_telescope()
+
 if opts.doCameraStartup:
     startup_camera()
 
@@ -242,9 +290,9 @@ if opts.doCameraObservations:
 
         while (window_end > Time.now()) or (exposure_end > Time.now()):
             status, status_string = get_status()
-            if status <= 0:
-                close_dome()
-            continue
+            #if status <= 0:
+            #    close_dome()
+            #    break
 
         end_exposure() 
         obs['observed'][ii] = 1
