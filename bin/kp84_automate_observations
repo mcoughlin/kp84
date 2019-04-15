@@ -3,6 +3,7 @@
 import os, sys, optparse, glob, time
 import sh
 import numpy as np
+import tailer
 
 import requests
 from bs4 import BeautifulSoup
@@ -26,7 +27,7 @@ def parse_commandline():
 
     parser.add_option("--observation_list",default="../input/observation_list.dat")
 
-    parser.add_option("--tcsd",default="1414.tcsd")
+    parser.add_option("--tcsd",default="22944.tcsd")
     parser.add_option("--vicd",default="813.vicd_test")
     parser.add_option("--filterd",default="6888.filterd_test")
 
@@ -94,11 +95,11 @@ def check_complete(proctype):
 
     logpath = "/home/kped/Software/Logs/"
 
-    tail = sh.tail("-f", "%s/%s.log" % (logpath, proctype), _iter=True)
     complete = False 
     while not complete:
-        new_data = tail.next()
-        print(new_data)
+        #tail = sh.tail("-f", "%s/%s.log" % (logpath, proctype), _iter=True)
+        #new_data = tail.next()
+        new_data = tailer.tail(open("%s/%s.log" % (logpath, proctype)), 1)[0]
         if "COMPLETE" in new_data:
             break
 
@@ -108,6 +109,9 @@ def run_screen(proctype, command, checkComplete = False, dt=0.0):
 
     screen_command = 'screen -S %s -p 0 -X stuff "%s^M"' % (screen, command)
     os.system(screen_command)
+
+    # give time for the log to trigger
+    time.sleep(5.0)
 
     if checkComplete:
         check_complete(proctype)
@@ -154,12 +158,13 @@ def open_dome():
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
     command, checkComplete = 0, False
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
-    command, checkComplete = "31:57:36", True
+    command, checkComplete = "31:57:36", False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, True
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
 
     command, checkComplete = 'm', True
     run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
-
     command, checkComplete = 0, True
     run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
 
@@ -170,7 +175,9 @@ def close_dome():
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
     command, checkComplete = 0, False
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
-    command, checkComplete = "31:57:36", True
+    command, checkComplete = "31:57:36", False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, True
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
 
     command, checkComplete = 'n', True
@@ -259,7 +266,7 @@ if opts.doOpenTelescope:
     if status <= 0:
         print('Domes are not open... exiting.')
         exit(0)
-    open_telescope()
+    open_dome()
 
 if opts.doCameraStartup:
     startup_camera()
