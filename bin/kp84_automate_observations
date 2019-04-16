@@ -100,6 +100,7 @@ def check_complete(proctype):
         #tail = sh.tail("-f", "%s/%s.log" % (logpath, proctype), _iter=True)
         #new_data = tail.next()
         new_data = tailer.tail(open("%s/%s.log" % (logpath, proctype)), 1)[0]
+        print(new_data)
         if "COMPLETE" in new_data:
             break
 
@@ -164,9 +165,9 @@ def open_dome():
     run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
 
     command, checkComplete = 'm', True
-    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
     command, checkComplete = 0, True
-    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
 
 def close_dome():
 
@@ -231,7 +232,7 @@ def slew_telescope(ra, dec):
 
 def get_obs(obs):
 
-    priorities = []
+    idxs, priorities = [], []
     nt = Time.now()
     for ii, row in enumerate(obs):
         if row["observed"] == 1:
@@ -241,14 +242,15 @@ def get_obs(obs):
         window_start, window_end = Time(window_start), Time(window_end)
         exposure_time = row['exposure_time']
         dt = (window_end.mjd - nt.mjd)*86400.0
-    
+   
         if (nt >= window_start) and (nt <= window_end) and (dt > exposure_time):
+            idxs.append(ii)
             priorities.append(row['priority'])
     if len(priorities) == 0:
         return -1
  
     idx = np.argmax(priorities)
-    return idx
+    return idxs[idx]
 
 # Parse command line
 opts = parse_commandline()
@@ -261,15 +263,15 @@ config['screen']['tcsd'] = tcsd
 config['screen']['vicd'] = vicd
 config['screen']['filterd'] = filterd
 
+if opts.doCameraStartup:
+    startup_camera()
+
 if opts.doOpenTelescope:
     status, status_string = get_status()
     if status <= 0:
         print('Domes are not open... exiting.')
         exit(0)
     open_dome()
-
-if opts.doCameraStartup:
-    startup_camera()
 
 if opts.doCameraObservations:
     obs = Table.read(observation_list, format='ascii')
@@ -283,6 +285,9 @@ if opts.doCameraObservations:
             print('No observations available in the current window...')
             continue
         row = obs[ii]
+
+        slew_telescope(row['ra'], row['dec'])
+
         print('Observing: %s' % row['name'])
 
         start_exposure(row['name'], row['mode'], row['filter'],
