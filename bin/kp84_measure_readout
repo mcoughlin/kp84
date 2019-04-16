@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, vstack
+from astropy.io import ascii
+from astropy.time import Time
+from astropy.wcs import WCS
+
+import h5py    
+from astropy.io import fits
+
+import ztfsub.utils, ztfsub.surveys
+import ztfsub.plotting
+
+from skimage.feature import register_translation
+import image_registration
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-f","--filename",default="/Data/20190329/mode1_20190329_165314.019636_o.fits")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+filename = opts.filename
+
+hdulist = fits.open(filename)
+header = hdulist[0].header
+dateobs = Time(hdulist[1].header["DATE"])
+mjd = dateobs.mjd
+
+mjds = []
+for jj in range(len(hdulist)-1):
+    if "DATE" in hdulist[jj+1].header:
+        dateobs = Time(hdulist[jj+1].header["DATE"])
+        mjds.append(dateobs.mjd)
+
+mjds_diff = np.diff(mjds)
+mjds_diff_days = mjds_diff*86400.0
+
+print("Average dt: %.5f" % np.mean(mjds_diff_days))
+
