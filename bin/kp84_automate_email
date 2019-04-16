@@ -6,29 +6,13 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 
-from astropy import units as u
-from astropy.coordinates import SkyCoord
-from astropy.table import Table, vstack
-from astropy.io import ascii
-from astropy.time import Time
-from astropy.wcs import WCS
-
-import h5py    
-from astropy.io import fits
-
-import ztfsub.utils, ztfsub.surveys
-import ztfsub.plotting
-
-from skimage.feature import register_translation
-import image_registration
-
 def parse_commandline():
     """
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("-d","--day",default="20190329")
+    parser.add_option("-d","--day",default="20190416")
 
     opts, args = parser.parse_args()
 
@@ -38,6 +22,9 @@ def parse_commandline():
 opts = parse_commandline()
 day = opts.day
 inputDir = os.path.join("/Data/",opts.day)
+print(os.path.join(inputDir,'*.fits.fz'))
+print(stop)
+
 filenames = glob.glob(os.path.join(inputDir,'*.fits')) + glob.glob(os.path.join(inputDir,'*.fits.fz'))
 
 data = {}
@@ -45,6 +32,9 @@ for filename in filenames:
     filenameSplit = filename.split("/")[-1].split("_")
     obj, mode, filt = filenameSplit[0], int(filenameSplit[1]), filenameSplit[2]
 
+    print(obj, mode, filt)
+    print(stop)    
+ 
     hdulist = fits.open(filename)
     header = hdulist[0].header
     dateobs = Time(hdulist[1].header["DATE"])
