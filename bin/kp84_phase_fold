@@ -1,0 +1,62 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+import matplotlib.cm as cm
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-f","--filenames",default="/Users/mcoughlin/Desktop/forced.dat")
+    parser.add_option("-o","--outputFile",default="/Users/mcoughlin/Desktop/forced.pdf")
+    parser.add_option("-p","--period",default=0.004800835466385,type=float)
+    parser.add_option("-s","--skiprows",default=1,type=int)
+    parser.add_option("-g","--goodrows",default=-1,type=int)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+      
+filenames = opts.filenames.split(",")
+for ii,filename in enumerate(filenames):
+    datatmp = np.loadtxt(filename,skiprows=opts.skiprows)
+    if ii == 0:
+        data = datatmp
+    else:
+        data = np.vstack((data,datatmp))
+
+data = data[:opts.goodrows,:]
+mjd = data[:,0]      
+mjd_mod = np.mod(mjd, opts.period)/(opts.period)
+mag = data[:,1]
+magerr = data[:,2]
+
+colors = cm.rainbow(np.linspace(0, 1, len(mjd_mod)))
+
+fig = plt.figure(figsize=(20,8))
+plt.errorbar(mjd_mod,mag,magerr,fmt='o',color='k')
+for mjd, m, merr, color in zip(mjd_mod,mag,magerr,colors):
+    print(mjd, m, color)
+    #plt.scatter(mjd, m, s = 80, facecolors=color, edgecolors=color, zorder=100)
+plt.xlabel('Time from %.5f [days]'%mjd_mod[0])
+plt.ylabel('Magnitude [arb]')
+ymed = np.nanmedian(mag)
+y10, y90 = np.nanpercentile(mag,10), np.nanpercentile(mag,90)
+ystd = np.nanmedian(magerr)
+ymin = y10 - 3*ystd
+ymax = y90 + 3*ystd
+plt.ylim([ymin,ymax])
+plt.gca().invert_yaxis()
+plt.tight_layout()
+plt.savefig(opts.outputFile)
+plt.close()
+

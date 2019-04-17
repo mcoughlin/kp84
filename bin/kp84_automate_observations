@@ -1,0 +1,323 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, glob, time
+import sh
+import numpy as np
+import tailer
+
+import requests
+from bs4 import BeautifulSoup
+from requests import Request
+
+import astropy
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, Column
+from astropy.time import Time, TimeDelta
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--doOpenTelescope",  action="store_true", default=False)
+    parser.add_option("--doCameraStartup",  action="store_true", default=False)
+    parser.add_option("--doCameraObservations",  action="store_true", default=False)
+
+    parser.add_option("--observation_list",default="../input/observation_list.dat")
+
+    parser.add_option("--tcsd",default="22944.tcsd")
+    parser.add_option("--vicd",default="813.vicd_test")
+    parser.add_option("--filterd",default="6888.filterd_test")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def get_status():
+    webpage = "http://www-kpno.kpno.noao.edu/cgi-bin/Mtn_Weather/SiteHeader.pl"
+    page = requests.get(webpage)
+
+    # Create a BeautifulSoup object
+    soup = BeautifulSoup(page.text, 'html.parser')
+
+    status, status_string = -2, "Missing status"
+    strings_to_match = ["Domes are OPEN","Domes are CLOSED","No Status"]
+    dome_statuses = [1, 0, -1]
+
+    table = soup.find_all("td")
+    for row in table:
+        for string_to_match, dome_status in zip(strings_to_match,dome_statuses):
+            if string_to_match in str(row):
+                status = dome_status
+                status_string = string_to_match
+                break
+    return status, status_string
+
+def convert_to_hex(val, delimiter=':', force_sign=False):
+    """
+    Converts a numerical value into a hexidecimal string
+
+    Parameters:
+    ===========
+    - val:           float
+                     The decimal number to convert to hex.
+
+    - delimiter:     string
+                     The delimiter between hours, minutes, and seconds
+                     in the output hex string.
+
+    - force_sign:    boolean
+                     Include the sign of the string on the output,
+                     even if positive? Usually, you will set this to
+                     False for RA values and True for DEC
+
+    Returns:
+    ========
+    A hexadecimal representation of the input value.
+    """
+    s = np.sign(val)
+    s_factor = 1 if s > 0 else -1
+    val = np.abs(val)
+    degree = int(val)
+    minute = int((val  - degree)*60)
+    second = (val - degree - minute/60.0)*3600.
+    if degree == 0 and s_factor < 0:
+        return '-00{2:s}{0:02d}{2:s}{1:.2f}'.format(minute, second, delimiter)
+    elif force_sign or s_factor < 0:
+        deg_str = '{:+03d}'.format(degree * s_factor)
+    else:
+        deg_str = '{:02d}'.format(degree * s_factor)
+    return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
+
+def check_complete(proctype):
+
+    logpath = "/home/kped/Software/Logs/"
+
+    complete = False 
+    while not complete:
+        #tail = sh.tail("-f", "%s/%s.log" % (logpath, proctype), _iter=True)
+        #new_data = tail.next()
+        new_data = tailer.tail(open("%s/%s.log" % (logpath, proctype)), 1)[0]
+        print(new_data)
+        if "COMPLETE" in new_data:
+            break
+
+def run_screen(proctype, command, checkComplete = False, dt=0.0):
+
+    screen = config['screen'][proctype]
+
+    screen_command = 'screen -S %s -p 0 -X stuff "%s^M"' % (screen, command)
+    os.system(screen_command)
+
+    # give time for the log to trigger
+    time.sleep(5.0)
+
+    if checkComplete:
+        check_complete(proctype)
+
+    if dt > 0:
+        time.sleep(dt)
+
+def setup_filter(filt):
+
+    command, checkComplete = 'b', False
+    run_screen('filterd', command, checkComplete=checkComplete)
+
+    filts = {'c': 1, 'r': 2, 'g': 3, 'I': 4, 'd': 5, 'U': 6, 'B': 7, 'V': 8, 'R': 9}
+
+    command, checkComplete = '%d' % filts[filt], True
+    run_screen('filterd', command, checkComplete=checkComplete)
+    print("Filter rotating")
+
+def startup_camera():
+
+    command, checkComplete = '0', True
+    run_screen('vicd', command, checkComplete=checkComplete)
+    print("Camera started")
+
+    command, checkComplete = 'f', True
+    run_screen('vicd', command, checkComplete=checkComplete) 
+    print("Camera cooling")
+
+def open_dome():
+
+    print("Opening dome...")
+    command, checkComplete = 'a', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 'e', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 2, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 'east', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 'e', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+    command, checkComplete = 'i', False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = "31:57:36", False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+    command, checkComplete = 'm', True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+def slew_to_zenith():
+
+    print("Moving telescope to zenith...")
+    command, checkComplete = 'i', False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = "31:57:36", False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, True
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+
+def close_dome():
+
+    slew_to_zenith()
+    time.sleep(180.0)
+
+    command, checkComplete = 'n', True
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+
+def start_exposure(name, mode, filt, exposure_time, exposure_segment):
+
+    setup_filter(filt)
+
+    print("Setting up observation...")
+    command, checkComplete = 'a', False
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = mode, False
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = "%s_%d_%s" % (name, mode, filt), False
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 0, False
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = exposure_time, True
+    run_screen('vicd', command, checkComplete=checkComplete)
+
+    command, checkComplete = 'h', False
+    run_screen('vicd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = '%d %d' % (exposure_time, exposure_segment), True
+    run_screen('vicd', command, checkComplete=checkComplete, dt=3.0) 
+
+    command, checkComplete = 'c', True
+    run_screen('vicd', command, checkComplete=checkComplete)
+    print("Running observation...")
+
+def end_exposure():
+    command, checkComplete = 'd', True
+    run_screen('vicd', command, checkComplete=checkComplete)
+    print("Stopping observation...")
+
+def slew_telescope(ra, dec):
+
+    coord = SkyCoord(ra, dec, unit='deg')
+    ra_hex, dec_hex = convert_to_hex(coord.ra.hourangle), convert_to_hex(coord.dec.deg,force_sign=True)
+
+    slew_to_zenith()
+    time.sleep(180.0)
+
+    print("Telescope slewing")
+    command, checkComplete = 'g', False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = ra_hex, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = dec_hex, False
+    run_screen('tcsd', command, checkComplete=checkComplete, dt=0.5)
+    command, checkComplete = 2000, False
+    run_screen('tcsd', command, checkComplete=checkComplete)
+    print("Telescope slewed")
+
+    time.sleep(180.0)
+
+def get_obs(obs):
+
+    idxs, priorities = [], []
+    nt = Time.now()
+    for ii, row in enumerate(obs):
+        if row["observed"] == 1:
+            continue
+
+        window_start, window_end = row['window_start'], row['window_end']    
+        window_start, window_end = Time(window_start), Time(window_end)
+        exposure_time = row['exposure_time']
+        dt = (window_end.mjd - nt.mjd)*86400.0
+   
+        if (nt >= window_start) and (nt <= window_end) and (dt > exposure_time):
+            idxs.append(ii)
+            priorities.append(row['priority'])
+    if len(priorities) == 0:
+        return -1
+ 
+    idx = np.argmax(priorities)
+    return idxs[idx]
+
+# Parse command line
+opts = parse_commandline()
+observation_list = opts.observation_list
+
+tcsd, vicd, filterd = opts.tcsd, opts.vicd, opts.filterd
+config = {}
+config['screen'] = {}
+config['screen']['tcsd'] = tcsd
+config['screen']['vicd'] = vicd
+config['screen']['filterd'] = filterd
+
+if opts.doCameraStartup:
+    startup_camera()
+
+if opts.doOpenTelescope:
+    status, status_string = get_status()
+    if status <= 0:
+        print('Domes are not open... exiting.')
+        exit(0)
+    open_dome()
+
+if opts.doCameraObservations:
+    obs = Table.read(observation_list, format='ascii')
+    observed = Column(name='observed', data=np.zeros(np.array(obs['ra']).shape))
+    obs.add_column(observed) 
+
+    idx = np.where(obs["observed"] == 0)[0]
+    while len(idx) > 0:
+        ii = get_obs(obs)
+        if ii < 0:
+            print('No observations available in the current window...')
+            continue
+        row = obs[ii]
+
+        slew_telescope(row['ra'], row['dec'])
+
+        print('Observing: %s' % row['name'])
+
+        start_exposure(row['name'], row['mode'], row['filter'],
+                       row['exposure_time'], row['exposure_segment'])
+
+        exposure_time = row['exposure_time']
+        exposure_start = Time.now()        
+        exposure_end = exposure_start + TimeDelta((row['exposure_time'])*u.s)
+
+        window_end = row['window_end'] 
+        window_end = Time(window_end)
+
+        while (window_end > Time.now()) or (exposure_end > Time.now()):
+            status, status_string = get_status()
+            if status <= 0:
+                close_dome()
+                break
+
+        end_exposure() 
+        obs['observed'][ii] = 1
+
+        idx = np.where(obs["observed"] == 0)[0]
+    print('All possible observations performed...')

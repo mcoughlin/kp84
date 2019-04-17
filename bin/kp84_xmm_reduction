@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+import matplotlib.colors as colors
 import scipy.signal
 
 from astropy import units as u
@@ -25,7 +26,7 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="/Users/mcoughlin/Desktop/1815fSwift/00010787002/xrt/event")
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/XMM/0800971501/pps")
 
     parser.add_option("-i","--inputDir",default="../input")
     parser.add_option("-o","--outputDir",default="../output")
@@ -33,7 +34,7 @@ def parse_commandline():
     parser.add_option("--doPlots",  action="store_true", default=False)
 
     parser.add_option("-s","--star",default="1815f")
-    parser.add_option("-a","--aperture",type=float,default=18.0)
+    parser.add_option("-a","--aperture",type=float,default=9.0)
     parser.add_option("-n","--nbackground",type=int,default=5000)
 
     opts, args = parser.parse_args()
@@ -52,7 +53,7 @@ nbackground = opts.nbackground
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
-path_out_dir='%s/%s/%s'%(outputDir,'xray',star)
+path_out_dir='%s/%s/%s'%(outputDir,'xmm',star)
 if not os.path.isdir(path_out_dir):
     os.makedirs(path_out_dir)
 
@@ -67,18 +68,38 @@ for ii,line in enumerate(lines):
         print("%s missing from observed list, please add."%star)
         exit(0)
 
-fitsfile = glob.glob(os.path.join(dataDir,"*po_cl.evt"))[0]
-hdulist = fits.open(fitsfile)
-photondata = hdulist[1].data
+fitsfiles = glob.glob(os.path.join(dataDir,"*S003*PIEVL*.FTZ"))
+for ii,fitsfile in enumerate(fitsfiles):
+    print(fitsfile)
+    hdulist = fits.open(fitsfile)
 
-fitsfile = os.path.join(dataDir,"image.fits")
-wcs_header = fits.getheader(fitsfile)
-w = WCS(wcs_header)
-x0,y0 = w.wcs_world2pix(ra,dec,1)
+fitsfiles = glob.glob(os.path.join(dataDir,"*S003*IMAGE*1000*.FTZ"))
+exposuretime = 0
+for ii,fitsfile in enumerate(fitsfiles):
+    print(fitsfile)
+    hdulist = fits.open(fitsfile)
+    if len(hdulist) < 2: continue
 
-hdulist = fits.open(fitsfile)
-scienceimage = hdulist[0].data
-exposuretime = hdulist[0].header["EXPOSURE"]
+    photondata = hdulist[1].data
+    wcs_header = fits.getheader(fitsfile)
+    w = WCS(wcs_header)
+    x0,y0 = w.wcs_world2pix(ra,dec,1)
+
+    if ii == 0:
+        scienceimage = hdulist[0].data.astype(float)
+    else:
+        scienceimage = scienceimage + hdulist[0].data.astype(float)
+
+    exposuretime = exposuretime + wcs_header["DURATION"]
+
+scienceimage[scienceimage>2] = 0.0
+
+hdulist[0].data = scienceimage
+hdulist = hdulist[0]
+hdulist.header["EXPTIME"] = 1.0
+fitsfile = os.path.join(path_out_dir,'image.fits')
+hdulist.writeto(fitsfile,output_verify='fix',overwrite=True)
+
 xshape, yshape = scienceimage.shape
 X, Y = np.meshgrid(np.arange(xshape),np.arange(yshape))
 idx = np.where(scienceimage.flatten()>0)[0]
@@ -86,11 +107,36 @@ xs, ys = X.flatten()[idx], Y.flatten()[idx]
 xmin, xmax = np.min(xs), np.max(xs)
 ymin, ymax = np.min(ys), np.max(ys)
 
+if opts.doPlots:
+
+    bins = np.linspace(-1,10.0,12)
+    plotName = os.path.join(path_out_dir,'pixels.png')
+    hist1, bin_edges = np.histogram(scienceimage,bins=bins)
+    hist1 = hist1 / np.sum(hist1)
+    bins1 = (bin_edges[:-1]+bin_edges[1:])/2.0
+    fig = plt.figure(figsize=(20,8))
+    ax = fig.add_subplot(1, 1, 1)
+    plt.step(bins1, hist1, where='mid')
+    plt.savefig(plotName)
+    plt.close()
+
+    plotName = os.path.join(path_out_dir,'image.png')
+    Z = scienceimage*1.0
+    Z[Z==0] = 1e-16
+    fig = plt.figure(figsize=(12,12))
+    plt.pcolormesh(X, Y, Z.T, vmin=0.0, vmax=2.0)
+    plt.colorbar()
+    plt.ylim([xmin,xmax])
+    plt.xlim([ymin,ymax])
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
 pnts = geometry.MultiPoint([[x, y] for x,y in zip(xs,ys)])
 poly = pnts.convex_hull
 
-plate_scale = 2.86 # arcsec / pixel
-mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(fitsfile,x=x0,y=y0,fwhm=aperture/plate_scale)
+plate_scale = 1.1 # arcsec / pixel
+mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(fitsfile,x=x0,y=y0,fwhm=aperture/plate_scale,skyalgorithm='sigmaclipping')
 
 fluxes = []
 while len(fluxes) < nbackground:
@@ -103,7 +149,7 @@ while len(fluxes) < nbackground:
     if not poly.contains(pnt):
         continue
 
-    mjd_forced_background, mag_forced_background, magerr_forced_background, flux_forced_background, fluxerr_forced_background = ztfsub.utils.forcedphotometry(fitsfile,x=xrand,y=yrand,fwhm=aperture/plate_scale)
+    mjd_forced_background, mag_forced_background, magerr_forced_background, flux_forced_background, fluxerr_forced_background = ztfsub.utils.forcedphotometry(fitsfile,x=xrand,y=yrand,fwhm=aperture/plate_scale,skyalgorithm='sigmaclipping')
 
     flux_forced_background = flux_forced_background[0]
     if not np.isnan(flux_forced_background):
@@ -114,7 +160,7 @@ print('95%% upperlimit: %.3e cnts/s'%(perc_95/exposuretime))
 
 if opts.doPlots:
 
-    bins = np.linspace(0,3.0,41)
+    bins = np.linspace(-100,100.0,41)
     hist1, bin_edges = np.histogram(fluxes,bins=bins)
     hist1 = hist1 / np.sum(hist1)
     bins1 = (bin_edges[:-1]+bin_edges[1:])/2.0

@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy.time import Time
+from astropy.io import fits
+
+import smtplib
+from email.mime.text import MIMEText
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-d","--day",default="20190416")
+    parser.add_option("-u","--user",default="kpedemail@gmail.com")
+    parser.add_option("-p","--pwd")
+    parser.add_option("-t","--to",default="michael.w.coughlin@gmail.com,kburdge@caltech.edu")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+day = opts.day
+user = opts.user
+pwd = opts.pwd
+to = opts.to.split(",")
+
+inputDir = os.path.join("/Data/",opts.day)
+filenames = glob.glob(os.path.join(inputDir,'*.fits')) + glob.glob(os.path.join(inputDir,'*.fits.fz'))
+
+data = {}
+for filename in filenames:
+    filenameSplit = filename.split("/")[-1].split("_")
+    obj, mode, filt = filenameSplit[0], int(filenameSplit[1]), filenameSplit[2]
+
+    if not obj in data:
+        data[obj] = {}
+    if not mode in data[obj]:
+        data[obj][mode] = {}
+    if not filt in data[obj][mode]:
+        data[obj][mode][filt] = []
+ 
+    hdulist = fits.open(filename)
+    header = hdulist[0].header
+    dateobs = Time(hdulist[1].header["DATE"])
+    mjd = dateobs.mjd
+
+    mjds = []
+    for jj in range(len(hdulist)-1):
+        if "DATE" in hdulist[jj+1].header:
+            dateobs = Time(hdulist[jj+1].header["DATE"])
+            data[obj][mode][filt].append(dateobs.mjd)
+
+body = []
+for obj in data.keys():
+    for mode in data[obj].keys():
+        body.append('For object %s, mode %d' % (obj, mode))
+        for filt in data[obj][mode].keys():
+            time_min = Time(np.min(data[obj][mode][filt]), format='mjd')
+            time_max = Time(np.max(data[obj][mode][filt]), format='mjd')
+            dt = (time_max.mjd - time_min.mjd) * 24.0
+            body.append(('Observed in g-band: %s to %s, %.2f hrs'%(str(time_min),str(time_max),dt)))
+
+body = "\n".join(body)
+subject = 'KPED Observation Summary: %s' %day
+
+msg = MIMEText(body)
+msg['Subject'] = subject
+msg['From'] = user
+msg['To'] = to
+
+server = smtplib.SMTP('smtp.gmail.com', 587)
+server.ehlo()
+server.starttls()
+server.login(user, pwd)
+server.sendmail(user, to, body)
+server.close()
