@@ -51,16 +51,16 @@ if downloadType == "data":
         result = subprocess.run(scp_command.split(" "), stdout=subprocess.PIPE)
 
 elif downloadType == "analysis":
-    fullpath = "/home/roboao/Michael/kp84/output/%s" % filepath
+    fullpath = "/home/roboao/Michael/kp84/output/%s/%s" % (day, filepath)
 
-    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/movie/movie.mpg %s/movie_%s" % (fullpath, outputDir, filepath.replace("/","_"))
+    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/movie/movie.mpg %s/movie_%s.mpg" % (fullpath, outputDir, filepath.replace("/","_"))
     result = subprocess.run(scp_command.split(" "), stdout=subprocess.PIPE)
 
-    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/forced.dat %s/forced_%s" % (fullpath, outputDir, filepath.replace("/","_"))
+    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/forced.dat %s/forced_%s.dat" % (fullpath, outputDir, filepath.replace("/","_"))
     result = subprocess.run(scp_command.split(" "), stdout=subprocess.PIPE)
 
-    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/mag_relative_forced.pdf %s/mag_relative_forced_%s" % (fullpath, outputDir, filepath.replace("/","_"))
+    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/mag_relative_forced.pdf %s/mag_relative_forced_%s.pdf" % (fullpath, outputDir, filepath.replace("/","_"))
     result = subprocess.run(scp_command.split(" "), stdout=subprocess.PIPE)
 
-    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/flux_relative_forced.pdf %s/flux_relative_forced_%s" % (fullpath, outputDir, filepath.replace("/","_"))
+    scp_command = "scp -P 22220 roboao@140.252.53.120:%s/flux_relative_forced.pdf %s/flux_relative_forced_%s.pdf" % (fullpath, outputDir, filepath.replace("/","_"))
     result = subprocess.run(scp_command.split(" "), stdout=subprocess.PIPE)
