@@ -152,6 +152,33 @@ def wise_query(ra_deg, dec_deg, rad_deg, maxmag=24,
     except:
         return []
 
+def wise_agn_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+               maxsources=10000):
+    """
+    Query WISE AGN catalog @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['WISEA', 'RAJ2000', 'DEJ2000',
+                             'W1mag','e_W1mag','W2mag','e_W2mag',
+                             'W3mag','e_W3mag','W4mag','e_W4mag'],
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="J/ApJS/234/23/c75cat")
+        return source[0]
+    except:
+        return []
+
 def sdss_query(ra_deg, dec_deg, rad_deg, maxmag=24,
                maxsources=10000):
     """
@@ -179,18 +206,69 @@ def sdss_query(ra_deg, dec_deg, rad_deg, maxmag=24,
     except:
         return []
 
+def vlss_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+               maxsources=10000):
+    """
+    Query NVSS DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['NVSS', 'RAJ2000', 'DEJ2000',
+                             'e_RAJ2000', 'e_DEJ2000',
+                             'S1.4', 'e_S1.4'],
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="VIII/65/nvss")[0]
+        return source
+    except:
+        return []
+
+def galex_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+               maxsources=10000):
+    """
+    Query GALEX DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['NVSS', 'RAJ2000', 'DEJ2000',
+                             'FUVmag', 'e_FUVmag',
+                             'NUVmag', 'e_NUVmag'],
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/335/galex_ais")[0]
+        return source
+    except:
+        return []
+
 # To-Dos:
 # Easy / Short-term:
 # Implement real WISE color cuts: https://ui.adsabs.harvard.edu/abs/2015ApJS..221...12S/abstract
-# Cross-match with WISE agn catalog: https://ui.adsabs.harvard.edu/abs/2018ApJS..234...23A/abstract
-# Figure out how to pull down detection catalog from PS DR2: https://catalogs.mast.stsci.edu/
-# Cross-match against NVSS
-# Cross-match against GALEX
 # Cross-match against X-ray catalogs (for AGN)
 
 # Hard / Long-term:
 # Auto-update iPTF/ZTF lightcurves when source is saved
 # PS1-based CV set to train on
+# Figure out how to pull down detection catalog from PS DR2: https://catalogs.mast.stsci.edu/
 
 # Parse command line
 opts = parse_commandline()
@@ -336,8 +414,11 @@ for ra, dec in zip(ras, decs):
     if not len(wise) == 0:
         wise['W1-W2'] = wise['W1mag'] - wise['W2mag']
         wise['W2-W3'] = wise['W2mag'] - wise['W3mag']
+    wise_agn = wise_agn_query(ra, dec, 5/3600.0)
     sdss = sdss_query(ra, dec, 20/3600.0)
-    
+    vlss = vlss_query(ra, dec, 5/3600.0)
+    galex = galex_query(ra, dec, 5/3600.0)    
+
     try:
         result_table = Simbad.query_region(coord,
                                            radius=10.0/3600.0 * u.deg)
@@ -385,15 +466,17 @@ for ra, dec in zip(ras, decs):
         if row["zph"] > 0:
             notes.append('[photz = %.2f +- %.2f]' % (row["zph"], row["e_zph"]))
    
-    # If score is 0.5, no rb score
-    # If at low galactic latitudes, lower threshold to 0.5 or so
-    # if at high latitudes, 0.827
- 
     if not len(wise) == 0:
         qso = ellipse.contains_point((wise['W1-W2'],wise['W2-W3']))
         if qso:
             notes.append('[agn]')
-    
+    if not len(wise_agn) == 0:    
+        notes.append('[agn Assef+18]')
+    if not len(vlss) == 0:
+        notes.append('[nvss]')
+    if not len(galex) == 0:
+        notes.append('[galex]')
+
     if opts.doSkymap:
         pix = hp.ang2pix(nside, ra, dec, lonlat=True)
         if not pix in top_subset:
