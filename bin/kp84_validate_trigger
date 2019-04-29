@@ -3,11 +3,13 @@
 import os, sys
 import glob
 import optparse
+import requests
 
 import numpy as np
 import h5py
 import healpy as hp
 from astropy.table import Table, Column
+from astropy.io import ascii
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import Angle
@@ -15,6 +17,8 @@ from astroquery.vizier import Vizier
 
 import matplotlib
 import matplotlib.patches as patches
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
 
 from penquins import Kowalski
 
@@ -28,6 +32,7 @@ def parse_commandline():
     parser = optparse.OptionParser()
 
     parser.add_option("--catalogDir", help="catalog directory",default="../catalogs")
+    parser.add_option("-o","--outputDir",default="../ztf_candidates")
 
     parser.add_option("-r","--ra",default=214.956010,type=float)
     parser.add_option("-d","--declination",default=33.005978,type=float)
@@ -47,6 +52,7 @@ def parse_commandline():
     parser.add_option("--skipper_user")
     parser.add_option("--skipper_pwd")
 
+    parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doVerbose",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
@@ -95,6 +101,174 @@ def get_trigger_cands(start_day,end_day,username,password,programid=2):
 
     return name_, ra_transient,dec_transient
 
+def ps1cone(ra,dec,radius,table="mean",release="dr1",format="csv",columns=None,
+           baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs", verbose=False,
+           **kw):
+    """Do a cone search of the PS1 catalog
+    
+    Parameters
+    ----------
+    ra (float): (degrees) J2000 Right Ascension
+    dec (float): (degrees) J2000 Declination
+    radius (float): (degrees) Search radius (<= 0.5 degrees)
+    table (string): mean, stack, or detection
+    release (string): dr1 or dr2
+    format: csv, votable, json
+    columns: list of column names to include (None means use defaults)
+    baseurl: base URL for the request
+    verbose: print info about request
+    **kw: other parameters (e.g., 'nDetections.min':2)
+    """
+
+    data = kw.copy()
+    data['ra'] = ra
+    data['dec'] = dec
+    data['radius'] = radius
+    return ps1search(table=table,release=release,format=format,columns=columns,
+                    baseurl=baseurl, verbose=verbose, **data)
+
+def ps1search(table="mean",release="dr1",format="csv",columns=None,
+           baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs", verbose=False,
+           **kw):
+    """Do a general search of the PS1 catalog (possibly without ra/dec/radius)
+    
+    Parameters
+    ----------
+    table (string): mean, stack, or detection
+    release (string): dr1 or dr2
+    format: csv, votable, json
+    columns: list of column names to include (None means use defaults)
+    baseurl: base URL for the request
+    verbose: print info about request
+    **kw: other parameters (e.g., 'nDetections.min':2).  Note this is required!
+    """
+
+    data = kw.copy()
+    if not data:
+        raise ValueError("You must specify some parameters for search")
+    checklegal(table,release)
+    if format not in ("csv","votable","json"):
+        raise ValueError("Bad value for format")
+    url = "{baseurl}/{release}/{table}.{format}".format(**locals())
+    if columns:
+        # check that column values are legal
+        # create a dictionary to speed this up
+        dcols = {}
+        for col in ps1metadata(table,release)['name']:
+            dcols[col.lower()] = 1
+        badcols = []
+        for col in columns:
+            if col.lower().strip() not in dcols:
+                badcols.append(col)
+        if badcols:
+            raise ValueError('Some columns not found in table: {}'.format(', '.join(badcols)))
+        # two different ways to specify a list of column values in the API
+        # data['columns'] = columns
+        data['columns'] = '[{}]'.format(','.join(columns))
+
+# either get or post works
+#    r = requests.post(url, data=data)
+    r = requests.get(url, params=data)
+
+    if verbose:
+        print(r.url)
+    r.raise_for_status()
+    if format == "json":
+        return r.json()
+    else:
+        return r.text
+
+def checklegal(table,release):
+    """Checks if this combination of table and release is acceptable
+    
+    Raises a VelueError exception if there is problem
+    """
+   
+    releaselist = ("dr1", "dr2")
+    if release not in ("dr1","dr2"):
+        raise ValueError("Bad value for release (must be one of {})".format(', '.join(releaselist)))
+    if release=="dr1":
+        tablelist = ("mean", "stack")
+    else:
+        tablelist = ("mean", "stack", "detection")
+    if table not in tablelist:
+        raise ValueError("Bad value for table (for {} must be one of {})".format(release, ", ".join(tablelist)))
+
+def ps1metadata(table="mean",release="dr1",
+           baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"):
+    """Return metadata for the specified catalog and table
+    
+    Parameters
+    ----------
+    table (string): mean, stack, or detection
+    release (string): dr1 or dr2
+    baseurl: base URL for the request
+    
+    Returns an astropy table with columns name, type, description
+    """
+
+    checklegal(table,release)
+    url = "{baseurl}/{release}/{table}/metadata".format(**locals())
+    r = requests.get(url)
+    r.raise_for_status()
+    v = r.json()
+    # convert to astropy table
+    tab = Table(rows=[(x['name'],x['type'],x['description']) for x in v],
+               names=('name','type','description'))
+    return tab
+
+def addfilter(dtab):
+    """Add filter name as column in detection table by translating filterID
+    
+    This modifies the table in place.  If the 'filter' column already exists,
+    the table is returned unchanged.
+    """
+    if 'filter' not in dtab.colnames:
+        # the filterID value goes from 1 to 5 for grizy
+        id2filter = np.array(list('grizy'))
+        dtab['filter'] = id2filter[(dtab['filterID']-1).data]
+    return dtab
+
+def ps1_dr2_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+              maxsources=10000):
+
+    constraints = {'nDetections.gt':1}
+
+    # strip blanks and weed out blank and commented-out values
+    columns = """objID,raMean,decMean,nDetections,ng,nr,ni,nz,ny,
+        gMeanPSFMag,rMeanPSFMag,iMeanPSFMag,zMeanPSFMag,yMeanPSFMag""".split(',')
+    columns = [x.strip() for x in columns]
+    columns = [x for x in columns if x and not x.startswith('#')]
+    results = ps1cone(ra_deg, dec_deg, rad_deg,release='dr2',
+                      columns=columns,verbose=False,**constraints)
+    if results == "":
+        return []
+
+    tab = ascii.read(results)
+    # improve the format
+    for filter in 'grizy':
+        col = filter+'MeanPSFMag'
+        try:
+            tab[col].format = ".4f"
+            tab[col][tab[col] == -999.0] = np.nan
+        except KeyError:
+            print("{} not found".format(col))
+
+    objid = tab['objID'][0]
+    dconstraints = {'objID': objid}
+    dcolumns = ("""objID,detectID,filterID,obsTime,ra,dec,psfFlux,psfFluxErr,psfMajorFWHM,psfMinorFWHM,
+                psfQfPerfect,apFlux,apFluxErr,infoFlag,infoFlag2,infoFlag3""").split(',')
+    # strip blanks and weed out blank and commented-out values
+    dcolumns = [x.strip() for x in dcolumns]
+    dcolumns = [x for x in dcolumns if x and not x.startswith('#')]
+    
+    dresults = ps1search(table='detection',release='dr2',columns=dcolumns,**dconstraints)
+    dtab = addfilter(ascii.read(dresults))
+    dtab.sort('obsTime')
+    dtab["mag"] = -2.5*np.log10(dtab['psfFlux']) + 8.90
+   
+    return dtab
+ 
 def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=24,
               maxsources=10000):
     """
@@ -268,12 +442,16 @@ def galex_query(ra_deg, dec_deg, rad_deg, maxmag=24,
 # Hard / Long-term:
 # Auto-update iPTF/ZTF lightcurves when source is saved
 # PS1-based CV set to train on
-# Figure out how to pull down detection catalog from PS DR2: https://catalogs.mast.stsci.edu/
 
 # Parse command line
 opts = parse_commandline()
-catalogFile = os.path.join(opts.catalogDir, 'CLU.hdf5')
 
+outputDir = opts.outputDir
+if opts.doPlots:
+    if not os.path.isdir(outputDir):
+        os.makedirs(outputDir)
+
+catalogFile = os.path.join(opts.catalogDir, 'CLU.hdf5')
 with h5py.File(catalogFile, 'r') as f:
     name = f['name'][:]
     ra, dec = f['ra'][:], f['dec'][:]
@@ -410,6 +588,30 @@ for ra, dec in zip(ras, decs):
     ztf_name = ztf_name.split("_")[1]
     
     ps1 = ps1_query(ra, dec, 5/3600.0)
+    ps1_lightcurve = ps1_dr2_query(ra, dec, 2/3600.0)
+
+    if not len(ps1_lightcurve) == 0:
+        if opts.doPlots:
+            # convert flux in Jy to magnitudes
+            t, mag = ps1_lightcurve['obsTime'], ps1_lightcurve['mag']
+            xlim = np.array([t.min(),t.max()])
+            xlim = xlim + np.array([-1,1])*0.02*(xlim[1]-xlim[0])
+        
+            plt.rcParams.update({'font.size': 14})
+            plt.figure(1,(10,10))
+            for i, filter in enumerate("grizy"):
+                plt.subplot(511+i)
+                w = np.where(ps1_lightcurve['filter']==filter)
+                plt.plot(t[w],mag[w],'-o')
+                plt.ylabel(filter+' [mag]')
+                plt.xlim(xlim)
+                plt.gca().invert_yaxis()
+            plt.xlabel('Time [MJD]')
+            plt.tight_layout()
+            plotName = os.path.join(outputDir, '%s.png' % ztf_name)
+            plt.savefig(plotName)
+            plt.close()
+
     wise = wise_query(ra, dec, 5/3600.0)
     if not len(wise) == 0:
         wise['W1-W2'] = wise['W1mag'] - wise['W2mag']
