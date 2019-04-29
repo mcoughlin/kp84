@@ -1,0 +1,234 @@
+#!/usr/bin/env python
+  
+import os, sys
+import glob
+import optparse
+
+import numpy as np
+import h5py
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import Angle
+from astroquery.vizier import Vizier
+
+import matplotlib
+import matplotlib.patches as patches
+
+from penquins import Kowalski
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--catalogDir", help="catalog directory",default="../catalogs")
+
+    parser.add_option("-r","--ra",default=214.956010,type=float)
+    parser.add_option("-d","--declination",default=33.005978,type=float)
+    parser.add_option("-a","--radius",default=5.0,type=float)
+
+    parser.add_option("-u","--user")
+    parser.add_option("-w","--pwd")
+
+    parser.add_option("--doVerbose",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+              maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+                             'gmag','rmag','imag','zmag','ymag'],
+                    column_filters={"gmag":
+                                    ("<%f" % maxmag),
+                                   "imag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/349/ps1")
+        return source[0]
+    except:
+        return []
+
+def wise_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+               maxsources=10000):
+    """
+    Query Pan-STARRS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['WISE', 'RAJ2000', 'DEJ2000',
+                             'W1mag','e_W1mag','W2mag','e_W2mag',
+                             'W3mag','e_W3mag','W4mag','e_W4mag'],
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="II/311/wise")
+        return source[0]
+    except:
+        return []
+
+# Parse command line
+opts = parse_commandline()
+catalogFile = os.path.join(opts.catalogDir, 'CLU.hdf5')
+
+with h5py.File(catalogFile, 'r') as f:
+    name = f['name'][:]
+    ra, dec = f['ra'][:], f['dec'][:]
+    sfr_fuv, mstar = f['sfr_fuv'][:], f['mstar'][:]
+    distmpc, magb = f['distmpc'][:], f['magb'][:]
+    a, b2a, pa = f['a'][:], f['b2a'][:], f['pa'][:]
+    btc = f['btc'][:]
+
+idx = np.where(distmpc >= 0)[0]
+ra, dec = ra[idx], dec[idx]
+sfr_fuv, mstar = sfr_fuv[idx], mstar[idx]
+distmpc, magb = distmpc[idx], magb[idx]
+a, b2a, pa = a[idx], b2a[idx], pa[idx]
+btc = btc[idx]
+
+#idx = np.where(distmpc <= 300)[0]
+#ra, dec = ra[idx], dec[idx]
+#sfr_fuv, mstar = sfr_fuv[idx], mstar[idx]
+#distmpc, magb = distmpc[idx], magb[idx]
+#a, b2a, pa = a[idx], b2a[idx], pa[idx]
+#btc = btc[idx]
+
+galaxy_coords = SkyCoord(ra * u.deg, dec * u.deg, distmpc * u.Mpc)
+
+kow = Kowalski(username=opts.user, password=opts.pwd)
+
+coord = SkyCoord(opts.ra * u.deg, opts.declination * u.deg)
+gc = coord.transform_to('galactic')
+sep = coord.separation(galaxy_coords).deg
+
+qu = { "query_type": "cone_search", "object_coordinates": { "radec": "[(%.5f,%.5f)]"%(opts.ra,opts.declination), "cone_search_radius": "%.2f" % opts.radius, "cone_search_unit": "arcsec" }, "catalogs": { "ZTF_alerts": { "filter": "{}", "projection": "{}" } } }
+r = kow.query(query=qu)
+
+if not "result_data" in r:
+    print("Query failed. returning.")
+    exit(0)
+
+key = list(r["result_data"].keys())[0]
+data = r["result_data"][key]
+
+for key in data.keys():
+    data_tmp = data[key]
+    if len(data_tmp) == 0:
+        continue
+    ztf_name = data_tmp[0]["_id"]
+
+bands = {1: 'g', 2: 'r', 3: 'i'}
+distnr, jd = [], []
+magpsf, sigmapsf, filt = [], [], []
+rb = []
+sg = {}
+for jj, dat in enumerate(data_tmp):
+    jd.append(dat["candidate"]["jd"])
+    distnr.append(dat["candidate"]["distnr"])
+    rb.append(dat["candidate"]["rb"])
+    magpsf.append(dat["candidate"]["magpsf"])
+    sigmapsf.append(dat["candidate"]["sigmapsf"])
+    filt.append(bands[dat["candidate"]["fid"]])
+    for ii in range(1,4):
+        if jj == 0:
+            sg[ii] = []
+        sg[ii].append([dat["candidate"]['sgscore%d'%(ii)],
+                       dat["candidate"]['distpsnr%d'%(ii)]])
+for ii in range(1,4):
+    sg[ii] = np.array(sg[ii])
+
+ztf_name = ztf_name.split("_")[1]
+
+ps1 = ps1_query(opts.ra, opts.declination, 5/3600.0)
+wise = wise_query(opts.ra, opts.declination, 5/3600.0)
+wise['W1-W2'] = wise['W1mag'] - wise['W2mag']
+wise['W2-W3'] = wise['W2mag'] - wise['W3mag']
+
+try:
+    result_table = Simbad.query_region(coord, radius=10.0/3600.0 * u.deg)
+    if not result_table is None:
+        name = result_table[0]["MAIN_ID"].decode()
+    else:
+        name = "NA"
+except:
+    name = "NA"
+
+notes = []
+if gc.b.deg < 20:
+    notes.append('[lowb]')
+host = False
+for ii in sg.keys():
+    idx = np.where(sg[ii][:,0] < 0.4)[0]
+    if len(idx) > 0:
+        if np.any(sg[ii][idx,1] < 50):
+            host=True
+            break
+if not host:
+    notes.append('[hostless]')
+
+if (np.min(sep)*3600.0) < 10:
+    notes.append('[distance: %.1f Mpc]' % distmpc[np.argmin(sep)])
+
+ellipse = patches.Ellipse((3.0, 1.25), 1.0, 0.5, 70)
+qso = ellipse.contains_point((wise['W1-W2'],wise['W2-W3']))
+if qso:
+    notes.append('[agn]')
+
+print('%s | %.7f | %.7f | %s | %.2f | %.2f | %s' % (ztf_name,
+                                                   opts.ra, opts.declination,
+                                                   filt[np.argmin(magpsf)],
+                                                   np.min(magpsf),
+                                                   sigmapsf[np.argmin(magpsf)],
+                                                   " ".join(notes)))
+
+if opts.doVerbose:
+    print('ZTF name: %s' % ztf_name)
+    print('Peak magnitude (%s): %.1f +- %.1f' % (filt[np.argmin(magpsf)],
+                                                 np.min(magpsf),
+                                                 sigmapsf[np.argmin(magpsf)]))
+    print('Galactic Latitude: %.5f' % gc.b.deg)
+    print('JD start time: %.5f' % np.min(jd))
+    print('Separation from nearest CLU galaxy (arcseconds): %.5f' % (np.min(sep)*3600.0))
+    print('Galaxy distance (Mpc): %.1f' % (distmpc[np.argmin(sep)]))
+    print('')
+    print('PS1 information:')
+    for colname in ps1.columns:
+        column = ps1[colname]
+        print('%s: %s' % (colname, column[0]))
+    print('')
+    print('WISE information:')
+    for colname in wise.columns:
+        column = wise[colname]
+        print('%s: %s' % (colname, column[0]))
+    print('')
+    print('Vizier name: %s' % name) 
+    print('')
+    for ii in sg.keys():
+        print('SG %d: %s' % (ii, sg[ii]))
