@@ -75,7 +75,7 @@ def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=24,
 def wise_query(ra_deg, dec_deg, rad_deg, maxmag=24,
                maxsources=10000):
     """
-    Query Pan-STARRS @ VizieR using astroquery.vizier
+    Query WISE @ VizieR using astroquery.vizier
     parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
                                           radius in degrees
                 maxmag: upper limit G magnitude (optional)
@@ -96,6 +96,33 @@ def wise_query(ra_deg, dec_deg, rad_deg, maxmag=24,
                                width=("%fd" % rad_deg),
                                catalog="II/311/wise")
         return source[0]
+    except:
+        return []
+
+def sdss_query(ra_deg, dec_deg, rad_deg, maxmag=24,
+               maxsources=10000):
+    """
+    Query SDSS @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['SDSS12', 'RAJ2000', 'DEJ2000',
+                             'zph','e_zph',
+                             'zsp','e_zsp'],
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="V/147/sdss12")[0]
+        return source
     except:
         return []
 
@@ -180,6 +207,7 @@ ps1 = ps1_query(opts.ra, opts.declination, 5/3600.0)
 wise = wise_query(opts.ra, opts.declination, 5/3600.0)
 wise['W1-W2'] = wise['W1mag'] - wise['W2mag']
 wise['W2-W3'] = wise['W2mag'] - wise['W3mag']
+sdss = sdss_query(opts.ra, opts.declination, 20/3600.0)
 
 try:
     result_table = Simbad.query_region(coord, radius=10.0/3600.0 * u.deg)
@@ -205,6 +233,12 @@ if not host:
 
 if (np.min(sep)*3600.0) < 10:
     notes.append('[distance: %.1f Mpc]' % distmpc[np.argmin(sep)])
+
+for row in sdss:
+    if row["zsp"] > 0:
+        notes.append('[specz = %.2f +- %.2f]' % (row["zsp"], row["e_zsp"]))
+    if row["zph"] > 0:
+        notes.append('[photz = %.2f +- %.2f]' % (row["zph"], row["e_zph"]))
 
 ellipse = patches.Ellipse((3.0, 1.25), 1.0, 0.5, 70)
 qso = ellipse.contains_point((wise['W1-W2'],wise['W2-W3']))
@@ -268,3 +302,10 @@ if opts.doVerbose:
     print('')
     for ii in sg.keys():
         print('SG %d: %s' % (ii, sg[ii]))
+    print('')
+    print('SDSS spec/phot z')
+    for row in sdss:
+        if row["zsp"] > 0:
+            print('Spec Z = %.2f +- %.2f' % (row["zsp"], row["e_zsp"]))
+        if row["zph"] > 0:
+            print('Phot Z = %.2f +- %.2f' % (row["zph"], row["e_zph"]))
