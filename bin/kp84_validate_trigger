@@ -21,10 +21,45 @@ from penquins import Kowalski
 import urllib
 import pandas as pd
 
-def get_trigger_cands(date,username,password,programid=2):
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--catalogDir", help="catalog directory",default="../catalogs")
+
+    parser.add_option("-r","--ra",default=214.956010,type=float)
+    parser.add_option("-d","--declination",default=33.005978,type=float)
+    parser.add_option("-a","--radius",default=5.0,type=float)
+
+    parser.add_option("--doSkymap",  action="store_true", default=False)
+    parser.add_option("-m","--skymap",default="/Users/mcoughlin/Code/LIGO/gwemopt/data/GW190427/LALInference1.fits.gz,0")
+
+    parser.add_option("--kowalski_user")
+    parser.add_option("--kowalski_pwd")
+
+    parser.add_option("--doMarshalCandidates",  action="store_true", default=False)
+    parser.add_option("-s","--start_day",default="20190426") 
+    parser.add_option("-e","--end_day",default="20190429") 
+    parser.add_option("-p","--programid",default=2,type=int)
+    parser.add_option("-j","--jdmin",default=2458600.140231,type=float)
+    parser.add_option("--skipper_user")
+    parser.add_option("--skipper_pwd")
+
+    parser.add_option("--doVerbose",  action="store_true", default=False)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def get_trigger_cands(start_day,end_day,username,password,programid=2):
 
     url_report = 'http://skipper.caltech.edu:8080/cgi-bin/growth/list_sources_bare.cgi?programidx={}&startdate={}-{}-{}+15%3A26%3A50&enddate={}-{}-{}++15%3A26%3A50'
-    url_report_page = url_report.format(2,date[:4],date[4:6],date[6:],date[:4],date[4:6],str(int(date[6:])+1))
+    url_report_page = url_report.format(programid,
+                                        start_day[:4], start_day[4:6],
+                                        start_day[6:], end_day[:4],
+                                        end_day[4:6], end_day[6:])
 
     # create a password manager
     password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
@@ -44,45 +79,21 @@ def get_trigger_cands(date,username,password,programid=2):
     name_=[]
     for i in range(len(df_list[1]['Name (age)'])):
         if pd.notna(df_list[1]['Name (age)'][i]):
+            if "Showing" in df_list[1]['Name (age)'][i][:12]: continue
             name_.append(df_list[1]['Name (age)'][i][:12])
             coord.append(df_list[1]['RA  Dec'][i]) 
 
     coord=np.array(coord)
     name_=np.array(name_)
-    print('Loaded :',len(name_),'ZTF objects')
 
     ra_transient,dec_transient=[],[]
     for i in range(len(coord)):
+        if "Showing" in coord[i]: continue
         c = SkyCoord(coord[i], unit=(u.hourangle, u.deg))
         ra_transient.append( c.ra.deg)
         dec_transient.append( c.dec.deg)
 
     return name_, ra_transient,dec_transient
-
-
-def parse_commandline():
-    """
-    Parse the options given on the command-line.
-    """
-    parser = optparse.OptionParser()
-
-    parser.add_option("--catalogDir", help="catalog directory",default="../catalogs")
-
-    parser.add_option("-r","--ra",default=214.956010,type=float)
-    parser.add_option("-d","--declination",default=33.005978,type=float)
-    parser.add_option("-a","--radius",default=5.0,type=float)
-
-    parser.add_option("--doSkymap",  action="store_true", default=False)
-    parser.add_option("-s","--skymap",default="/Users/mcoughlin/Code/LIGO/gwemopt/data/GW190427/LALInference1.fits.gz,0")
-
-    parser.add_option("-u","--user")
-    parser.add_option("-w","--pwd")
-
-    parser.add_option("--doVerbose",  action="store_true", default=False)
-
-    opts, args = parser.parse_args()
-
-    return opts
 
 def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=24,
               maxsources=10000):
@@ -196,97 +207,6 @@ btc = btc[idx]
 
 galaxy_coords = SkyCoord(ra * u.deg, dec * u.deg, distmpc * u.Mpc)
 
-kow = Kowalski(username=opts.user, password=opts.pwd)
-
-coord = SkyCoord(opts.ra * u.deg, opts.declination * u.deg)
-gc = coord.transform_to('galactic')
-sep = coord.separation(galaxy_coords).deg
-
-qu = { "query_type": "cone_search",
-       "object_coordinates": { "radec": "[(%.5f,%.5f)]"%(opts.ra,
-                                                         opts.declination),
-                               "cone_search_radius": "%.2f" % opts.radius,
-                               "cone_search_unit": "arcsec" },
-       "catalogs": { "ZTF_alerts": { "filter": "{}", "projection": "{}" } } }
-r = kow.query(query=qu)
-
-if not "result_data" in r:
-    print("Query failed. returning.")
-    exit(0)
-
-key = list(r["result_data"].keys())[0]
-data = r["result_data"][key]
-
-for key in data.keys():
-    data_tmp = data[key]
-    if len(data_tmp) == 0:
-        continue
-    ztf_name = data_tmp[0]["_id"]
-
-bands = {1: 'g', 2: 'r', 3: 'i'}
-distnr, jd = [], []
-magpsf, sigmapsf, filt = [], [], []
-rb = []
-sg = {}
-for jj, dat in enumerate(data_tmp):
-    jd.append(dat["candidate"]["jd"])
-    distnr.append(dat["candidate"]["distnr"])
-    rb.append(dat["candidate"]["rb"])
-    magpsf.append(dat["candidate"]["magpsf"])
-    sigmapsf.append(dat["candidate"]["sigmapsf"])
-    filt.append(bands[dat["candidate"]["fid"]])
-    for ii in range(1,4):
-        if jj == 0:
-            sg[ii] = []
-        sg[ii].append([dat["candidate"]['sgscore%d'%(ii)],
-                       dat["candidate"]['distpsnr%d'%(ii)]])
-for ii in range(1,4):
-    sg[ii] = np.array(sg[ii])
-
-ztf_name = ztf_name.split("_")[1]
-
-ps1 = ps1_query(opts.ra, opts.declination, 5/3600.0)
-wise = wise_query(opts.ra, opts.declination, 5/3600.0)
-wise['W1-W2'] = wise['W1mag'] - wise['W2mag']
-wise['W2-W3'] = wise['W2mag'] - wise['W3mag']
-sdss = sdss_query(opts.ra, opts.declination, 20/3600.0)
-
-try:
-    result_table = Simbad.query_region(coord, radius=10.0/3600.0 * u.deg)
-    if not result_table is None:
-        name = result_table[0]["MAIN_ID"].decode()
-    else:
-        name = "NA"
-except:
-    name = "NA"
-
-notes = []
-if gc.b.deg < 20:
-    notes.append('[lowb]')
-host = False
-for ii in sg.keys():
-    idx = np.where(sg[ii][:,0] < 0.4)[0]
-    if len(idx) > 0:
-        if np.any(sg[ii][idx,1] < 50):
-            host=True
-            break
-if not host:
-    notes.append('[hostless]')
-
-if (np.min(sep)*3600.0) < 10:
-    notes.append('[distance: %.1f Mpc]' % distmpc[np.argmin(sep)])
-
-for row in sdss:
-    if row["zsp"] > 0:
-        notes.append('[specz = %.2f +- %.2f]' % (row["zsp"], row["e_zsp"]))
-    if row["zph"] > 0:
-        notes.append('[photz = %.2f +- %.2f]' % (row["zph"], row["e_zph"]))
-
-ellipse = patches.Ellipse((3.0, 1.25), 1.0, 0.5, 70)
-qso = ellipse.contains_point((wise['W1-W2'],wise['W2-W3']))
-if qso:
-    notes.append('[agn]')
-
 if opts.doSkymap:
     # Read skymap, calculate top pixels
     top_fraction = 0.90 # limit skymap top 90% region
@@ -309,45 +229,191 @@ if opts.doSkymap:
     # Cast as a set for easier comparison below
     top_subset = set(tm['id'][tm['top']])
 
-    pix = hp.ang2pix(nside, opts.ra, opts.declination, lonlat=True)
-    if pix in top_subset:
-        notes.append('[in90]')
+kow = Kowalski(username=opts.kowalski_user, password=opts.kowalski_pwd)
 
-print('%s | %.7f | %.7f | %s | %.2f | %.2f | %s' % (ztf_name,
-                                                   opts.ra, opts.declination,
-                                                   filt[np.argmin(magpsf)],
-                                                   np.min(magpsf),
-                                                   sigmapsf[np.argmin(magpsf)],
-                                                   " ".join(notes)))
+# Load candidates list
+if opts.doMarshalCandidates:
+    names, ras, decs = get_trigger_cands(opts.start_day,
+                                         opts.end_day,
+                                         opts.skipper_user,
+                                         opts.skipper_pwd, 
+                                         programid=opts.programid)
+    if opts.doVerbose:
+        print('Loaded :',len(names),'ZTF objects')
+else:
+    ras, decs = [opts.ra, opts.declination]
 
-if opts.doVerbose:
-    print('ZTF name: %s' % ztf_name)
-    print('Peak magnitude (%s): %.1f +- %.1f' % (filt[np.argmin(magpsf)],
-                                                 np.min(magpsf),
-                                                 sigmapsf[np.argmin(magpsf)]))
-    print('Galactic Latitude: %.5f' % gc.b.deg)
-    print('JD start time: %.5f' % np.min(jd))
-    print('Separation from nearest CLU galaxy (arcseconds): %.5f' % (np.min(sep)*3600.0))
-    print('Galaxy distance (Mpc): %.1f' % (distmpc[np.argmin(sep)]))
-    print('')
-    print('PS1 information:')
-    for colname in ps1.columns:
-        column = ps1[colname]
-        print('%s: %s' % (colname, column[0]))
-    print('')
-    print('WISE information:')
-    for colname in wise.columns:
-        column = wise[colname]
-        print('%s: %s' % (colname, column[0]))
-    print('')
-    print('Vizier name: %s' % name) 
-    print('')
+# QSO Ellipse
+ellipse = patches.Ellipse((3.0, 1.25), 1.0, 0.5, 70)
+
+for ra, dec in zip(ras, decs):
+    coord = SkyCoord(ra * u.deg, dec * u.deg)
+    gc = coord.transform_to('galactic')
+    sep = coord.separation(galaxy_coords).deg
+    
+    qu = { "query_type": "cone_search",
+           "object_coordinates": { "radec": "[(%.5f,%.5f)]"%(ra, dec),
+                                   "cone_search_radius": "%.2f" % opts.radius,
+                                   "cone_search_unit": "arcsec" },
+           "catalogs": { "ZTF_alerts": { "filter": "{}", "projection": "{}" } } }
+    r = kow.query(query=qu)
+    
+    if not "result_data" in r:
+        print("Query failed for %.5f, %.5f continuing..." % (ra, dec))
+    
+    key = list(r["result_data"].keys())[0]
+    data = r["result_data"][key]
+    
+    for key in data.keys():
+        data_tmp = data[key]
+        if len(data_tmp) == 0:
+            continue
+        ztf_name = data_tmp[0]["_id"]
+    
+    mags = {}
+    bands = {1: 'g', 2: 'r', 3: 'i'}
+    for key in bands.keys():
+        mags[bands[key]] = []
+
+    distnr, jd, rb, sg = [], [], [], {}
+    for jj, dat in enumerate(data_tmp):
+        jd.append(dat["candidate"]["jd"])
+        distnr.append(dat["candidate"]["distnr"])
+
+        filt = bands[dat["candidate"]["fid"]]
+        mags[filt].append([dat["candidate"]["magpsf"],
+                           dat["candidate"]["sigmapsf"]])
+        rb.append(dat["candidate"]["rb"])
+        for ii in range(1,4):
+            if jj == 0:
+                sg[ii] = []
+            sg[ii].append([dat["candidate"]['sgscore%d'%(ii)],
+                           dat["candidate"]['distpsnr%d'%(ii)]])
+
+    for ii in range(1,4):
+        sg[ii] = np.array(sg[ii])
+
+    for key in bands.keys():
+        mags[bands[key]] = np.array(mags[bands[key]])
+
+    peakmag, peaksig, peakfilt = 1e100, 1e100, 'NA'
+    peakdelt, peakdeltsig = 0.0, 0.0
+
+    for ii, key in enumerate(bands.keys()):
+        photometry = mags[bands[key]]
+        if photometry.size == 0: continue
+        nepochs, junk = photometry.shape
+        mag = np.min(photometry[:,0])
+        sig = photometry[np.argmin(photometry[:,0]),1]
+        if mag < peakmag:
+            peakmag = mag
+            peaksig = sig
+            peakfilt = bands[key] 
+
+        if nepochs > 1:
+            delt = photometry[-1,0] - photometry[0,0]
+            if np.abs(delt) > peakdelt:
+                peakdelt = delt
+                peakdeltsig = np.sqrt(photometry[-1,1]**2 + photometry[0,1]**2)
+
+    ztf_name = ztf_name.split("_")[1]
+    
+    ps1 = ps1_query(ra, dec, 5/3600.0)
+    wise = wise_query(ra, dec, 5/3600.0)
+    if not len(wise) == 0:
+        wise['W1-W2'] = wise['W1mag'] - wise['W2mag']
+        wise['W2-W3'] = wise['W2mag'] - wise['W3mag']
+    sdss = sdss_query(ra, dec, 20/3600.0)
+    
+    try:
+        result_table = Simbad.query_region(coord,
+                                           radius=10.0/3600.0 * u.deg)
+        if not result_table is None:
+            name = result_table[0]["MAIN_ID"].decode()
+        else:
+            name = "NA"
+    except:
+        name = "NA"
+    
+    notes = []
+    if gc.b.deg < 15:
+        notes.append('[lowb]')
+    host = False
     for ii in sg.keys():
-        print('SG %d: %s' % (ii, sg[ii]))
-    print('')
-    print('SDSS spec/phot z')
+        idx = np.where(sg[ii][:,0] < 0.4)[0]
+        if len(idx) > 0:
+            if np.any(sg[ii][idx,1] < 50):
+                host=True
+                break
+    if not host:
+        notes.append('[hostless]')
+    
+    if (np.min(sep)*3600.0) < 10:
+        notes.append('[distance: %.1f Mpc]' % distmpc[np.argmin(sep)])
+    
     for row in sdss:
         if row["zsp"] > 0:
-            print('Spec Z = %.2f +- %.2f' % (row["zsp"], row["e_zsp"]))
+            notes.append('[specz = %.2f +- %.2f]' % (row["zsp"], row["e_zsp"]))
         if row["zph"] > 0:
-            print('Phot Z = %.2f +- %.2f' % (row["zph"], row["e_zph"]))
+            notes.append('[photz = %.2f +- %.2f]' % (row["zph"], row["e_zph"]))
+    
+    if not len(wise) == 0:
+        qso = ellipse.contains_point((wise['W1-W2'],wise['W2-W3']))
+        if qso:
+            notes.append('[agn]')
+    
+    if opts.doSkymap:
+        pix = hp.ang2pix(nside, ra, dec, lonlat=True)
+        if not pix in top_subset:
+            continue
+        #if pix in top_subset:
+        #    notes.append('[in90]')
+   
+    if np.min(jd) < opts.jdmin:
+        continue
+
+    if not peakdelt == 0.0:
+        peakdeltsnr = peakdelt/peakdeltsig
+        if peakdeltsnr > 2:
+            notes.append('[rising]')
+        elif peakdeltsnr < -2:
+            notes.append('[fading]')
+
+    print('%s | %.7f | %.7f | %s | %.2f | %.2f | %s' % (ztf_name,
+                                                        ra, dec,
+                                                        peakfilt,
+                                                        peakmag,
+                                                        peaksig,
+                                                        " ".join(notes)))
+    
+    if opts.doVerbose:
+        print('ZTF name: %s' % ztf_name)
+        print('Peak magnitude (%s): %.1f +- %.1f' % (peakfilt,
+                                                     peakmag,
+                                                     peaksig))
+        print('Galactic Latitude: %.5f' % gc.b.deg)
+        print('JD start time: %.5f' % np.min(jd))
+        print('Separation from nearest CLU galaxy (arcseconds): %.5f' % (np.min(sep)*3600.0))
+        print('Galaxy distance (Mpc): %.1f' % (distmpc[np.argmin(sep)]))
+        print('')
+        print('PS1 information:')
+        for colname in ps1.columns:
+            column = ps1[colname]
+            print('%s: %s' % (colname, column[0]))
+        print('')
+        print('WISE information:')
+        for colname in wise.columns:
+            column = wise[colname]
+            print('%s: %s' % (colname, column[0]))
+        print('')
+        print('Vizier name: %s' % name) 
+        print('')
+        for ii in sg.keys():
+            print('SG %d: %s' % (ii, sg[ii]))
+        print('')
+        print('SDSS spec/phot z')
+        for row in sdss:
+            if row["zsp"] > 0:
+                print('Spec Z = %.2f +- %.2f' % (row["zsp"], row["e_zsp"]))
+            if row["zph"] > 0:
+                print('Phot Z = %.2f +- %.2f' % (row["zph"], row["e_zph"]))
