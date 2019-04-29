@@ -179,6 +179,19 @@ def sdss_query(ra_deg, dec_deg, rad_deg, maxmag=24,
     except:
         return []
 
+# To-Dos:
+# Easy / Short-term:
+# Implement real WISE color cuts: https://ui.adsabs.harvard.edu/abs/2015ApJS..221...12S/abstract
+# Cross-match with WISE agn catalog: https://ui.adsabs.harvard.edu/abs/2018ApJS..234...23A/abstract
+# Figure out how to pull down detection catalog from PS DR2: https://catalogs.mast.stsci.edu/
+# Cross-match against NVSS
+# Cross-match against GALEX
+# Cross-match against X-ray catalogs (for AGN)
+
+# Hard / Long-term:
+# Auto-update iPTF/ZTF lightcurves when source is saved
+# PS1-based CV set to train on
+
 # Parse command line
 opts = parse_commandline()
 catalogFile = os.path.join(opts.catalogDir, 'CLU.hdf5')
@@ -339,14 +352,29 @@ for ra, dec in zip(ras, decs):
     if gc.b.deg < 15:
         notes.append('[lowb]')
     host = False
+    stellar = False
     for ii in sg.keys():
-        idx = np.where(sg[ii][:,0] < 0.4)[0]
+        if dec < 15.0:
+            idx = np.where(sg[ii][:,0] < 0.5)[0]
+        else:
+            idx = np.where(sg[ii][:,0] < 0.825)[0]
         if len(idx) > 0:
             if np.any(sg[ii][idx,1] < 50):
                 host=True
                 break
+    for ii in sg.keys():
+        if dec < 15.0:
+            idx = np.where(sg[ii][:,0] > 0.5)[0]
+        else:
+            idx = np.where(sg[ii][:,0] > 0.825)[0]
+        if len(idx) > 0:
+            if np.any(sg[ii][idx,1] < 5):
+                stellar=True
+                break
     if not host:
         notes.append('[hostless]')
+    if stellar:
+        notes.append('[stellar]')
     
     if (np.min(sep)*3600.0) < 10:
         notes.append('[distance: %.1f Mpc]' % distmpc[np.argmin(sep)])
@@ -356,7 +384,11 @@ for ra, dec in zip(ras, decs):
             notes.append('[specz = %.2f +- %.2f]' % (row["zsp"], row["e_zsp"]))
         if row["zph"] > 0:
             notes.append('[photz = %.2f +- %.2f]' % (row["zph"], row["e_zph"]))
-    
+   
+    # If score is 0.5, no rb score
+    # If at low galactic latitudes, lower threshold to 0.5 or so
+    # if at high latitudes, 0.827
+ 
     if not len(wise) == 0:
         qso = ellipse.contains_point((wise['W1-W2'],wise['W2-W3']))
         if qso:
