@@ -18,6 +18,48 @@ import matplotlib.patches as patches
 
 from penquins import Kowalski
 
+import urllib
+import pandas as pd
+
+def get_trigger_cands(date,username,password,programid=2):
+
+    url_report = 'http://skipper.caltech.edu:8080/cgi-bin/growth/list_sources_bare.cgi?programidx={}&startdate={}-{}-{}+15%3A26%3A50&enddate={}-{}-{}++15%3A26%3A50'
+    url_report_page = url_report.format(2,date[:4],date[4:6],date[6:],date[:4],date[4:6],str(int(date[6:])+1))
+
+    # create a password manager
+    password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    top_level_url = "http://skipper.caltech.edu:8080/"
+    password_mgr.add_password(None, top_level_url, username, password)     # Add the username and password.
+
+    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+    opener = urllib.request.build_opener(handler)
+    opener.open(url_report_page)
+    urllib.request.install_opener(opener)
+    with urllib.request.urlopen(url_report_page) as url:
+        data = url.read().decode()
+
+    df_list = pd.read_html(data,header=0)
+
+    coord=[]
+    name_=[]
+    for i in range(len(df_list[1]['Name (age)'])):
+        if pd.notna(df_list[1]['Name (age)'][i]):
+            name_.append(df_list[1]['Name (age)'][i][:12])
+            coord.append(df_list[1]['RA  Dec'][i]) 
+
+    coord=np.array(coord)
+    name_=np.array(name_)
+    print('Loaded :',len(name_),'ZTF objects')
+
+    ra_transient,dec_transient=[],[]
+    for i in range(len(coord)):
+        c = SkyCoord(coord[i], unit=(u.hourangle, u.deg))
+        ra_transient.append( c.ra.deg)
+        dec_transient.append( c.dec.deg)
+
+    return name_, ra_transient,dec_transient
+
+
 def parse_commandline():
     """
     Parse the options given on the command-line.
