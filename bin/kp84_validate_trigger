@@ -512,14 +512,16 @@ for ra, dec in zip(ras, decs):
         print('Galaxy distance (Mpc): %.1f' % (distmpc[np.argmin(sep)]))
         print('')
         print('PS1 information:')
-        for colname in ps1.columns:
-            column = ps1[colname]
-            print('%s: %s' % (colname, column[0]))
+        if not len(ps1) == 0:
+            for colname in ps1.columns:
+                column = ps1[colname]
+                print('%s: %s' % (colname, column[0]))
         print('')
-        print('WISE information:')
-        for colname in wise.columns:
-            column = wise[colname]
-            print('%s: %s' % (colname, column[0]))
+        if not len(wise) == 0:
+            print('WISE information:')
+            for colname in wise.columns:
+                column = wise[colname]
+                print('%s: %s' % (colname, column[0]))
         print('')
         print('Vizier name: %s' % name) 
         print('')
