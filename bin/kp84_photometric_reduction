@@ -57,6 +57,7 @@ def parse_commandline():
 
     parser.add_option("--doCalibration",  action="store_true", default=False)
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
+    parser.add_option("--doDynamicAperture",  action="store_true", default=False)
     parser.add_option("-f","--fwhm",default=10.0,type=float)
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     parser.add_option("--doRegistration",  action="store_true", default=False)
@@ -150,10 +151,12 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
     nums = []
     for fitsfile in fitsfiles:
         fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
-        if fitsfileSplit[-1] == "o":
-            nums.append(-1)
-        else:
-            nums.append(int(fitsfileSplit[-1]))
+        try:
+            num = int(fitsfileSplit[-1])
+        except:
+            num = -1
+        nums.append(num)
+
     fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
 
     shiftx, shifty = 0, 0
@@ -161,12 +164,13 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
     cnt = 0
     for ii in range(len(fitsfiles)):
         scienceimage = os.path.join(registerDir,fitsfiles[ii].split("/")[-1])
-        if os.path.isfile(scienceimage): continue
+        hdulist = fits.open(fitsfiles[ii])
+        if cnt == 0:
+            reference = hdulist[1].data
 
         hdulist = fits.open(fitsfiles[ii])
 
-        if cnt == 0:
-            reference = hdulist[1].data
+        if os.path.isfile(scienceimage): continue
 
         hdulist2 = []
         for jj in range(len(hdulist)):
@@ -174,6 +178,10 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
                 hdulist2.append(copy.copy(hdulist[jj]))
             else:
                 hdulist_hold = copy.copy(hdulist[jj])
+
+                # shift by last images's shift
+                shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx, shifty))
+
                 if registration_size > 0:
                     image_shape = reference.shape
                     xlow = int(x - registration_size/2)
@@ -181,20 +189,17 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
                     ylow = int(y - registration_size/2)
                     yhigh = int(y + registration_size/2)
 
-                    shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], hdulist[jj].data[xlow:xhigh,ylow:yhigh], upsample_factor=1)
+                    shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], shifted[xlow:xhigh,ylow:yhigh], upsample_factor=1)
                     shiftx, shifty = shift[0], shift[1]
                 else:
-                    # shift by last images's shift
-                    shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx, shifty))
-
                     shift, error, diffphase = register_translation(reference, shifted, upsample_factor=1)
 
-                    shiftmax = 5
-                    shifttot = np.sqrt(shift[0]**2 + shift[1]**2)
+                shiftmax = 5
+                shifttot = np.sqrt(shift[0]**2 + shift[1]**2)
 
-                    if shifttot <= shiftmax:
-                        shiftx = shiftx + shift[0]
-                        shifty = shifty + shift[1]
+                if shifttot <= shiftmax:
+                    shiftx = shiftx + shift[0]
+                    shifty = shifty + shift[1]
 
                 shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx,shifty))
                 #hdulist_hold.data = shifted
@@ -212,10 +217,12 @@ def stack_images(stackDir,fitsfiles,nimages,doRegistration=False,registration_si
     nums = []
     for fitsfile in fitsfiles:
         fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")  
-        if fitsfileSplit[-1] == "o":
-            nums.append(-1)
-        else:
-            nums.append(int(fitsfileSplit[-1]))
+        try:
+            num = int(fitsfileSplit[-1])
+        except:
+            num = -1
+        nums.append(num)
+
     fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
  
     shiftx, shifty = 0, 0
@@ -368,10 +375,12 @@ def makemovie(movieDir,fitsfiles,x=None,y=None):
     nums = []
     for fitsfile in fitsfiles:
         fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
-        if fitsfileSplit[-1] == "o":
-            nums.append(-1)
-        else:
-            nums.append(int(fitsfileSplit[-1]))
+        try:
+            num = int(fitsfileSplit[-1])
+        except:
+            num = -1
+        nums.append(num)
+
     fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
 
     cnt = 0
@@ -593,7 +602,7 @@ if opts.doRegistration and not (opts.doPhase or opts.doStack):
     registerDir = os.path.join(path_out_dir,'register')
     if not os.path.isdir(registerDir):
         os.makedirs(registerDir)
-    register_images(registerDir,fitsfiles)
+    register_images(registerDir,fitsfiles,registration_size=opts.registration_size,x=x0,y=y0)
     fitsfiles = sorted(glob.glob(os.path.join(registerDir,'*.fits*')))
 
 if opts.doMakeMovie:
@@ -759,11 +768,16 @@ for ii,fitsfile in enumerate(fitsfiles):
         forcedfile = scienceimage.replace(".fits",".forced")
         if not os.path.isfile(forcedfile):
 
-            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm)
+            if opts.doDynamicAperture:
+                mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=np.median(fwhms))
+            else:
+                mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm)
 
             if opts.doDifferential:            
-
-                mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=opts.fwhm)
+                if opts.doDynamicAperture:
+                    mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=np.median(fwhms))
+                else:
+                    mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=opts.fwhm)
 
                 mag = mag_forced - mag_forced_field
                 magerr = np.sqrt(magerr_forced**2 + magerr_forced_field**2)
