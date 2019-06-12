@@ -18,6 +18,7 @@ def parse_commandline():
     parser.add_option("-p","--period",default=0.004800835466385,type=float)
     parser.add_option("-s","--skiprows",default=1,type=int)
     parser.add_option("-g","--goodrows",default=-1,type=int)
+    parser.add_option("-n","--nstack",default=1,type=int)
 
     opts, args = parser.parse_args()
 
@@ -36,17 +37,27 @@ for ii,filename in enumerate(filenames):
 
 data = data[:opts.goodrows,:]
 mjd = data[:,0]      
-mjd_mod = np.mod(mjd, opts.period)/(opts.period)
 mag = data[:,1]
 magerr = data[:,2]
+
+if opts.nstack > 1:
+   idxs = np.array_split(np.arange(len(mjd)),int(float(len(mjd))/opts.nstack))
+   mjd_new, mag_new, magerr_new = [], [], []
+   for idx in idxs:
+       mjd_new.append(np.mean(mjd[idx]))
+       mag_new.append(np.average(mag[idx], weights=magerr[idx]**2))
+       magerr_new.append(1/np.sqrt(np.sum(1.0/magerr[idx]**2)))
+   mjd, mag, magerr = np.array(mjd_new), np.array(mag_new), np.array(magerr_new)
+
+mjd_mod = np.mod(mjd, 2*opts.period)/(2*opts.period)
 
 colors = cm.rainbow(np.linspace(0, 1, len(mjd_mod)))
 
 fig = plt.figure(figsize=(20,8))
 plt.errorbar(mjd_mod,mag,magerr,fmt='o',color='k')
-for mjd, m, merr, color in zip(mjd_mod,mag,magerr,colors):
-    print(mjd, m, color)
-    #plt.scatter(mjd, m, s = 80, facecolors=color, edgecolors=color, zorder=100)
+#for mjd, m, merr, color in zip(mjd_mod,mag,magerr,colors):
+#    print(mjd, m, color)
+#    #plt.scatter(mjd, m, s = 80, facecolors=color, edgecolors=color, zorder=100)
 plt.xlabel('Time from %.5f [days]'%mjd_mod[0])
 plt.ylabel('Magnitude [arb]')
 ymed = np.nanmedian(mag)

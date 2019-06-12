@@ -1,0 +1,1 @@
+python kp84_photometric_reduction --dataDir /Data3/archive_kped/data/reductions/20190427/DG19vkgf/DG19vkgf_0_r_1 --outputDir ../output/20190427/DG19vkgf --doPlots --doAstrometryNet --doSubtraction --doForcedPhotometry --doDifferential --doSaveImages
