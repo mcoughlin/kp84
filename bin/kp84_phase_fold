@@ -15,6 +15,8 @@ def parse_commandline():
 
     parser.add_option("-f","--filenames",default="/Users/mcoughlin/Desktop/forced.dat")
     parser.add_option("-o","--outputFile",default="/Users/mcoughlin/Desktop/forced.pdf")
+
+    parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--period",default=0.004800835466385,type=float)
     parser.add_option("-s","--skiprows",default=1,type=int)
     parser.add_option("-g","--goodrows",default=-1,type=int)
@@ -49,7 +51,11 @@ if opts.nstack > 1:
        magerr_new.append(1/np.sqrt(np.sum(1.0/magerr[idx]**2)))
    mjd, mag, magerr = np.array(mjd_new), np.array(mag_new), np.array(magerr_new)
 
-mjd_mod = np.mod(mjd, 2*opts.period)/(2*opts.period)
+if opts.doPhase:
+    #mjd_mod = np.mod(mjd, opts.period/2.0)/(opts.period/2.0)
+    mjd_mod = np.mod(mjd, opts.period)/(opts.period)
+else:
+    mjd_mod = mjd * 1.0
 
 colors = cm.rainbow(np.linspace(0, 1, len(mjd_mod)))
 
@@ -63,8 +69,8 @@ plt.ylabel('Magnitude [arb]')
 ymed = np.nanmedian(mag)
 y10, y90 = np.nanpercentile(mag,10), np.nanpercentile(mag,90)
 ystd = np.nanmedian(magerr)
-ymin = y10 - 3*ystd
-ymax = y90 + 3*ystd
+ymin = y10 - 7*ystd
+ymax = y90 + 7*ystd
 plt.ylim([ymin,ymax])
 plt.gca().invert_yaxis()
 plt.tight_layout()

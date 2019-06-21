@@ -1,0 +1,123 @@
+
+import os, sys, glob, time
+import string
+import random
+import json
+import optparse
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.rcParams.update({'font.size': 22})
+import matplotlib.colors as colors
+from matplotlib import pyplot as plt
+
+from astroquery.vizier import Vizier
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astroplan.plots import plot_airmass
+
+from astroplan import Observer
+from astroplan import FixedTarget
+from astroplan.constraints import AtNightConstraint, AirmassConstraint
+from astroplan import observability_table
+
+from astroquery.simbad import Simbad
+
+import ztfperiodic
+from ztfperiodic.utils import gaia_query
+from ztfperiodic.utils import ps1_query
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-o","--outfile",default="/Users/mcoughlin/Desktop/obj.dat")
+    parser.add_option("-i","--infile",default="/Users/mcoughlin/Desktop/r_greedy_0_0_integrated_300_90.json")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def convert_to_hex(val, delimiter=':', force_sign=False):
+    """
+    Converts a numerical value into a hexidecimal string
+
+    Parameters:
+    ===========
+    - val:           float
+                     The decimal number to convert to hex.
+
+    - delimiter:     string
+                     The delimiter between hours, minutes, and seconds
+                     in the output hex string.
+
+    - force_sign:    boolean
+                     Include the sign of the string on the output,
+                     even if positive? Usually, you will set this to
+                     False for RA values and True for DEC
+
+    Returns:
+    ========
+    A hexadecimal representation of the input value.
+    """
+    s = np.sign(val)
+    s_factor = 1 if s > 0 else -1
+    val = np.abs(val)
+    degree = int(val)
+    minute = int((val  - degree)*60)
+    second = (val - degree - minute/60.0)*3600.
+    if degree == 0 and s_factor < 0:
+        return '-00{2:s}{0:02d}{2:s}{1:.2f}'.format(minute, second, delimiter)
+    elif force_sign or s_factor < 0:
+        deg_str = '{:+03d}'.format(degree * s_factor)
+    else:
+        deg_str = '{:02d}'.format(degree * s_factor)
+    return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
+
+def random_char(y):
+    return ''.join(random.choice(string.ascii_letters) for x in range(y))
+
+# Parse command line
+opts = parse_commandline()
+infile = opts.infile
+outfile = opts.outfile
+
+with open(infile) as f:
+    observations = json.load(f)
+
+requestID = random_char(3).upper()
+
+tottime = 3600.0
+filt = 'FILTER_SLOAN_G'
+mode = 0
+
+fid = open(outfile,'w')
+cnt = 0
+FixedTargets = []
+for obs in observations['targets']:
+    ra, dec = obs["ra"], obs["dec"]
+    request_id = obs["request_id"]
+    tottime = obs["exposure_time"]
+    pi = obs["program_pi"]
+
+    ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+    ra_hex_nodelim, dec_hex_nodelim = convert_to_hex(ra*24/360.0,delimiter=''), convert_to_hex(dec,delimiter='') 
+
+    if dec_hex[0] == "-":
+        objname = "ZTFJ%s%s"%(ra_hex_nodelim[:4],dec_hex_nodelim[:5])
+    else:
+        objname = "ZTFJ%s%s"%(ra_hex_nodelim[:4],dec_hex_nodelim[:4])
+
+    print('%s%04d,2,%s,%s,%s,2000.0,0.00,0.00,%.2f,%.0f,%s,%d,%s,comment'%(requestID, request_id, str(request_id), ra_hex, dec_hex, 22.0, tottime, filt, mode, pi),file=fid,flush=True)
+    cnt = cnt + 1
+
+fid.close()
+
+
