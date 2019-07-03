@@ -21,6 +21,7 @@ def parse_commandline():
     parser.add_option("-s","--skiprows",default=1,type=int)
     parser.add_option("-g","--goodrows",default=-1,type=int)
     parser.add_option("-n","--nstack",default=1,type=int)
+    parser.add_option("-a","--analysisType",default="magnitude")
 
     opts, args = parser.parse_args()
 
@@ -39,8 +40,12 @@ for ii,filename in enumerate(filenames):
 
 data = data[:opts.goodrows,:]
 mjd = data[:,0]      
-mag = data[:,1]
-magerr = data[:,2]
+if opts.analysisType == "magnitude":
+    mag = data[:,1]
+    magerr = data[:,2]
+elif opts.analysisType == "flux":
+    mag = data[:,3]
+    magerr = data[:,4]
 
 if opts.nstack > 1:
    idxs = np.array_split(np.arange(len(mjd)),int(float(len(mjd))/opts.nstack))
@@ -52,7 +57,7 @@ if opts.nstack > 1:
    mjd, mag, magerr = np.array(mjd_new), np.array(mag_new), np.array(magerr_new)
 
 if opts.doPhase:
-    #mjd_mod = np.mod(mjd, opts.period/2.0)/(opts.period/2.0)
+    #mjd_mod = np.mod(mjd, 2*opts.period)/(2*opts.period)
     mjd_mod = np.mod(mjd, opts.period)/(opts.period)
 else:
     mjd_mod = mjd * 1.0
@@ -72,7 +77,8 @@ ystd = np.nanmedian(magerr)
 ymin = y10 - 7*ystd
 ymax = y90 + 7*ystd
 plt.ylim([ymin,ymax])
-plt.gca().invert_yaxis()
+if opts.analysisType == "magnitude":
+    plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.savefig(opts.outputFile)
 plt.close()
