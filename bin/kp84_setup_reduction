@@ -8,9 +8,9 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--KPED_data",default="/nas_data/KPED_data")
-    parser.add_option("--setupDir",default="/Data3/archive_kped/data/reductions/")    
-    parser.add_option("--day",default="20180923")
+    parser.add_option("--KPED_data",default="/Data")
+    parser.add_option("--setupDir",default="/Data/data")
+    parser.add_option("--day",default="20181219")
     parser.add_option("--objname",default=None)
 
     opts, args = parser.parse_args()

@@ -73,6 +73,7 @@ else:
             if cnt == 1:
                 hdulist_hold = copy.copy(hdulist[ii])
                 xshape, yshape = hdulist_hold.data.shape
+                data = np.zeros([xshape,yshape])
                 reference = hdulist[ii].data
             shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
             shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))

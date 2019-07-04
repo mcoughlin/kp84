@@ -9,12 +9,11 @@ import astropy.table
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import EarthLocation
-from astropy.table import Table
+from astropy.coordinates import Angle
+from astropy.table import Table, vstack
 from astropy.time import Time
 from astropy.io import fits
 from astropy.io import ascii
-
-from astroquery.vizier import Vizier
 
 from astroplan import Observer
 from astroplan import FixedTarget
@@ -33,64 +32,15 @@ def parse_commandline():
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
+    parser.add_option("-f","--outfile",default="/home/kped/KP84/schedule/schedule.dat")
+    parser.add_option("-l","--object_lists",default="/home/kped/KP84/object_lists")
     parser.add_option("-o","--outputDir",default="../output_observing")
-    parser.add_option("-s","--tstart",default="2018-09-26 03:00")
-    parser.add_option("-e","--tend",default="2018-09-26 12:00")
+    parser.add_option("-s","--tstart",default="2019-07-05 03:00")
+    parser.add_option("-e","--tend",default="2019-07-05 12:00")
 
     opts, args = parser.parse_args()
 
     return opts
-
-def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=20, 
-               maxsources=10000): 
-    """
-    Query Gaia DR1 @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 
-                             'phot_g_mean_mag','phot_r_mean_mag'], 
-                    column_filters={"phot_g_mean_mag": 
-                                    ("<%f" % maxmag),
-                                   "phot_r_mean_mag": 
-                                    ("<%f" % maxmag)}, 
-                    row_limit = maxsources) 
- 
-    field = SkyCoord(ra=ra_deg, dec=dec_deg, 
-                           unit=(u.deg, u.deg), 
-                           frame='icrs')
-    return vquery.query_region(field, 
-                               width=("%fd" % rad_deg), 
-                               catalog="I/337/gaia")[0] 
-
-def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
-               maxsources=10000):
-    """
-    Query Pan-STARRS @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
-                             'gmag','rmag','imag','zmag','ymag'],
-                    column_filters={"gmag":
-                                    ("<%f" % maxmag),
-                                   "imag":
-                                    ("<%f" % maxmag)},
-                    row_limit = maxsources)
-
-    field = SkyCoord(ra=ra_deg, dec=dec_deg,
-                           unit=(u.deg, u.deg),
-                           frame='icrs')
-    return vquery.query_region(field,
-                               width=("%fd" % rad_deg),
-                               catalog="II/349/ps1")[0]
-
 
 def convert_to_hex(val, delimiter=':', force_sign=False):
     """
@@ -128,8 +78,121 @@ def convert_to_hex(val, delimiter=':', force_sign=False):
         deg_str = '{:02d}'.format(degree * s_factor)
     return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
 
+
+def load_variables(filename):
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = astropy.io.ascii.read(filename,names=names)
+    
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+    
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+    
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+    
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+    
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    return targets
+
+def load_GW(filename):
+    lines = [line.rstrip('\n') for line in open(filename)]
+    data = eval(lines[0])
+
+    queue_name = data['queue_name']
+    observations = data['targets']
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    for ii, observation in enumerate(observations):
+
+        ra, dec = observation["ra"], observation["dec"]
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        filt = observation["filter_id"]
+        if filt == 1:
+            filt = "FILTER_SLOAN_G"
+        elif filt == 2:
+            filt = "FILTER_SLOAN_R"
+        elif filt == "3":
+            filt = "FILTER_JOHNSON_I"
+
+        comment = "10000000000000000000_0"
+        targets.append([str(observation['request_id']),
+                        observation['program_id'],
+                        str(observation['request_id']),
+                        ra_hex, dec_hex, 2000, 0, 0,
+                        21.0, observation['exposure_time'],
+                        filt, 9, observation['program_pi'],
+                        comment])
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    return targets
+
 # Parse command line
 opts = parse_commandline()
+object_lists = opts.object_lists
+outfile = opts.outfile
 
 outputDir = opts.outputDir
 if not os.path.isdir(outputDir):
@@ -139,54 +202,40 @@ location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
                                        2096*u.m)
 kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
 
-targetfile = "../input/objects.csv"
-targets = ascii.read(targetfile, format='csv', fast_reader=False)
-targets["coord"] = SkyCoord(ra=targets["ra"]*u.deg, dec=targets["dec"]*u.deg)
-
-FixedTargets = []
-for target in targets:
-    tar = FixedTarget(coord=target["coord"], name=target["Name"])
-    FixedTargets.append(tar)
-targets["target"] = FixedTargets
-
 tstart = Time(opts.tstart)
 tend = Time(opts.tend)
 global_constraints = [AirmassConstraint(max = 3, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
-table = observability_table(global_constraints, kp, FixedTargets, 
-                            time_range=[tstart,tend])
-idx = np.where(~table["ever observable"])[0]
-targets.remove_rows(idx)
-print("Removed %d targets because not observable from %s-%s"%(len(idx),tstart,tend))
+targets_all = []
+programs = ["variables", "GW"]
+for program in programs:
+    object_list_dir = os.path.join(object_lists, program)
+    filenames = glob.glob(os.path.join(object_list_dir, '*'))
+    for filename in filenames:
+        if program == "variables":
+            targets = load_variables(filename)
+        elif program == "GW":
+            targets = load_GW(filename)
+        else:
+            print("How do I load objects from the %s program?")
+            exit(0)
 
-# Define the read-out time, exposure duration and number of exposures
-read_out = 10 * u.second
-n = 100
+        targets_all.append(targets)
+targets = vstack(targets_all)
+
 blocks = []
+read_out = 10.0 * u.s
+nexp = 1
+for ii, target in enumerate(targets):
+    bandpass = target["filter"]
+    exposure_time = int(target["exposure_time"]) * u.s
+    priority = target["sig"]
 
-tall = np.arange(tstart.mjd,tend.mjd,0.001)
-mags = []
-for target in targets:
-    T = target["Period"]
-    mag = 0 + np.sin(2*np.pi*(tall-tall[0])/T)
-    mags.append(mag)
-targets["mags"] = mags
-
-priority = 0
-nexp = []
-for ii, target in enumerate(targets): 
-    bandpasses = target["filters"].split(",")
-    n = target["nexp"]
-    priority = target["priority"]
-    exp = int(target["exposure_time"] * 86400.0) * u.s
-
-    for jj,bandpass in enumerate(bandpasses):
-        b = ObservingBlock.from_exposures(target["target"],priority,
-                                 exp, n, read_out,
-                                 configuration = {'filter': bandpass})
-        blocks.append(b)
-
+    b = ObservingBlock.from_exposures(target["target"],priority,
+                                      exposure_time, nexp, read_out,
+                                      configuration = {'filter': bandpass})
+    blocks.append(b)
 
 # Initialize a transitioner object with the slew rate and/or the
 # duration of other transitions (e.g. filter changes)
@@ -204,45 +253,12 @@ priority_schedule = Schedule(tstart, tend)
 # Call the schedule with the observing blocks and schedule to schedule the blocks
 prior_scheduler(blocks, priority_schedule)
 
-data_out = {}
-tars = []
-periods = []
+fid = open(outfile,'w')
 for schedule in priority_schedule.to_table():
     tar = schedule["target"]
     if tar == "TransitionBlock": continue
 
-    idx = np.where(targets["Name"] == tar)[0] 
-    target = targets[idx]
-    filt = schedule["configuration"]["filter"]
-    obsstart, obsend = Time(schedule["start time (UTC)"]), Time(schedule["end time (UTC)"])
-
-    T = target["Period"][0]*24
-    if (T>4):
-        nexp = 10
-    else:
-        nexp = int(target["nexp"])
-    obs = np.linspace(obsstart.mjd,obsend.mjd,nexp)
-    mags = np.interp(obs,tall,np.array(target["mags"])[0])
-
-    if not tar in data_out:
-        tars.append(tar)
-        periods.append(target["Period"])
-        data_out[tar] = {}
-    if not filt in data_out[tar]:
-        data_out[tar][filt] = np.empty((0,2))
-    vals = np.vstack((obs,mags)).T
-
-    data_out[tar][filt] = np.vstack((data_out[tar][filt],vals))
-
-cnt = 0
-
-filename = os.path.join(outputDir,'schedule.csv')
-fid = open(filename,'w')
-for schedule in priority_schedule.to_table():
-    tar = schedule["target"]
-    if tar == "TransitionBlock": continue
-
-    idx = np.where(targets["Name"] == tar)[0]
+    idx = np.where(targets["objectID"] == tar)[0]
     target = targets[idx]
     filt = schedule["configuration"]["filter"]
     obsstart, obsend = Time(schedule["start time (UTC)"]), Time(schedule["end time (UTC)"])
@@ -254,124 +270,9 @@ for schedule in priority_schedule.to_table():
     ra = c.ra.to_string(unit=u.hour, sep=':')
     dec = c.dec.to_string(unit=u.degree, sep=':')
 
-    if filt == "g":
-        filt = "FILTER_SLOAN_G"
-    elif filt == "r":
-        filt = "FILTER_SLOAN_R"
-    elif filt == "U":
-        filt = "FILTER_JOHNSON_U"
-    elif filt == "B":
-        filt = "FILTER_JOHNSON_B"
-    elif filt == "V":
-        filt = "FILTER_JOHNSON_V"
-    elif filt == "I":
-        filt = "FILTER_JOHNSON_I"
-
-    # REQUEST_ID, PROGRAM_ID, FIELD_ID, OBJ_RA, OBJ_DEC, EQUINOX, RA_RATE, DEC_RATE, EXPTIME, PROGRAM_PI, COMMENT
-
-    #fid.write('%s %.5f %.5f %s %.5f %.5f %d\n'%(tar,target["ra"][0],target["dec"][0],filt,obsstart.mjd,obsend.mjd,expt))
-
-    fid.write('%08d,0,0,%s,%s,2000,0.0,0.0,%.5f,PI,%s_%s\n'%(cnt,ra,dec,expt,tar,filt))
-    cnt = cnt+1
+    print('%s,%d,%s,%s,%s,%.1f,%.2f,%.2f,%.2f,%.0f,%s,%d,%s,%s'%(target["requestID"][0], target["programID"][0], target["objectID"][0], target["ra_hex"][0], target["dec_hex"][0], target["epoch"][0], target["ra_rate"][0], target["dec_rate"][0], target["mag"][0], target["exposure_time"][0], target["filter"][0], target["mode"][0], target["pi"][0], target["comment"][0]),file=fid,flush=True)
 
 fid.close()
-
-keys = [x for _,x in sorted(zip(periods,tars))]
-color1 = 'coral'
-color2 = 'cornflowerblue'
-color3 = 'palegreen'
-colors = [color2,color3,color1]
-
-plotName = "%s/panels.pdf"%(outputDir)
-plt.figure(figsize=(20,28))
-cnt = 0
-for key in keys:
-    idx = np.where(targets["Name"] == key)[0]
-    target = targets[idx]
-    mags = np.array(target["mags"])[0]
-    bandpasses = target["filters"][0].split(",")
-
-    cnt = cnt+1
-    vals = "%d%d%d"%(len(keys),1,cnt)
-    if cnt == 1:
-        ax1 = plt.subplot(len(keys),1,cnt)
-    else:
-        ax2 = plt.subplot(len(keys),1,cnt,sharex=ax1,sharey=ax1)
-
-    plt.plot(tall,mags,'k-',linewidth=2,alpha=0.1)
-    for bandpass, color in zip(bandpasses,colors):
-        if bandpass not in data_out[key]: continue
-        data = data_out[key][bandpass]
-        plt.plot(data[:,0],data[:,1],'x',c=color,linewidth=2,label=bandpass)
-
-    plt.ylabel('%s'%key,fontsize=36,rotation=0,labelpad=40)
-    plt.xlim([tstart.mjd, tend.mjd])
-    #plt.ylim([15.0,20.0])
-    plt.grid()
-    #plt.yticks(fontsize=36)
-    plt.yticks([])
-
-    if (not cnt == len(keys)) and (not cnt == 1):
-        plt.setp(ax2.get_xticklabels(), visible=False)
-    elif cnt == 1:
-        plt.setp(ax1.get_xticklabels(), visible=False)
-        #l = plt.legend(loc="upper right",prop={'size':40},numpoints=1,shadow=True, fancybox=True)
-        #l = plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
-        #        mode="expand", borderaxespad=0, ncol=3, prop={'size':48})
-    else:
-        plt.xticks(fontsize=36)
-
-ax1.set_zorder(1)
-ax2.set_xlabel(r'Time [mjd]',fontsize=48,labelpad=30)
-plt.savefig(plotName,bbox_inches='tight')
-plt.close()
-
-plotName = "%s/panels_mod.pdf"%(outputDir)
-plt.figure(figsize=(20,28))
-cnt = 0
-for key in keys:
-    idx = np.where(targets["Name"] == key)[0]
-    target = targets[idx]
-    mags = np.array(target["mags"])[0]
-    T = target["Period"][0]
-    bandpasses = target["filters"][0].split(",")
-
-    cnt = cnt+1
-    vals = "%d%d%d"%(len(keys),1,cnt)
-    if cnt == 1:
-        ax1 = plt.subplot(len(keys),1,cnt)
-    else:
-        ax2 = plt.subplot(len(keys),1,cnt,sharey=ax1)
-
-    idx = np.argsort(np.mod(tall,T))
-    plt.plot(np.mod(tall,T)[idx],mags[idx],'k-',linewidth=2,alpha=0.1)
-    for bandpass, color in zip(bandpasses,colors):
-        if bandpass not in data_out[key]: continue
-        data = data_out[key][bandpass]
-        plt.plot(np.mod(data[:,0],T),data[:,1],'x',c=color,linewidth=2,label=bandpass)
-
-    plt.ylabel('%s'%key,fontsize=36,rotation=0,labelpad=40)
-    plt.xlim([0,T])
-    #plt.ylim([15.0,20.0])
-    plt.grid()
-    #plt.yticks(fontsize=36)
-    plt.yticks([])   
-
-    if (not cnt == len(keys)) and (not cnt == 1):
-        plt.setp(ax2.get_xticklabels(), visible=False)
-    elif cnt == 1:
-        plt.setp(ax1.get_xticklabels(), visible=False)
-        #l = plt.legend(loc="upper right",prop={'size':40},numpoints=1,shadow=True, fancybox=True)
-        #l = plt.legend(bbox_to_anchor=(0,1.02,1,0.2), loc="lower left",
-        #        mode="expand", borderaxespad=0, ncol=3, prop={'size':48})
-    else:
-        #plt.xticks(fontsize=36)
-        plt.xticks([])
-
-ax1.set_zorder(1)
-ax2.set_xlabel(r'Time [mjd]',fontsize=48,labelpad=30)
-plt.savefig(plotName,bbox_inches='tight')
-plt.close()
 
 # plot the schedule with the airmass of the targets
 plt.figure(figsize = (28,6))
