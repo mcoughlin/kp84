@@ -318,8 +318,8 @@ for ii in range(opts.nepochs):
     # In this example we only provide one.
     windows = []
     for jj, t in enumerate(tt):
-        t_start = Time(t - dt, format='mjd')
-        t_end = Time(t + dt, format='mjd')
+        t_start = Time(t - dt/2.0, format='mjd')
+        t_end = Time(t + dt/2.0, format='mjd')
 
         t_start = str(t_start.isot).replace("T"," ")
         t_end = str(t_end.isot).replace("T"," ")
