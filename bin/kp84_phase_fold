@@ -57,8 +57,8 @@ if opts.nstack > 1:
    mjd, mag, magerr = np.array(mjd_new), np.array(mag_new), np.array(magerr_new)
 
 if opts.doPhase:
-    #mjd_mod = np.mod(mjd, 2*opts.period)/(2*opts.period)
-    mjd_mod = np.mod(mjd, opts.period)/(opts.period)
+    mjd_mod = np.mod(mjd, 2*opts.period)/(2*opts.period)
+    #mjd_mod = np.mod(mjd, opts.period)/(opts.period)
 else:
     mjd_mod = mjd * 1.0
 

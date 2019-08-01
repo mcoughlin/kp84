@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed May 31 15:05:27 2017
+
+@author: kburdge
+"""
+
+import os, sys
+import optparse
+import pandas as pd
+import numpy as np
+import h5py
+import glob
+
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.rcParams.update({'font.size': 16})
+matplotlib.rcParams['contour.negative_linestyle'] = 'solid'
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from matplotlib.colors import LogNorm
+
+from astropy.io import ascii
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
+
+import requests
+
+import ztfperiodic
+from ztfperiodic import fdecomp
+from ztfperiodic.lcstats import calc_stats
+from ztfperiodic.utils import gaia_query
+from ztfperiodic.utils import ps1_query
+from ztfperiodic.utils import load_file
+from ztfperiodic.utils import get_kowalski
+from ztfperiodic.utils import get_lightcurve
+from ztfperiodic.utils import convert_to_hex
+from ztfperiodic.periodsearch import find_periods
+
+from gatspy.periodic import LombScargle, LombScargleFast
+
+try:
+    from penquins import Kowalski
+except:
+    print("penquins not installed... need to use matchfiles.")
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--doGPU",  action="store_true", default=False)
+    parser.add_option("--doCPU",  action="store_true", default=False)
+    parser.add_option("--doSaveMemory",  action="store_true", default=False)
+
+    parser.add_option("--dataDir",default="/media/Data2/Matchfiles/ztfweb.ipac.caltech.edu/ztf/ops/srcmatch/")
+    parser.add_option("-o","--outputDir",default="../output")
+
+    parser.add_option("-r","--ra",default=273.4655285500,type=float)
+    parser.add_option("-d","--declination",default=69.7561023000,type=float)
+    parser.add_option("-p","--phase",default=0.1564612944,type=float)
+
+    parser.add_option("-f","--filt",default="r")
+
+    parser.add_option("--exposure_time",default=600.0,type=float)
+
+    parser.add_option("-u","--user")
+    parser.add_option("-w","--pwd")
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+    parser.add_option("--doSubmission",  action="store_true", default=False)
+
+    parser.add_option("-l","--lightcurve_source",default="Kowalski")
+ 
+    parser.add_option("--program_ids",default="1,2,3")
+
+    parser.add_option("-n","--nepochs",default=1,type=int)
+    parser.add_option("--objid",type=int)
+
+    parser.add_option("--doLightcurve",  action="store_true", default=False)
+
+    parser.add_option("-s","--tstart",default="2019-08-01 00:00")
+    parser.add_option("-e","--tend",default="2019-08-08 00:00")
+
+    parser.add_option("-a","--API_TOKEN")
+    parser.add_option("-i","--PROPOSAL_ID")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+dataDir = opts.dataDir
+outputDir = opts.outputDir
+phase = opts.phase
+user = opts.user
+pwd = opts.pwd
+program_ids = list(map(int,opts.program_ids.split(",")))
+exposure_time = opts.exposure_time
+API_TOKEN = opts.API_TOKEN # API token obtained from https://observe.lco.global/accounts/profile/
+PROPOSAL_ID = opts.PROPOSAL_ID  # Proposal IDs may be found here: https://observe.lco.global/proposals/
+
+if not opts.objid is None:
+    path_out_dir='%s/%.5f_%.5f/%d'%(outputDir, opts.ra, 
+                                    opts.declination, opts.objid)
+else:
+    path_out_dir='%s/%.5f_%.5f'%(outputDir, opts.ra,
+                                    opts.declination)
+
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+if opts.doLightcurve:
+    # Gaia and PS1 
+    ps1 = ps1_query(opts.ra, opts.declination, 5/3600.0)
+    
+    if opts.lightcurve_source == "Kowalski":
+        kow = Kowalski(username=opts.user, password=opts.pwd)
+        lightcurves = get_kowalski(opts.ra, opts.declination, kow, oid=opts.objid,
+                                   program_ids=program_ids, min_epochs=min_epochs)
+      
+        if len(lightcurves.keys()) > 1:
+            print("Choose one object ID and run again...")
+            for objid in lightcurves.keys():
+                print("Object ID: %s"%objid)
+            exit(0)
+        elif len(lightcurves.keys()) == 0:
+            print("No objects... sorry.")
+            exit(0)
+        key = list(lightcurves.keys())[0]
+    
+        hjd, mag, magerr = lightcurves[key]["hjd"], lightcurves[key]["mag"], lightcurves[key]["magerr"]
+        fid = lightcurves[key]["fid"]
+        ra, dec = lightcurves[key]["ra"], lightcurves[key]["dec"]
+        absmag, bp_rp = lightcurves[key]["absmag"], lightcurves[key]["bp_rp"]
+    
+        idx = np.argsort(hjd)
+        hjd, mag, magerr = hjd[idx], mag[idx], magerr[idx]
+        ra, dec = ra[idx], dec[idx]
+        fid = fid[idx]
+    
+        if opts.doRemoveHC:
+            dt = np.diff(hjd)
+            idx = np.setdiff1d(np.arange(len(hjd)),
+                               np.where(dt < 30.0*60.0/86400.0)[0])
+            hjd, mag, magerr = hjd[idx], mag[idx], magerr[idx]
+            ra, dec = ra[idx], dec[idx]
+            fid = fid[idx]
+    
+        print('RA: %.5f, Dec: %.5f' % (np.median(ra), np.median(dec)))
+        filt_str = " ".join([str(x) for x in list(np.unique(fid))])
+        print("Filters:  %s" % filt_str)
+        print("Number of observations: %d" % len(ra))
+    
+        if hjd.size == 0:
+            print("No data available...")
+            exit(0)
+    
+    elif opts.lightcurve_source == "matchfiles":
+        df = get_lightcurve(dataDir, opts.ra, opts.declination, opts.filt, opts.user, opts.pwd)
+        mag = df.psfmag.values
+        magerr = df.psfmagerr.values
+        flux = df.psfflux.values
+        fluxerr=df.psffluxerr.values
+        hjd = df.hjd.values
+    
+        if len(df) == 0:
+            print("No data available...")
+            exit(0)
+    
+    if not (opts.doCPU or opts.doGPU):
+        print("--doCPU or --doGPU required")
+        exit(0)
+    
+    lightcurves = []
+    lightcurve=(hjd,mag,magerr)
+    lightcurves.append(lightcurve)
+    
+    ls = LombScargleFast(silence_warnings=True)
+    hjddiff = np.max(hjd) - np.min(hjd)
+    ls.optimizer.period_range = (1,hjddiff)
+    ls.fit(hjd,mag,magerr)
+    period = ls.best_period
+    
+    # fit the lightcurve with fourier components, using BIC to decide the optimal number of pars
+    LCfit = fdecomp.fit_best(np.c_[hjd,mag,magerr],period,5,plotname=False)
+
+    if opts.doPlots:
+        plotName = os.path.join(path_out_dir,'phot.pdf')
+        plt.figure(figsize=(12,8))
+        plt.errorbar(hjd-hjd[0],mag,yerr=magerr,fmt='ko')
+        fittedmodel = fdecomp.make_f(period)
+        plt.plot(hjd-hjd[0],fittedmodel(hjd,*LCfit),'k-')
+        ymed = np.nanmedian(mag)
+        y10, y90 = np.nanpercentile(mag,10), np.nanpercentile(mag,90)
+        ystd = np.nanmedian(magerr)
+        ymin = y10 - 3*ystd
+        ymax = y90 + 3*ystd
+        plt.ylim([ymin,ymax])
+        plt.xlabel('Time from %.5f [days]'%hjd[0])
+        plt.ylabel('Magnitude [ab]')
+        plt.gca().invert_yaxis()
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'periodogram.pdf')
+        periods = np.logspace(-3,-1,10000)
+        #periods = np.logspace(0,2,10000)
+        periodogram = ls.periodogram(periods)
+        plt.figure(figsize=(12,8))
+        plt.loglog(periods,periodogram)
+        if opts.doPhase:
+            plt.plot([phase,phase],[0,np.max(periodogram)],'r--')
+        plt.xlabel("Period [days]")
+        plt.ylabel("Power")
+        plt.savefig(plotName)
+        plt.close()
+    
+        if opts.doPhase:
+            hjd_mod = np.mod(hjd, 2.0*phase)/(2.0*phase)
+            idx = np.argsort(hjd_mod)
+            hjd_mod = hjd_mod[idx]
+            mag_mod = mag[idx]
+            magerr_mod = magerr[idx]
+            
+            if opts.nstack > 1:
+                idxs = np.array_split(np.arange(len(hjd_mod)),int(float(len(hjd_mod))/opts.nstack))
+                hjd_new, mag_new, magerr_new = [], [], []
+                for idx in idxs:
+                    hjd_new.append(np.mean(hjd_mod[idx]))
+                    mag_new.append(np.average(mag_mod[idx], weights=magerr_mod[idx]**2))
+                    magerr_new.append(1/np.sqrt(np.sum(1.0/magerr_mod[idx]**2)))
+                hjd_mod, mag_mod, magerr_mod = np.array(hjd_new), np.array(mag_new), np.array(magerr_new)
+    
+            plotName = os.path.join(path_out_dir,'phase.pdf')
+            plt.figure(figsize=(12,8))
+            plt.errorbar(hjd_mod,mag_mod,yerr=magerr_mod,fmt='ko')
+            plt.xlabel('Phase')
+            plt.ylabel('Magnitude [ab]')
+            if not opts.objid is None:
+                if opts.objid == 10798192012899:
+                    plt.ylim([18.1,18.5])
+                #elif opts.objid == 10798191008264:
+                #    plt.ylim([18.0,17.7])
+            plt.gca().invert_yaxis()
+            plt.savefig(plotName)
+            plt.close()
+
+ra_hex, dec_hex = convert_to_hex(opts.ra*24/360.0,delimiter=''), convert_to_hex(opts.declination,delimiter='')
+if dec_hex[0] == "-":
+    objname = "ZTFJ%s%s"%(ra_hex[:4],dec_hex[:5])
+else:
+    objname = "ZTFJ%s%s"%(ra_hex[:4],dec_hex[:4])
+
+# Constraints used for scheduling this observation
+constraints = {
+    'max_airmass': 2
+}
+
+# The target of the observation
+target = {
+    'name': objname,
+    'type': 'ICRS',
+    'ra': opts.ra,
+    'dec': opts.declination,
+    'epoch': 2000
+}
+
+# The telescope class that should be used for this observation
+location = {
+    'telescope_class': '2m0'
+}
+
+# The configurations for this request. In this example we are taking 2 exposures with different filters.
+configurations = [{
+    'type': 'SPECTRUM',
+    'instrument_type': '2M0-FLOYDS-SCICAM',
+    'constraints': constraints,
+    'target': target,
+    'acquisition_config': {
+        'mode': 'WCS'
+    },
+    'guiding_config': {
+        'mode': 'ON',
+        'optional': False
+    },
+    'instrument_configs': [
+        {
+            'exposure_time': exposure_time,
+            'exposure_count': 1,
+            'rotator_mode': 'VFLOAT',
+            'optical_elements': {
+                'slit': 'slit_2.0as'
+            }
+        }
+    ]   
+}]  
+
+tstart = Time(opts.tstart)
+tend = Time(opts.tend)
+
+tstart_mjd, tend_mjd = tstart.mjd, tend.mjd
+dt = 3.0*exposure_time/86400.0
+
+print('Object name: %s' % objname)
+print('RA: %.5f Declination: %.5f' % (opts.ra, opts.declination))
+
+for ii in range(opts.nepochs):
+    tt = np.arange(tstart_mjd + (float(ii)/float(opts.nepochs))*opts.phase, tend_mjd, opts.phase)
+
+    print('Phase %d' % ii)    
+
+    # The windows during which this request should be considered for observing.
+    # In this example we only provide one.
+    windows = []
+    for jj, t in enumerate(tt):
+        t_start = Time(t - dt, format='mjd')
+        t_end = Time(t + dt, format='mjd')
+
+        t_start = str(t_start.isot).replace("T"," ")
+        t_end = str(t_end.isot).replace("T"," ")
+        windows.append({'start': t_start,
+                       'end': t_end})
+
+        print('Window %d: %s - %s' % (jj, t_start, t_end))
+    
+    # The full RequestGroup, with additional meta-data
+    requestgroup = {
+        'name': '%s_phase_%d' % (objname, ii),  # The title
+        'proposal': PROPOSAL_ID,
+        'ipp_value': 1.05,
+        'operator': 'SINGLE',
+        'observation_type': 'NORMAL',
+        'requests': [{
+            'configurations': configurations,
+            'windows': windows,
+             'location': location,
+        }]
+    }
+
+    if opts.doSubmission:
+        # Submit the fully formed RequestGroup
+        response = requests.post(
+            'https://observe.lco.global/api/requestgroups/',
+            headers={'Authorization': 'Token {}'.format(API_TOKEN)},
+            json=requestgroup  # Make sure you use json!
+        )
+        
+        # Make sure this api call was successful
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as exc:
+            print('Request failed: {}'.format(response.content))
+            raise exc
+        
+        requestgroup_dict = response.json()  # The API will return the newly submitted RequestGroup as json
+        
+        # Print out the url on the portal where we can view the submitted request
+        print('View the observing request: https://observe.lco.global/requestgroups/{}/'.format(requestgroup_dict['id']))
