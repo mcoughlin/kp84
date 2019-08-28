@@ -1,9 +1,11 @@
+#!/usr/bin/env
 
 import os, sys, optparse, shutil
 import glob
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.patches as patches
+from datetime import datetime
 
 import astropy.table
 from astropy import units as u
@@ -11,7 +13,7 @@ from astropy.coordinates import SkyCoord
 from astropy.coordinates import EarthLocation
 from astropy.coordinates import Angle
 from astropy.table import Table, vstack
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from astropy.io import fits
 from astropy.io import ascii
 
@@ -32,11 +34,16 @@ def parse_commandline():
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
-    parser.add_option("-f","--outfile",default="/home/kped/KP84/schedule/schedule.dat")
+    parser.add_option("-f","--outfile",default="/home/kped/Software/Queue/Michael_queue/queue_target.dat")
     parser.add_option("-l","--object_lists",default="/home/kped/KP84/object_lists")
     parser.add_option("-o","--outputDir",default="../output_observing")
-    parser.add_option("-s","--tstart",default="2019-07-05 03:00")
-    parser.add_option("-e","--tend",default="2019-07-05 12:00")
+    parser.add_option("-s","--tstart",default="2019-08-27 03:30")
+    parser.add_option("-e","--tend",default="2019-08-27 15:30")
+
+    parser.add_option("-c","--significance_cut",default=0.0,type=float)
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+    parser.add_option("--doTime",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -147,7 +154,7 @@ def load_GW(filename):
                         observation['program_id'],
                         str(observation['request_id']),
                         ra_hex, dec_hex, 2000, 0, 0,
-                        21.0, observation['exposure_time'],
+                        1e5, observation['exposure_time'],
                         filt, 9, observation['program_pi'],
                         comment])
 
@@ -202,9 +209,14 @@ location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
                                        2096*u.m)
 kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
 
-tstart = Time(opts.tstart)
-tend = Time(opts.tend)
-global_constraints = [AirmassConstraint(max = 3, boolean_constraint = False),
+if opts.doTime:
+    tstart = Time(opts.tstart)
+    tend = Time(opts.tend)
+else:
+    tstart = Time.now()
+    tend = Time.now() + TimeDelta(8*u.hour)
+
+global_constraints = [AirmassConstraint(max = 1.5, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
 targets_all = []
@@ -224,13 +236,17 @@ for program in programs:
         targets_all.append(targets)
 targets = vstack(targets_all)
 
+idx = np.where(targets["sig"] > opts.significance_cut)[0]
+targets = targets[idx]
+
+priorities = np.arange(1,len(targets)+1)
 blocks = []
 read_out = 10.0 * u.s
 nexp = 1
 for ii, target in enumerate(targets):
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
-    priority = target["sig"]
+    priority = priorities[ii]
 
     b = ObservingBlock.from_exposures(target["target"],priority,
                                       exposure_time, nexp, read_out,
@@ -253,10 +269,15 @@ priority_schedule = Schedule(tstart, tend)
 # Call the schedule with the observing blocks and schedule to schedule the blocks
 prior_scheduler(blocks, priority_schedule)
 
+cnt = 0 
+
 fid = open(outfile,'w')
 for schedule in priority_schedule.to_table():
     tar = schedule["target"]
     if tar == "TransitionBlock": continue
+
+    if (not opts.doTime) and (cnt > 0):
+        continue
 
     idx = np.where(targets["objectID"] == tar)[0]
     target = targets[idx]
@@ -270,15 +291,34 @@ for schedule in priority_schedule.to_table():
     ra = c.ra.to_string(unit=u.hour, sep=':')
     dec = c.dec.to_string(unit=u.degree, sep=':')
 
-    print('%s,%d,%s,%s,%s,%.1f,%.2f,%.2f,%.2f,%.0f,%s,%d,%s,%s'%(target["requestID"][0], target["programID"][0], target["objectID"][0], target["ra_hex"][0], target["dec_hex"][0], target["epoch"][0], target["ra_rate"][0], target["dec_rate"][0], target["mag"][0], target["exposure_time"][0], target["filter"][0], target["mode"][0], target["pi"][0], target["comment"][0]),file=fid,flush=True)
+    if not opts.doTime:
+        print('PROGRAM_PI=%s' % target["pi"][0],file=fid,flush=True)
+        print('PROGRAM_ID=%s' % target["programID"][0],file=fid,flush=True)
+        print('OBJECT_ID=%s' % target["objectID"][0],file=fid,flush=True)
+        print('REQUEST_ID=%s' % target["requestID"][0],file=fid,flush=True)
+        print('COMMENT=%s' % target["comment"][0],file=fid,flush=True)
+        print('OBJ_RA=%s' % target["ra_hex"][0],file=fid,flush=True)
+        print('OBJ_DEC=%s' % target["dec_hex"][0],file=fid,flush=True)
+        print('EQUINOX=%.2f' % target["epoch"][0],file=fid,flush=True)
+        print('RA_RATE=%.2f' % target["ra_rate"][0],file=fid,flush=True)
+        print('DEC_RATE=%.2f' % target["dec_rate"][0],file=fid,flush=True)
+        print('MAGNITUDE=%.2f' % target["mag"][0],file=fid,flush=True)
+        print('EXPTIME=%d' % target["exposure_time"][0],file=fid,flush=True)
+        print('FILTER=%s' % target["filter"][0],file=fid,flush=True)
+        print('CAMERA_MODE=%d' % target["mode"][0],file=fid,flush=True)
+    else:
+        print('%s,%d,%s,%s,%s,%.1f,%.2f,%.2f,%.2f,%.0f,%s,%d,%s,%s'%(target["requestID"][0], target["programID"][0], target["objectID"][0], target["ra_hex"][0], target["dec_hex"][0], target["epoch"][0], target["ra_rate"][0], target["dec_rate"][0], target["mag"][0], target["exposure_time"][0], target["filter"][0], target["mode"][0], target["pi"][0], target["comment"][0]),file=fid,flush=True)
+
+    cnt = cnt + 1
 
 fid.close()
 
-# plot the schedule with the airmass of the targets
-plt.figure(figsize = (28,6))
-plot_schedule_airmass(priority_schedule,show_night=True)
-plt.legend(loc = "upper right")
-#plt.show()
-plt.savefig(os.path.join(outputDir,'scheduler.pdf'))
-plt.close()
+if opts.doPlots:
+    # plot the schedule with the airmass of the targets
+    plt.figure(figsize = (28,6))
+    plot_schedule_airmass(priority_schedule,show_night=True)
+    plt.legend(loc = "upper right")
+    #plt.show()
+    plt.savefig(os.path.join(outputDir,'scheduler.pdf'))
+    plt.close()
 
