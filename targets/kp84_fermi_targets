@@ -41,7 +41,8 @@ def fermi_query(maxsources=10000000):
     vquery = Vizier(columns=['3FGL', 'RAJ2000', 'DEJ2000',
                              'amaj', 'amin',
                              'phi', 'Sig',
-                             'S25', 'e_S25'],
+                             'S25', 'e_S25',
+                             'Class'],
                     row_limit = maxsources) 
 
     sources = vquery.get_catalogs("J/ApJS/218/23/table4")
@@ -90,11 +91,13 @@ if not os.path.isdir(opts.outputDir):
 
 filename = os.path.join(opts.outputDir,'fermi.dat')
 fid = open(filename,'w')
-names, ras, decs, amaj, amin, phi, sig, flux, flux_err = cat['_3FGL'], cat['RAJ2000'], cat['DEJ2000'], cat['amaj'], cat['amin'], cat['phi'], cat['Sig'], cat['S25'], cat['e_S25']
-for name, ra, dec, major, minor, p, s, f, f_err in zip(names, ras, decs, amaj, amin, phi, sig, flux, flux_err):
+names, ras, decs, amaj, amin, phi, sig, flux, flux_err, cl = cat['_3FGL'], cat['RAJ2000'], cat['DEJ2000'], cat['amaj'], cat['amin'], cat['phi'], cat['Sig'], cat['S25'], cat['e_S25'], cat['Class']
+for name, ra, dec, major, minor, p, s, f, f_err, c in zip(names, ras, decs, amaj, amin, phi, sig, flux, flux_err, cl):
     ra  = Angle(ra, unit=u.deg).deg
     dec = Angle(dec, unit=u.deg).deg
 
+    if not c == "": continue
+    print(c)
     if dec < -30: continue
     fid.write('%s %.5f %.5f %.5f %.5f %.5f %.5f %.5e %.5e\n'%(name, ra, dec, major, minor, p, s, f, f_err))
 fid.close()
