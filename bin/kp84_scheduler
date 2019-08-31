@@ -36,6 +36,8 @@ def parse_commandline():
     parser = optparse.OptionParser()
     parser.add_option("-f","--outfile",default="/home/kped/Software/Queue/Michael_queue/queue_target.dat")
     parser.add_option("-l","--object_lists",default="/home/kped/KP84/object_lists")
+    parser.add_option("-b","--observations",default="/home/kped/Software/Queue/Michael_queue/observations/")
+    
     parser.add_option("-o","--outputDir",default="../output_observing")
     parser.add_option("-s","--tstart",default="2019-08-27 03:30")
     parser.add_option("-e","--tend",default="2019-08-27 15:30")
@@ -85,6 +87,15 @@ def convert_to_hex(val, delimiter=':', force_sign=False):
         deg_str = '{:02d}'.format(degree * s_factor)
     return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
 
+def load_observations(filename):
+
+    lines = [line.rstrip('\n') for line in open(filename)]
+    data = {}
+    for line in lines:
+        lineSplit = line.split("=")
+        data[lineSplit[0]] = lineSplit[1]
+
+    return data
 
 def load_variables(filename):
 
@@ -236,6 +247,16 @@ for program in programs:
         targets_all.append(targets)
 targets = vstack(targets_all)
 
+observations = {}
+filenames = glob.glob(os.path.join(opts.observations, '*'))
+for filename in filenames:
+    data = load_observations(filename)
+    if data["SUCCESS"] == "1":
+        object_id, dateobs = data["OBJECT_ID"], data["DATEOBS"]
+        if not object_id in observations:
+            observations[object_id] = []
+        observations[object_id].append(dateobs)
+
 idx = np.where(targets["sig"] > opts.significance_cut)[0]
 targets = targets[idx]
 
@@ -244,6 +265,8 @@ blocks = []
 read_out = 10.0 * u.s
 nexp = 1
 for ii, target in enumerate(targets):
+    if target["target"] in observations: continue
+
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
     priority = priorities[ii]
