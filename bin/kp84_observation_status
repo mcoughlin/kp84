@@ -34,7 +34,8 @@ def parse_commandline():
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
-    parser.add_option("-i","--infile",default="/home/kped/Software/Queue/Michael_queue/queue_target.dat")
+
+    parser.add_option("-r","--requests",default="/home/kped/Software/Queue/Michael_queue/requests/")
     parser.add_option("-o","--outputDir",default="/home/kped/Software/Queue/Michael_queue/observations/")
 
     opts, args = parser.parse_args()
@@ -44,15 +45,17 @@ def parse_commandline():
 # Parse command line
 (opts, args) = parse_commandline()
 
-success=int(args[0])
-infile = opts.infile
+requestID=args[0]
+success=int(args[1])
 outputDir = opts.outputDir
 
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
-nt = Time.now()
-gps = nt.gps
+infile = "%s/%s.dat" % (opts.requests, requestID)
+if not os.path.isfile(infile):
+    print('%s is missing?!!?' % infile)
+    exit(0)
 
 lines = [line.rstrip('\n') for line in open(infile)]
 data = {}
@@ -60,7 +63,9 @@ for line in lines:
     lineSplit = line.split("=")
     data[lineSplit[0]] = lineSplit[1]
 
-outfile = os.path.join(outputDir,"%s_%d.dat" % (data["OBJECT_ID"],gps))
+nt = Time.now()
+
+outfile = os.path.join(outputDir,"%s.dat" % (requestID))
 fid = open(outfile,'w')
 for line in lines:
     print("%s" % line, file=fid,flush=True)
