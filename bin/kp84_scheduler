@@ -314,11 +314,15 @@ for schedule in priority_schedule.to_table():
     ra = c.ra.to_string(unit=u.hour, sep=':')
     dec = c.dec.to_string(unit=u.degree, sep=':')
 
+    nt = Time.now()
+    gps = nt.gps
+    requestID = "%s_%d" % (target["objectID"][0],gps)
+
     if not opts.doTime:
         print('PROGRAM_PI=%s' % target["pi"][0],file=fid,flush=True)
         print('PROGRAM_ID=%s' % target["programID"][0],file=fid,flush=True)
         print('OBJECT_ID=%s' % target["objectID"][0],file=fid,flush=True)
-        print('REQUEST_ID=%s' % target["requestID"][0],file=fid,flush=True)
+        print('REQUEST_ID=%s' % requestID,file=fid,flush=True)
         print('COMMENT=%s' % target["comment"][0],file=fid,flush=True)
         print('OBJ_RA=%s' % target["ra_hex"][0],file=fid,flush=True)
         print('OBJ_DEC=%s' % target["dec_hex"][0],file=fid,flush=True)
@@ -330,7 +334,7 @@ for schedule in priority_schedule.to_table():
         print('FILTER=%s' % target["filter"][0],file=fid,flush=True)
         print('CAMERA_MODE=%d' % target["mode"][0],file=fid,flush=True)
     else:
-        print('%s,%d,%s,%s,%s,%.1f,%.2f,%.2f,%.2f,%.0f,%s,%d,%s,%s'%(target["requestID"][0], target["programID"][0], target["objectID"][0], target["ra_hex"][0], target["dec_hex"][0], target["epoch"][0], target["ra_rate"][0], target["dec_rate"][0], target["mag"][0], target["exposure_time"][0], target["filter"][0], target["mode"][0], target["pi"][0], target["comment"][0]),file=fid,flush=True)
+        print('%s,%d,%s,%s,%s,%.1f,%.2f,%.2f,%.2f,%.0f,%s,%d,%s,%s'%(requestID, target["programID"][0], target["objectID"][0], target["ra_hex"][0], target["dec_hex"][0], target["epoch"][0], target["ra_rate"][0], target["dec_rate"][0], target["mag"][0], target["exposure_time"][0], target["filter"][0], target["mode"][0], target["pi"][0], target["comment"][0]),file=fid,flush=True)
 
     cnt = cnt + 1
 
