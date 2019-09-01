@@ -36,6 +36,8 @@ def parse_commandline():
     parser = optparse.OptionParser()
     parser.add_option("-f","--outfile",default="/home/kped/Software/Queue/Michael_queue/queue_target.dat")
     parser.add_option("-l","--object_lists",default="/home/kped/KP84/object_lists")
+
+    parser.add_option("-r","--requests",default="/home/kped/Software/Queue/Michael_queue/requests/")
     parser.add_option("-b","--observations",default="/home/kped/Software/Queue/Michael_queue/observations/")
     
     parser.add_option("-o","--outputDir",default="../output_observing")
@@ -225,7 +227,7 @@ if opts.doTime:
     tend = Time(opts.tend)
 else:
     tstart = Time.now()
-    tend = Time.now() + TimeDelta(8*u.hour)
+    tend = Time.now() + TimeDelta(12*u.hour)
 
 global_constraints = [AirmassConstraint(max = 1.5, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
@@ -339,6 +341,10 @@ for schedule in priority_schedule.to_table():
     cnt = cnt + 1
 
 fid.close()
+
+if not opts.doTime:
+    cp_command = "cp %s %s/%s.dat" % (outfile, opts.requests, requestID)
+    os.system(cp_command) 
 
 if opts.doPlots:
     # plot the schedule with the airmass of the targets
