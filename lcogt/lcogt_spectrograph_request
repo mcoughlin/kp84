@@ -282,7 +282,48 @@ def submit_observation(ra, declination,
     }
     
     # The configurations for this request. In this example we are taking 2 exposures with different filters.
-    configurations = [{
+    configurations = [
+    {
+        'type': 'LAMP_FLAT',
+        'instrument_type': '2M0-FLOYDS-SCICAM',
+        'constraints': constraints,
+        'target': target,
+        'acquisition_config': {},
+        'guiding_config': {
+            'mode': 'OFF',
+            'optional': False},
+        'instrument_configs': [
+            {
+                'exposure_time': 50,
+                'exposure_count': 1,
+                'rotator_mode': 'VFLOAT',
+                'optical_elements': {
+                    'slit': 'slit_1.6as'
+                }
+            }
+        ]
+    },
+    {
+        'type': 'ARC',
+        'instrument_type': '2M0-FLOYDS-SCICAM',
+        'constraints': constraints,
+        'target': target,
+        'acquisition_config': {},
+        'guiding_config': {
+            'mode': 'OFF',
+            'optional': False},
+        'instrument_configs': [
+            {
+                'exposure_time': 60,
+                'exposure_count': 1,
+                'rotator_mode': 'VFLOAT',
+                'optical_elements': {
+                    'slit': 'slit_1.6as'
+                }
+            }
+        ]
+    },
+    {
         'type': 'SPECTRUM',
         'instrument_type': '2M0-FLOYDS-SCICAM',
         'constraints': constraints,
@@ -300,10 +341,50 @@ def submit_observation(ra, declination,
                 'exposure_count': 1,
                 'rotator_mode': 'VFLOAT',
                 'optical_elements': {
-                    'slit': 'slit_2.0as'
+                    'slit': 'slit_1.6as'
                 }
             }
         ]   
+    },
+    {
+        'type': 'ARC',
+        'instrument_type': '2M0-FLOYDS-SCICAM',
+        'constraints': constraints,
+        'target': target,
+        'acquisition_config': {},
+        'guiding_config': {
+            'mode': 'OFF',
+            'optional': False},
+        'instrument_configs': [
+            {
+                'exposure_time': 60,
+                'exposure_count': 1,
+                'rotator_mode': 'VFLOAT',
+                'optical_elements': {
+                    'slit': 'slit_1.6as'
+                }
+            }
+        ]
+    },
+    {
+        'type': 'LAMP_FLAT',
+        'instrument_type': '2M0-FLOYDS-SCICAM',
+        'constraints': constraints,
+        'target': target,
+        'acquisition_config': {},
+        'guiding_config': {
+            'mode': 'OFF',
+            'optional': False},
+        'instrument_configs': [
+            {
+                'exposure_time': 50,
+                'exposure_count': 1,
+                'rotator_mode': 'VFLOAT',
+                'optical_elements': {
+                    'slit': 'slit_1.6as'
+                }
+            }
+        ]
     }]  
     
     tstart_mjd, tend_mjd = tstart.mjd, tend.mjd
@@ -387,7 +468,8 @@ PROPOSAL_ID = opts.PROPOSAL_ID  # Proposal IDs may be found here: https://observ
 if opts.doObjectList:
     known_sources = ["ZTFJ00226141","ZTFJ06517423","ZTFJ07322157","ZTFJ2146-1017","ZTFJ08023927","ZTFJ0213-0404","ZTFJ0210-0616","ZTFJ11492845","ZTFJ19354600","ZTFJ12552718","ZTFJ10515404","ZTFJ01313023","ZTFJ02163954","ZTFJ00394004","ZTFJ12565640","ZTFJ17233427","ZTFJ12024429"]
 
-    submitted_observations = ["ZTFJ18136945", "ZTFJ20153647", "ZTFJ20234218", "ZTFJ00416451", "ZTFJ1942-1032", "ZTFJ20323751", "ZTFJ05193353", "ZTFJ04192903", "ZTFJ04175726", "ZTFJ19291746", "ZTFJ20544358", "ZTFJ17155852", "ZTFJ16327023"]
+    #submitted_observations = ["ZTFJ18136945", "ZTFJ20153647", "ZTFJ20234218", "ZTFJ00416451", "ZTFJ1942-1032", "ZTFJ20323751", "ZTFJ05193353", "ZTFJ04192903", "ZTFJ04175726", "ZTFJ19291746", "ZTFJ20544358", "ZTFJ17155852", "ZTFJ16327023"]
+    submitted_observations = ["ZTFJ18136945"]
     not_observable = ["ZTFJ09176905", "ZTFJ11357028"]
 
     names = ["objectID", "ra", "dec", "period", "significance", "ps1_mag", "col", "mag", "P_min", "simbad"]
