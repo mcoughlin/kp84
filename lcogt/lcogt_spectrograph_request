@@ -93,7 +93,7 @@ def parse_commandline():
     parser.add_option("-i","--PROPOSAL_ID")
 
     parser.add_option("--doMagnitudeCut",  action="store_true", default=False)
-    parser.add_option("-m","--magnitude",default=16.0,type=float)
+    parser.add_option("-m","--magnitude",default=17.0,type=float)
 
     opts, args = parser.parse_args()
 
@@ -390,8 +390,8 @@ def submit_observation(ra, declination,
     tstart_mjd, tend_mjd = tstart.mjd, tend.mjd
     dt = 3.0*exposure_time/86400.0
     
-    print('Object name: %s' % objname)
-    print('RA: %.5f Declination: %.5f' % (ra, declination))
+    #print('Object name: %s' % objname)
+    #print('RA: %.5f Declination: %.5f' % (ra, declination))
    
     for ii in range(nepochs):
         windows = []
@@ -469,14 +469,16 @@ if opts.doObjectList:
     known_sources = ["ZTFJ00226141","ZTFJ06517423","ZTFJ07322157","ZTFJ2146-1017","ZTFJ08023927","ZTFJ0213-0404","ZTFJ0210-0616","ZTFJ11492845","ZTFJ19354600","ZTFJ12552718","ZTFJ10515404","ZTFJ01313023","ZTFJ02163954","ZTFJ00394004","ZTFJ12565640","ZTFJ17233427","ZTFJ12024429"]
 
     #submitted_observations = ["ZTFJ18136945", "ZTFJ20153647", "ZTFJ20234218", "ZTFJ00416451", "ZTFJ1942-1032", "ZTFJ20323751", "ZTFJ05193353", "ZTFJ04192903", "ZTFJ04175726", "ZTFJ19291746", "ZTFJ20544358", "ZTFJ17155852", "ZTFJ16327023"]
-    submitted_observations = ["ZTFJ18136945"]
+    #submitted_observations = ["ZTFJ18136945"]
+    submitted_observations = []
     not_observable = ["ZTFJ09176905", "ZTFJ11357028"]
 
     names = ["objectID", "ra", "dec", "period", "significance", "ps1_mag", "col", "mag", "P_min", "simbad"]
     targets = ascii.read(opts.objfile,names=names)
 
-    idx = np.where(targets["ps1_mag"] < opts.magnitude)[0]
-    targets = targets[idx]
+    if opts.doMagnitudeCut:
+        idx = np.where(targets["ps1_mag"] < opts.magnitude)[0]
+        targets = targets[idx]
 
     idx = []
     for ii, name in enumerate(targets["objectID"].tolist()):
@@ -504,7 +506,17 @@ else:
     tstart = Time.now()
     tend = Time.now() + TimeDelta(14*u.day)    
 
-for objname, ra, dec in zip(objnames, ras, decs):
+for objname, ra, dec, mag in zip(objnames, ras, decs, mags):
+
+    ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=''), convert_to_hex(dec,delimiter='')
+    if dec_hex[0] == "-":
+        objname = "ZTFJ%s%s"%(ra_hex[:4],dec_hex[:5])
+    else:
+        objname = "ZTFJ%s%s"%(ra_hex[:4],dec_hex[:4])
+
+    ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+    print(objname, ra_hex, dec_hex, 'J2000', '!', mag, 2) 
+
     submit_observation(ra, dec,
                        tstart, tend,
                        exposure_time,
