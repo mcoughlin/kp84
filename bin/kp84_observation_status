@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 
 import os, sys, optparse, shutil
 import glob
@@ -45,8 +45,10 @@ def parse_commandline():
 # Parse command line
 (opts, args) = parse_commandline()
 
-requestID=args[0]
-success=int(args[1])
+#requestID=args[0]
+#success=int(args[1])
+success=int(args[0])
+requestID=args[1]
 outputDir = opts.outputDir
 
 if not os.path.isdir(outputDir):
