@@ -100,7 +100,7 @@ dash = '-'
 
 os.system('sed \'/----/,$!d\' ' + infile + ' | tail -n+2 > ' + object_name +'_tmp')
 year,month,date,RA_H,RA_M,RA_S,Dec_d,Dec_m,Dec_s,V_mag,ra_rate_arcmin_hr,dec_rate_arcmin_hr = np.loadtxt(object_name +'_tmp',usecols =(0,1,2,3,4,5,6,7,8,12,13,14)).T
-os.system('rm ' + object_name +'_tmp')
+os.system('rm ' + filename_out)
 
 
 
@@ -128,8 +128,8 @@ Dec_d_string = np.abs(Dec_d).astype('int').astype('string')
 
 
 #times_string_isot_no_t = np.array([s.replace('T','-') for s in t.isot])
-print 'req. ID, prog. ID, obj. ID, RA, Dec, epoch, dRA/dt ("/hr), ddec/dt ("/hr), V, exp. (s), filter, camera mode, PI name, time of obs'
+print('req. ID, prog. ID, obj. ID, RA, Dec, epoch, dRA/dt ("/hr), ddec/dt ("/hr), V, exp. (s), filter, camera mode, PI name, time of obs')
 
 
 for i in range(0, len(entire_date_string)):
-    print '%s,%s,%s,%s,%s,%s,%.2f,%.2f,%.1f,%s,%s,%s,%s,%s'%(request_id, program_id, object_name, RA_H_string[i]+":"+RA_M_string[i]+":"+RA_S_string[i], Dec_sign[i]+Dec_d_string[i]+":"+Dec_m_string[i]+":"+Dec_s_string[i], equinox, ra_rate_arcsec_hr[i], dec_rate_arcsec_hr[i], V_mag[i], exposure_time_s, filter, camera_mode, pi_name, entire_date_string[i])
+    print('%s,%s,%s,%s,%s,%s,%.2f,%.2f,%.1f,%s,%s,%s,%s,%s'%(request_id, program_id, object_name, RA_H_string[i]+":"+RA_M_string[i]+":"+RA_S_string[i], Dec_sign[i]+Dec_d_string[i]+":"+Dec_m_string[i]+":"+Dec_s_string[i], equinox, ra_rate_arcsec_hr[i], dec_rate_arcsec_hr[i], V_mag[i], exposure_time_s, filter, camera_mode, pi_name, entire_date_string[i]))
