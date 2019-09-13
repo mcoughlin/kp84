@@ -13,10 +13,11 @@ import pandas as pd
 import numpy as np
 import h5py
 import glob
+import json
 
 import matplotlib
 matplotlib.use('Agg')
-matplotlib.rcParams.update({'font.size': 16})
+matplotlib.rcParams.update({'font.size': 12})
 matplotlib.rcParams['contour.negative_linestyle'] = 'solid'
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -56,9 +57,31 @@ xmax = header["XMAX"]
 wavelengths = np.linspace(xmin,xmax,len(flux))
 
 outputFile = os.path.join(outputDir,'spectrum.pdf')
-plt.figure()
-plt.plot(wavelengths, flux,'k--')
-plt.plot(wavelengths, sky,'b--')
+plt.figure(figsize=(10,6))
+plt.errorbar(wavelengths, flux, yerr=fluxerr,fmt='k',label='Object')
+plt.plot(wavelengths, sky,'b--',label='Sky')
+plt.xlabel('Wavelength [A]')
+plt.ylabel('Flux [erg/cm2/s/A  10^20]')
+plt.legend()
 plt.savefig(outputFile)
 plt.close()
+
+outputFile = os.path.join(outputDir,'spectrum.json')
+fluxdat = []
+for wave, fl, flerr in zip(wavelengths, flux, fluxerr):
+    fluxdat.append({"wavelength": str(wave),
+                    "flux": str(fl),
+                    "fluxerr": str(flerr)})
+
+data = {"telescope": "%s" % header['TELESCOP'],
+        "instrument": "LCO",
+        "filter": header['FILTER1'],
+        "mjd": str(header['MJD-OBS'] + header['EXPTIME']/2.0),
+        "wavelength_unit": "A",
+        "flux_unit": "erg/cm2/s/A  10^20",
+        "data": fluxdat 
+}
+
+with open(outputFile, 'w') as f:
+    json.dump(data, f)
 
