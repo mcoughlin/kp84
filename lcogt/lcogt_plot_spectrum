@@ -43,6 +43,9 @@ opts = parse_commandline()
 infile = opts.infile
 outputDir = opts.outputDir
 
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
 hudl = fits.open(infile)
 data = hudl[0].data
 header = hudl[0].header
