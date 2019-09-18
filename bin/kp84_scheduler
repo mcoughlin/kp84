@@ -40,7 +40,7 @@ def parse_commandline():
     parser.add_option("-r","--requests",default="/home/kped/Software/Queue/Michael_queue/requests/")
     parser.add_option("-b","--observations",default="/home/kped/Software/Queue/Michael_queue/observations/")
     
-    parser.add_option("-o","--outputDir",default="../output_observing")
+    parser.add_option("-o","--outputDir",default="/home/kped/Software/Queue/Michael_queue/output_observing")
     parser.add_option("-s","--tstart",default="2019-08-27 03:30")
     parser.add_option("-e","--tend",default="2019-08-27 15:30")
 
