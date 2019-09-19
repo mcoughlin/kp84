@@ -91,6 +91,8 @@ header = hudl[1].header
 if not os.path.isdir(opts.outputDir):
     os.makedirs(opts.outputDir)
 
+indexes = []
+
 filename = os.path.join(opts.outputDir,'fermi_4FGL.dat')
 fid = open(filename,'w')
 for row in data:
@@ -102,12 +104,24 @@ for row in data:
     phi = row[10]
     f = row[17]
     f_err = row[18]
+    index = row[22]
+    index_error = row[23]
     c = row[56]
 
     if not c == "": continue
     print(c)
     if dec < -30: continue
-    fid.write('%s %.5f %.5f %.5f %.5f %.5f %.5e %.5e\n'%(name, ra, dec, amaj, amin, phi, f, f_err))
+    fid.write('%s %.5f %.5f %.5f %.5f %.5f %.5e %.5e %.5f %.5f\n'%(name.replace(" ","_"), ra, dec, amaj, amin, phi, f, f_err, index, index_error))
+
+    indexes.append(index)
+  
 fid.close()
 
+plotName = os.path.join(opts.outputDir,'fermi_4FGL.pdf')
+plt.figure()
+hist, bin_edges = np.histogram(indexes, bins=20, density=True)
+bins = (bin_edges[1:] + bin_edges[:-1])/2.0
+plt.plot(bins, hist, linestyle='-', drawstyle='steps')
+plt.savefig(plotName)
+plt.close()
 
