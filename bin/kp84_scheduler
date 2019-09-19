@@ -253,7 +253,7 @@ observations = {}
 filenames = glob.glob(os.path.join(opts.observations, '*'))
 for filename in filenames:
     data = load_observations(filename)
-    if data["SUCCESS"] == "1":
+    if data["SUCCESS"] == "0":
         object_id, dateobs = data["OBJECT_ID"], data["DATEOBS"]
         if not object_id in observations:
             observations[object_id] = []
