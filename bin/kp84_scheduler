@@ -101,6 +101,9 @@ def load_observations(filename):
 
 def load_variables(filename):
 
+    filenameSplit = filename.split("_")
+    priority = float(filenameSplit[-1].replace(".dat",""))
+
     names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
     targets = astropy.io.ascii.read(filename,names=names)
     
@@ -133,7 +136,8 @@ def load_variables(filename):
     targets["ra"] = ras
     targets["dec"] = decs
     targets["programID"] = 1
-    
+    targets["priority"] = np.array(sigs) + priority    
+
     targets.sort("sig")
     targets.reverse()
     targets = astropy.table.unique(targets, keys=["objectID"])
@@ -202,6 +206,7 @@ def load_GW(filename):
     targets["ra"] = ras
     targets["dec"] = decs
     targets["programID"] = 1
+    targets["priority"] = sigs
 
     targets.sort("sig")
     targets.reverse()
@@ -262,7 +267,7 @@ for filename in filenames:
 idx = np.where(targets["sig"] > opts.significance_cut)[0]
 targets = targets[idx]
 
-priorities = np.arange(1,len(targets)+1)
+#priorities = np.arange(1,len(targets)+1)
 blocks = []
 read_out = 10.0 * u.s
 nexp = 1
@@ -271,7 +276,8 @@ for ii, target in enumerate(targets):
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
-    priority = priorities[ii]
+    #priority = priorities[ii]
+    priority = target["priority"]
 
     b = ObservingBlock.from_exposures(target["target"],priority,
                                       exposure_time, nexp, read_out,
