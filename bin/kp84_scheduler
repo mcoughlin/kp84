@@ -234,7 +234,7 @@ else:
     tstart = Time.now()
     tend = Time.now() + TimeDelta(12*u.hour)
 
-global_constraints = [AirmassConstraint(max = 1.5, boolean_constraint = False),
+global_constraints = [AirmassConstraint(max = 1.75, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
 targets_all = []
@@ -255,6 +255,23 @@ for program in programs:
 targets = vstack(targets_all)
 
 observations = {}
+
+filenames = glob.glob(os.path.join(opts.requests, '*'))
+if len(filenames) > 0:
+    objs, gpss = [], []
+    for filename in filenames:
+        filenameSplit = filename.split("/")[-1].split("_")
+        objs.append(filenameSplit[0])
+        gpss.append(float(filenameSplit[1].replace(".dat","")))
+    idx = np.argmax(gpss)
+    object_id = objs[idx]
+    currentgps = gpss[idx]
+    dateobs = Time(currentgps, format='gps').iso
+    
+    if not object_id in observations:
+        observations[object_id] = []
+    observations[object_id].append(dateobs)
+
 filenames = glob.glob(os.path.join(opts.observations, '*'))
 for filename in filenames:
     data = load_observations(filename)
