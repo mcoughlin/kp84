@@ -284,7 +284,9 @@ for filename in filenames:
 idx = np.where(targets["sig"] > opts.significance_cut)[0]
 targets = targets[idx]
 
-#priorities = np.arange(1,len(targets)+1)
+targets.sort("priority", reverse=True)
+priorities = np.arange(1,len(targets)+1)
+
 blocks = []
 read_out = 10.0 * u.s
 nexp = 1
@@ -293,8 +295,8 @@ for ii, target in enumerate(targets):
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
-    #priority = priorities[ii]
-    priority = target["priority"]
+    priority = priorities[ii]
+    #priority = target["priority"]
 
     b = ObservingBlock.from_exposures(target["target"],priority,
                                       exposure_time, nexp, read_out,
