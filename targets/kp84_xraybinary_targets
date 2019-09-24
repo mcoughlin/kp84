@@ -1,0 +1,83 @@
+
+import os, sys, optparse, shutil, time
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.coordinates import Angle
+from astropy.table import Table, vstack
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+Vizier.ROW_LIMIT = -1
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_xraybinary")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def lowmass(maxsources=1000000): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['RAJ2000', 'DEJ2000'], 
+                    row_limit = maxsources) 
+
+    sources = vquery.get_catalogs("V/106/lmxbcat")
+    return sources[0]
+
+def highmass(maxsources=1000000):     
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Name', 'RAJ2000', 'DEJ2000'],                  
+                    row_limit = maxsources) 
+
+    sources = vquery.get_catalogs("J/A+A/455/1165/table1")
+    return sources[0]
+
+# Parse command line
+opts = parse_commandline()
+cat1 = lowmass()
+cat2 = highmass()
+cat = vstack([cat1,cat2])
+
+if not os.path.isdir(opts.outputDir):
+    os.makedirs(opts.outputDir)
+
+filename = os.path.join(opts.outputDir,'xraybinary.dat')
+fid = open(filename,'w')
+names, ras, decs = cat['Name'], cat['RAJ2000'], cat['DEJ2000']
+for name, ra, dec in zip(names, ras, decs):
+    ra  = Angle(ra, unit=u.hour).deg
+    dec = Angle(dec, unit=u.deg).deg
+   
+    if dec < -30: continue
+
+    fid.write('%.5f %.5f\n'%(ra, dec))
+fid.close()
+
+

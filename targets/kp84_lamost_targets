@@ -30,55 +30,6 @@ def parse_commandline():
 
     return opts
 
-def rosat_query(maxsources=1000000): 
-    """
-    Query Gaia DR1 @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['2RXS', 'RAJ2000', 'DEJ2000', 
-                             'CRate', 'e_CRate',
-                             'HR1', 'e_HR1',
-                             'HR2', 'e_HR2'], 
-                    row_limit = maxsources) 
-
-    sources = vquery.get_catalogs("J/A+A/588/A103/cat2rxs")
-    return sources[0]
-
-def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=25,
-               maxsources=1):
-    """
-    Query Gaia DR1 @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS',
-                             'phot_g_mean_mag','phot_r_mean_mag',
-                             'Plx', 'e_Plx', 'BP-RP'],
-                    column_filters={"phot_g_mean_mag":
-                                    ("<%f" % maxmag),
-                                   "phot_r_mean_mag":
-                                    ("<%f" % maxmag)},
-                    row_limit = maxsources)
-
-    field = SkyCoord(ra=ra_deg, dec=dec_deg,
-                           unit=(u.deg, u.deg),
-                           frame='icrs')
-
-    try:
-        source = vquery.query_region(field,
-                               width=("%fd" % rad_deg),
-                               catalog="I/345/gaia2")
-        return source[0]
-    except:
-        return []
-
 # Parse command line
 opts = parse_commandline()
 
@@ -90,20 +41,41 @@ hdul = fits.open(fitsfile)
 hdr = hdul[1].header
 fitsdata = hdul[1].data
 
+obsid = fitsdata["obsid"]
 ras = fitsdata["ra"]
 decs = fitsdata["dec"]
 
 idx = np.where((decs >= -30.0) & (decs <= 80.0))[0]
-ras, decs = ras[idx], decs[idx]
+obsid, ras, decs = obsid[idx], ras[idx], decs[idx]
 
 data = np.vstack((ras, decs)).T
-data = np.unique(data,axis=0)
+print(data)
 
-ras = data[:,0]
-decs = data[:,1]
+vals, idx, inverse, count = np.unique(data,axis=0,return_index=True,return_inverse=True,return_counts=True)
+ras = vals[:,0]
+decs = vals[:,1]
+
+idy = np.where(count > 1)[0]
+obsids = []
+for ii in range(len(data)):
+    if np.mod(ii,10000) == 0:
+        print('%d/%d' % (ii, len(data)))
+    if count[ii] == 1:
+        obsids.append([obsid[idx[ii]]])
+    else:
+        print(ii)
+        thisrow = vals[ii,:]
+        idz = np.unique(np.where(thisrow == data)[0])
+        obsids.append(obsid[idz])
+
+print(obsids)
+print(stop)
 
 filename_out = os.path.join(opts.outputDir,'lamost.hdf5')
 with h5py.File(filename_out, 'w') as f:
     f.create_dataset('ra', data=ras)
     f.create_dataset('dec', data=decs)
 
+filename_out = os.path.join(opts.outputDir,'lamost_indices.hdf5')
+with h5py.File(filename_out, 'w') as f:
+    f.create_dataset('obsid', data=obsid)
