@@ -29,59 +29,8 @@ def parse_commandline():
 
     return opts
 
-def fermi_query(maxsources=10000000): 
-    """
-    Query Gaia DR1 @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['3FGL', 'RAJ2000', 'DEJ2000',
-                             'amaj', 'amin',
-                             'phi', 'Sig',
-                             'S25', 'e_S25',
-                             'Class'],
-                    row_limit = maxsources) 
-
-    sources = vquery.get_catalogs("J/ApJS/218/23/table4")
-    return sources[0]
-
-def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=25,
-               maxsources=1):
-    """
-    Query Gaia DR1 @ VizieR using astroquery.vizier
-    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
-                                          radius in degrees
-                maxmag: upper limit G magnitude (optional)
-                maxsources: maximum number of sources
-    returns: astropy.table object
-    """
-    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS',
-                             'phot_g_mean_mag','phot_r_mean_mag',
-                             'Plx', 'e_Plx', 'BP-RP'],
-                    column_filters={"phot_g_mean_mag":
-                                    ("<%f" % maxmag),
-                                   "phot_r_mean_mag":
-                                    ("<%f" % maxmag)},
-                    row_limit = maxsources)
-
-    field = SkyCoord(ra=ra_deg, dec=dec_deg,
-                           unit=(u.deg, u.deg),
-                           frame='icrs')
-
-    try:
-        source = vquery.query_region(field,
-                               width=("%fd" % rad_deg),
-                               catalog="I/345/gaia2")
-        return source[0]
-    except:
-        return []
-
 # Parse command line
 opts = parse_commandline()
-#cat = fermi_query(maxsources=1000000)
 
 filename = "../catalogs/gll_psc_v19.fit"
 hudl = fits.open(filename)
