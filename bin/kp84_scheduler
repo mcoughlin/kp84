@@ -99,6 +99,70 @@ def load_observations(filename):
 
     return data
 
+def load_transients(filename):
+
+    names = ["objectID", "ra", "dec", "priority"]
+    observations = astropy.io.ascii.read(filename,names=names)
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    cnt = 0
+    for ii, observation in enumerate(observations):
+
+        ra, dec = observation["ra"], observation["dec"]
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        filts = ["FILTER_SLOAN_G", "FILTER_SLOAN_R"]
+        for filt in filts:
+            comment = "10000000000000000000_0"
+            targets.append([str(cnt),
+                            3,
+                            str(cnt),
+                            ra_hex, dec_hex, 2000, 0, 0,
+                            1e5, 300.0,
+                            filt, 9, "Coughlin",
+                            comment])
+            cnt = cnt + 1
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["priority"] = sigs
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    return targets
+
 def load_variables(filename):
 
     filenameSplit = filename.split("_")
@@ -238,7 +302,7 @@ global_constraints = [AirmassConstraint(max = 1.75, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
 targets_all = []
-programs = ["variables", "GW"]
+programs = ["variables", "GW", "transients"]
 for program in programs:
     object_list_dir = os.path.join(object_lists, program)
     filenames = glob.glob(os.path.join(object_list_dir, '*'))
@@ -246,12 +310,15 @@ for program in programs:
         if program == "variables":
             targets = load_variables(filename)
         elif program == "GW":
-            targets = load_GW(filename)
+            targets = load_GW(filename) 
+        elif program == "transients":
+            targets = load_transients(filename)
         else:
             print("How do I load objects from the %s program?")
             exit(0)
 
         targets_all.append(targets)
+
 targets = vstack(targets_all)
 
 observations = {}
@@ -281,10 +348,8 @@ for filename in filenames:
             observations[object_id] = []
         observations[object_id].append(dateobs)
 
-idx = np.where(targets["sig"] > opts.significance_cut)[0]
-targets = targets[idx]
-
-targets.sort("priority", reverse=True)
+targets.sort("priority")
+targets = targets[::-1]
 priorities = np.arange(1,len(targets)+1)
 
 blocks = []
