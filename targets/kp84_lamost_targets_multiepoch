@@ -2,6 +2,7 @@
 import os, sys, optparse, shutil, time
 import glob
 import numpy as np
+import numpy_indexed as npi
 from matplotlib import pyplot as plt
 import matplotlib.patches as patches
 
@@ -49,33 +50,26 @@ idx = np.where((decs >= -30.0) & (decs <= 80.0))[0]
 obsid, ras, decs = obsid[idx], ras[idx], decs[idx]
 
 data = np.vstack((ras, decs)).T
-print(data)
+count = npi.multiplicity(data)
+idx = np.where(count > 1)[0]
+data = data[idx,:]
 
 vals, idx, inverse, count = np.unique(data,axis=0,return_index=True,return_inverse=True,return_counts=True)
 ras = vals[:,0]
 decs = vals[:,1]
 
-idy = np.where(count > 1)[0]
-obsids = []
-for ii in range(len(data)):
-    if np.mod(ii,10000) == 0:
-        print('%d/%d' % (ii, len(data)))
-    if count[ii] == 1:
-        obsids.append([obsid[idx[ii]]])
-    else:
-        print(ii)
-        thisrow = vals[ii,:]
-        idz = np.unique(np.where(thisrow == data)[0])
-        obsids.append(obsid[idz])
-
-print(obsids)
-print(stop)
-
-filename_out = os.path.join(opts.outputDir,'lamost.hdf5')
+filename_out = os.path.join(opts.outputDir,'lamost_multiepoch.hdf5')
 with h5py.File(filename_out, 'w') as f:
     f.create_dataset('ra', data=ras)
     f.create_dataset('dec', data=decs)
 
-filename_out = os.path.join(opts.outputDir,'lamost_indices.hdf5')
+filename_out = os.path.join(opts.outputDir,'lamost_indices_multiepoch.hdf5')
 with h5py.File(filename_out, 'w') as f:
     f.create_dataset('obsid', data=obsid)
+    f.create_dataset('inverse', data=inverse)
+
+plotName = os.path.join(opts.outputDir,'radec.pdf')
+plt.figure()
+plt.hist2d(ras, decs, bins=(50, 50), cmap=plt.cm.jet)
+plt.savefig(plotName)
+plt.close()
