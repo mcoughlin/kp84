@@ -45,6 +45,12 @@ fitsdata = hdul[1].data
 obsid = fitsdata["obsid"]
 ras = fitsdata["ra"]
 decs = fitsdata["dec"]
+snrg = fitsdata["snrg"]
+snrr = fitsdata["snrr"]
+
+snrthresh = 20.0
+idx = np.where( (snrg>snrthresh) | (snrr>snrthresh) )[0]
+ras, decs = ras[idx], decs[idx]
 
 idx = np.where((decs >= -30.0) & (decs <= 80.0))[0]
 obsid, ras, decs = obsid[idx], ras[idx], decs[idx]
