@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.patches as patches
 from datetime import datetime
+from time import strptime
 
 import astropy.table
 from astropy import units as u
@@ -115,11 +116,11 @@ def load_transients(filename):
         filts = ["FILTER_SLOAN_G", "FILTER_SLOAN_R"]
         for filt in filts:
             comment = "10000000000000000000_0"
-            targets.append([str(cnt),
+            targets.append(["%s-%s"%(observation["objectID"],filt[-1].lower()),
                             3,
-                            str(cnt),
+                            "%s-%s"%(observation["objectID"],filt[-1].lower()),
                             ra_hex, dec_hex, 2000, 0, 0,
-                            1e5, 300.0,
+                            1e5, 180.0,
                             filt, 9, "Coughlin",
                             comment])
             cnt = cnt + 1
@@ -160,6 +161,52 @@ def load_transients(filename):
     targets.sort("sig")
     targets.reverse()
     targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    return targets
+
+def load_NEO(filename):
+
+    filenameSplit = filename.split("_")
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = astropy.io.ascii.read(filename,names=names,format='csv')
+    targets['priority'] = 1e15
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+    targets = targets.filled()
+
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+
+
+    mjd_now = Time.now().mjd
+    mjds = []
+    for row in targets:
+        if not row["comment"]: continue
+        tt = datetime(*strptime(row["comment"], '%Y-%b-%d %H:%M:%S.%f')[:6])
+        mjds.append(Time(tt, format='datetime').mjd)
+    mjds = np.array(mjds)
+    idx = np.argmin(np.abs(mjd_now-mjds))
+    targets = targets[idx]
 
     return targets
 
@@ -205,6 +252,9 @@ def load_variables(filename):
     targets.sort("sig")
     targets.reverse()
     targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
 
     return targets
 
@@ -276,6 +326,9 @@ def load_GW(filename):
     targets.reverse()
     targets = astropy.table.unique(targets, keys=["objectID"])
 
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
     return targets
 
 # Parse command line
@@ -298,11 +351,11 @@ else:
     tstart = Time.now()
     tend = Time.now() + TimeDelta(12*u.hour)
 
-global_constraints = [AirmassConstraint(max = 1.75, boolean_constraint = False),
+global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
 targets_all = []
-programs = ["variables", "GW", "transients"]
+programs = ["variables", "GW", "transients", "NEO"]
 for program in programs:
     object_list_dir = os.path.join(object_lists, program)
     filenames = glob.glob(os.path.join(object_list_dir, '*'))
@@ -313,6 +366,8 @@ for program in programs:
             targets = load_GW(filename) 
         elif program == "transients":
             targets = load_transients(filename)
+        elif program == "NEO":
+            targets = load_NEO(filename)
         else:
             print("How do I load objects from the %s program?")
             exit(0)
@@ -329,7 +384,10 @@ if len(filenames) > 0:
     for filename in filenames:
         filenameSplit = filename.split("/")[-1].split("_")
         objs.append(filenameSplit[0])
-        gpss.append(float(filenameSplit[1].replace(".dat","")))
+        if len(filenameSplit) == 3:
+            gpss.append(float(filenameSplit[2].replace(".dat","")))
+        else:
+            gpss.append(float(filenameSplit[1].replace(".dat","")))
     idx = np.argmax(gpss)
     object_id = objs[idx]
     currentgps = gpss[idx]
@@ -356,7 +414,9 @@ blocks = []
 read_out = 10.0 * u.s
 nexp = 1
 for ii, target in enumerate(targets):
-    if target["target"] in observations: continue
+    #if target["target"].name in observations:
+    #    print("%s already observed..." % target["target"].name)
+    if target["target"].name in observations: continue
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
@@ -390,6 +450,7 @@ fid = open(outfile,'w')
 for schedule in priority_schedule.to_table():
     tar = schedule["target"]
     if tar == "TransitionBlock": continue
+    print(targets["objectID"])
 
     if (not opts.doTime) and (cnt > 0):
         continue
