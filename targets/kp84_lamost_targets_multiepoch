@@ -59,6 +59,7 @@ data = np.vstack((ras, decs)).T
 count = npi.multiplicity(data)
 idx = np.where(count > 1)[0]
 data = data[idx,:]
+obsid = obsid[idx]
 
 vals, idx, inverse, count = np.unique(data,axis=0,return_index=True,return_inverse=True,return_counts=True)
 ras = vals[:,0]
