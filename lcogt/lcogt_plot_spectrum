@@ -25,14 +25,25 @@ from matplotlib.colors import LogNorm
 
 from astropy.io import fits
 
+from zvm import zvm
+
 def parse_commandline():
     """
     Parse the options given on the command-line.
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--infile",default="/Users/mcoughlin/Downloads/lcogtdata-20190913-6/nttZTFJ1942-1032_fts_20190912_merge_1.6_58739_1_2df_ex.fits")
+    parser.add_option("--infile",default="/Users/mcoughlin/Downloads/lcogtdata-20191018-1/nttZTFJ17155852_ftn_20190918_merge_1.6_58745_1_2df_ex.fits")
     parser.add_option("-o","--outputDir",default="../output")
+
+    parser.add_option("--doMarshal",  action="store_true", default=False)
+    parser.add_option("-u","--user")
+    parser.add_option("-w","--pwd")
+
+    parser.add_option("-r","--ra",type=float)
+    parser.add_option("-d","--declination",type=float)
+
+    parser.add_option("-p","--program_name",default="Xray Sources")
 
     opts, args = parser.parse_args()
 
@@ -76,7 +87,7 @@ for wave, fl, flerr in zip(wavelengths, flux, fluxerr):
                     "flux": str(fl),
                     "fluxerr": str(flerr)})
 
-data = {"telescope": "%s" % header['TELESCOP'],
+spec = {"telescope": "%s" % header['TELESCOP'],
         "instrument": "LCO",
         "filter": header['FILTER1'],
         "mjd": str(header['MJD-OBS'] + header['EXPTIME']/2.0),
@@ -86,5 +97,43 @@ data = {"telescope": "%s" % header['TELESCOP'],
 }
 
 with open(outputFile, 'w') as f:
-    json.dump(data, f)
+    json.dump(spec, f)
 
+if opts.doMarshal:
+    secrets = {
+        "zvm": {
+            "protocol": "http",
+            "host": "skipper.caltech.edu",
+            "port": "",
+            "username": opts.user,
+            "password": opts.pwd
+        }
+    }
+
+    z = zvm(**secrets['zvm'], verbose=False)
+    print(f'Connection OK: {z.check_connection()}')
+    r = z.api(endpoint='programs', method='get', data={'format': 'json'})
+    program_id = -1
+    for prog in r:
+        if prog["name"] == opts.program_name:
+            program_id = prog["_id"]
+    if program_id < 0:
+        print('Program ID not found...')
+        exit(0)  
+
+    ra, dec = opts.ra, opts.declination
+    r = z.api(endpoint='sources', method='put',
+              data={'ra': ra, 'dec': dec, 
+                    'zvm_program_id': program_id,
+                    'automerge': True})
+    
+    source_id = r["result"]["_id"]
+
+    r = z.api(endpoint=f'sources/{source_id}',
+              method='post', 
+              data={'source_id': source_id,
+                    'action': 'upload_spectrum',
+                    'data': spec})
+
+    print("ZTF Marshal Source ID: %s" % source_id)
+    print("Spectrum upload status: %s" % r["message"])
