@@ -40,6 +40,8 @@ def parse_commandline():
     parser.add_option("-o","--outputDir",default="../output")
 
     parser.add_option("--doMarshal",  action="store_true", default=False)
+    parser.add_option("--doAverage",  action="store_true", default=False)
+
     parser.add_option("-u","--user")
     parser.add_option("-w","--pwd")
 
@@ -96,7 +98,7 @@ for mj, hj, m, merr in zip(mjd, hjd, mag, magerr):
     fluxdat.append({"mjd": str(mj),
                     "hjd": str(hj),
                     "mag": str(m+opts.comparison_mag),
-                    "merr": str(merr)})
+                    "magerr": str(merr)})
 
 spec = {"telescope": "%s" % "KPNO:2.1m",
         "instrument": "KPED",
@@ -138,6 +140,29 @@ if opts.doMarshal:
                     'automerge': True})
     
     source_id = r["result"]["_id"]
+
+    if opts.doAverage:
+        key = 'ZTF_sources_20190718'
+        mags = []
+        for data in r["result"]["lc"]:
+            data = data["data"]
+            for dat in data:
+                mags.append(dat['mag'])
+
+        fluxdat = []
+        for mj, hj, m, merr in zip(mjd, hjd, mag, magerr):
+            fluxdat.append({"mjd": str(mj),
+                            "hjd": str(hj),
+                            "mag": str(m+np.median(mags)-np.median(mag)),
+                            "magerr": str(merr)})
+
+        spec = {"telescope": "%s" % "KPNO:2.1m",
+                "instrument": "KPED",
+                "id": opts.id,
+                "filter": opts.filter,
+                "lc_type": "temporal",
+                "data": fluxdat
+        }
 
     r = z.api(endpoint=f'sources/{source_id}',
               method='post', 
