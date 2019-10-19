@@ -144,7 +144,10 @@ if opts.doMarshal:
     if opts.doAverage:
         key = 'ZTF_sources_20190718'
         mags = []
+        bands = {'g': 1, 'r': 2, 'i': 3}
         for data in r["result"]["lc"]:
+            if not bands[opts.filter] == data["filter"]:
+                continue
             data = data["data"]
             for dat in data:
                 mags.append(dat['mag'])
