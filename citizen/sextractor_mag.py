@@ -149,6 +149,8 @@ print(files_old)#,workdir_fits_red
 for i in range(len(files_old)):
 
     fitsfile = files_old[i]
+    print('Checking: %s' %fitsfile)
+
     hdu = fits.open(fitsfile)
     #ID = hdu[1].header['OBJECT']
     ra_header_.append(hdu[0].header['CRVAL1'])
@@ -196,9 +198,11 @@ for i in range(len(files_old)):
     hdulist.writeto(fitsfilenew,overwrite=True)
 
     if opts.doAstrometryNet:
+        print('Running Astrometry.net')
         ztfsub.utils.astrometrynet(fitsfilenew,pixel_scale=opts.pixel_scale,ra=ra,dec=dec,radius=5.0,depth=100,cutedges=-1,ext=1)
 
     if opts.doSubtraction:
+        print('Running image differencing')
         passband = opts.filter
         refimage = os.path.join(outputDir,'ref_%s.fits' % passband)
         if os.path.isfile(refimage):
@@ -270,6 +274,8 @@ dec_all_tran = np.asarray(dec_all_tran)
 files_entire = glob.glob(workdir_fits_red+'image*.fits')
 files_entire = [x for x in files_entire if (not "sub" in x) and (not "shift" in x)]
 
+print('Analyzing: %s' % ",".join(files_entire))
+
 if opts.doDifferential:
     ps1_table_diff = ps1_query(opts.ra_diff, opts.dec_diff, 1.5/3600.0,maxsources=1, maxmag=30.0)
 
@@ -277,6 +283,9 @@ if opts.doDifferential:
 KPED = []
 for i in range(len(files_entire)):
     imagefile = files_entire[i]
+
+    print('Extracting photometry: %s' %imagefile)
+
     imagefilesub = imagefile.replace(".fits",".sub.fits")
     hdu = fits.open(imagefile)
 
