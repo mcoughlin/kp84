@@ -8,7 +8,7 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--KPED_data",default="/nas_data/KPED_data")
+    parser.add_option("--KPED_data",default="/Data3/data")
     parser.add_option("--setupDir",default="/Data3/archive_kped/data/reductions/")    
     parser.add_option("--day",default="20180923")
     parser.add_option("--objname",default=None)
@@ -51,7 +51,14 @@ objs = []
 for filename in filenames:
     filenameSplit = filename.split('/')
     filenameSplit = filenameSplit[-1].split('_')
-    obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
+    if filenameSplit[0] in ["darks","flats"]:
+        continue
+
+    if filenameSplit[0] == "kped":
+        #obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
+        obj = "%s_%s_%s"%(filenameSplit[3],'9','g')
+    else:
+        obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
 
     if obj not in objs:
         objs.append(obj)
@@ -59,10 +66,11 @@ for filename in filenames:
 fid = open('run_analysis.sh','w')
 
 for obj in objs:
-    fitsfiles = sorted(glob.glob('%s/%s*'%(outputDir,obj))) 
     #notTransient = "fits.fz" in fitsfiles[0]
     notTransient = True
     objsplit = obj.split("_")   
+
+    fitsfiles = sorted(glob.glob('%s/*%s*'%(outputDir,objsplit[0]))) 
 
     if len(fitsfiles) <= 100:
         folderName = "%s/%s/%s"%(outputDir,objsplit[0],obj)
@@ -76,7 +84,7 @@ for obj in objs:
         else:
             fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName,day,objsplit[0]))
 
-        mv_command = "mv %s/%s* %s"%(outputDir,obj,folderName_registration)
+        mv_command = "mv %s/*%s* %s"%(outputDir,objsplit[0],folderName_registration)
         os.system(mv_command)
     else:
 
