@@ -42,8 +42,10 @@ def gaia_query(maxsources=1000,maxmag=15):
     vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS',
                              'phot_g_mean_mag','phot_r_mean_mag',
                              'Plx', 'e_Plx', 'BP-RP',
-                             'Teff', 'Rad', 'Lum'],
+                             'Teff', 'Rad', 'Lum', ],
                     column_filters={"phot_g_mean_mag":
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag":
                                     ("<%f" % maxmag),
                                    "phot_r_mean_mag":
                                     ("<%f" % maxmag),
@@ -58,7 +60,7 @@ def gaia_query(maxsources=1000,maxmag=15):
 opts = parse_commandline()
 cat = gaia_query(maxsources=1000000)
 
-print(cat)
+print(len(cat))
 print(stop)
 
 if not os.path.isdir(opts.outputDir):

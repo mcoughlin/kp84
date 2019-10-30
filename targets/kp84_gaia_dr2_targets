@@ -1,0 +1,175 @@
+
+import os, sys, optparse, shutil, time
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+import pandas as pd
+
+import h5py
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+Vizier.ROW_LIMIT = -1
+Vizier.TIMEOUT = 120
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_gaia_dr2")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def gaia_query(maxsources=1000,maxmag=15): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+
+    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS',
+                             'phot_g_mean_mag','phot_r_mean_mag',
+                             'Plx', 'e_Plx', 'BP-RP',
+                             'Teff', 'Rad', 'Lum', ],
+                    column_filters={"phot_g_mean_mag":
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag":
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag":
+                                    ("<%f" % maxmag),
+                                   "Rad": (">0"), "Lum": (">0"),
+                                   "DE_ICRS": (">-30")},
+                    row_limit = maxsources)
+
+    sources = vquery.get_catalogs("I/345/gaia2")
+    return sources[0]
+
+# Parse command line
+opts = parse_commandline()
+if not os.path.isdir(opts.outputDir):
+    os.makedirs(opts.outputDir)
+
+fitsfile = "../catalogs/dr5_v3.fits"
+hdul = fits.open(fitsfile)
+hdr = hdul[1].header
+fitsdata = hdul[1].data
+
+obsid = fitsdata["obsid"]
+ras = fitsdata["ra"]
+decs = fitsdata["dec"]
+snrg = fitsdata["snrg"]
+snrr = fitsdata["snrr"]
+z = fitsdata["z"]
+z_err = fitsdata["z_err"]
+rv = z*3e5
+rv_err = z_err*3e5
+
+snrthresh = 20.0
+idx = np.where( (snrg>snrthresh) | (snrr>snrthresh) )[0]
+obsid, ras, decs, rv = obsid[idx], ras[idx], decs[idx], rv[idx]
+
+idx = np.where((decs >= -30.0) & (decs <= 80.0))[0]
+obsid, ras, decs, rv = obsid[idx], ras[idx], decs[idx], rv[idx]
+
+idx = np.where(np.abs(rv)>=150)[0]
+obsid, ras, decs, rv = obsid[idx], ras[idx], decs[idx], rv[idx]
+
+bin_edges = np.linspace(-250, 250, 100)
+hist, bins1 = np.histogram(rv, bins=bin_edges)
+bins = (bins1[1:] + bins1[:-1])/2.0
+
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+plt.step(bins, hist, '-',color='k',linewidth=3,where='mid')
+plt.xlabel('Radial Velocity Error [km/s]')
+plt.ylabel('Counts')
+ax.set_yscale('log')
+plotName = os.path.join(opts.outputDir,'lamost_rv.png')
+plt.savefig(plotName)
+plt.close()
+
+c1 = SkyCoord(ra=ras*u.degree, dec=decs*u.degree)
+
+filenames = glob.glob('../catalogs/Gaia*')
+
+bin_edges = np.linspace(0, 100, 50)
+hist = np.zeros((len(bin_edges)-1,1)).T
+
+filename_out = os.path.join(opts.outputDir,'gaia.dat')
+fid = open(filename_out,'w')
+
+for ii, filename in enumerate(filenames):
+    #if ii > 0: continue
+    data_out = pd.read_csv(filename)
+    #data_out = data_out.loc[data_out['dec'] > -30]
+    if len(data_out) == 0: continue
+
+    data_out['sigma_V'] = np.sqrt(data_out['radial_velocity_error']**2 - 0.11**2)*np.sqrt(2/np.pi)*np.sqrt(data_out['rv_nb_transits'])
+
+    data_out = data_out.loc[data_out['sigma_V'] > 20]
+
+    ra, dec = data_out['ra'], data_out['dec']
+    c2 = SkyCoord(ra=ra*u.degree, dec=dec*u.degree)
+ 
+    idx, d2d, d3d = c1.match_to_catalog_sky(c2)
+    max_sep = 3.0 * u.arcsec
+    sep_constraint = d2d < max_sep
+    c_matches = c1[sep_constraint]
+    catalog_matches = c2[idx[sep_constraint]]
+
+    print('%d/%d' % (len(catalog_matches), len(data_out)))
+
+    for coord in catalog_matches:
+        fid.write('%.5f %.5f\n' % (coord.ra.deg, coord.dec.deg))
+
+    #for index, row in data_out.iterrows():
+    #    print(row['sigma_V'])
+
+    hist1, bins1 = np.histogram(data_out['sigma_V'],bins=bin_edges)    
+    bins = (bins1[1:] + bins1[:-1])/2.0
+    hist = hist + hist1
+
+    continue
+
+    for index, row in data_out.iterrows():
+        ra, dec = row['ra'], row['dec']
+        gmag, rmag = row['phot_g_mean_mag'], row['phot_rp_mean_mag']
+        lum_val = row['lum_val']
+        plx, eplx, bprp = row['parallax'], row['parallax_error'], row['bp_rp']
+        rv, rverr, nobs = row['radial_velocity'], row['radial_velocity_error'], row['rv_nb_transits']
+        sigma_V = row['sigma_V']
+        print(sigma_V)
+fid.close()
+
+data_out = np.loadtxt(filename_out)
+ras, decs = data_out[:,0], data_out[:,1]
+filename_out = os.path.join(opts.outputDir,'lamost_gaia_large_rv.hdf5')
+with h5py.File(filename_out, 'w') as f:
+    f.create_dataset('ra', data=ras)
+    f.create_dataset('dec', data=decs)
+
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+plt.step(bins, hist.T, '-',color='k',linewidth=3,where='mid')
+plt.xlabel('Radial Velocity Error [km/s]')
+plt.ylabel('Counts')
+ax.set_yscale('log')
+plotName = os.path.join(opts.outputDir,'gaia.png')
+plt.savefig(plotName)
+plt.close()
+
