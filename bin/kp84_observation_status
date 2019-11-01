@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+from datetime import datetime
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.coordinates import Angle
+from astropy.table import Table, vstack
+from astropy.time import Time, TimeDelta
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroplan import Observer
+from astroplan import FixedTarget
+from astroplan import ObservingBlock
+from astroplan.constraints import TimeConstraint
+from astroplan.constraints import AtNightConstraint, AirmassConstraint
+from astroplan.scheduling import Transitioner
+from astroplan.scheduling import SequentialScheduler
+from astroplan.scheduling import PriorityScheduler
+from astroplan.scheduling import Schedule
+from astroplan.plots import plot_schedule_airmass
+from astroplan import observability_table
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-r","--requests",default="/home/kped/Software/Queue/Michael_queue/requests/")
+    parser.add_option("-o","--outputDir",default="/home/kped/Software/Queue/Michael_queue/observations/")
+
+    opts, args = parser.parse_args()
+
+    return opts, args
+
+# Parse command line
+(opts, args) = parse_commandline()
+
+#requestID=args[0]
+#success=int(args[1])
+success=int(args[0])
+requestID=args[1]
+outputDir = opts.outputDir
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+infile = "%s/%s.dat" % (opts.requests, requestID)
+if not os.path.isfile(infile):
+    print('%s is missing?!!?' % infile)
+    exit(0)
+
+lines = [line.rstrip('\n') for line in open(infile)]
+data = {}
+for line in lines:
+    lineSplit = line.split("=")
+    data[lineSplit[0]] = lineSplit[1]
+
+nt = Time.now()
+
+outfile = os.path.join(outputDir,"%s.dat" % (requestID))
+fid = open(outfile,'w')
+for line in lines:
+    print("%s" % line, file=fid,flush=True)
+print('DATEOBS=%s' % nt,file=fid,flush=True)
+print('SUCCESS=%d' % success,file=fid,flush=True)
+fid.close()
+

@@ -6,6 +6,13 @@ from bs4 import BeautifulSoup
 import os, sys, optparse, shutil
 from requests import Request
 
+from astropy import units as u
+from astropy.coordinates import EarthLocation
+from astropy.time import Time, TimeDelta
+
+from astroplan import Observer
+from astroplan import FixedTarget
+
 from twilio.rest import Client
 from twilio.twiml.voice_response import Say, Sms
 
@@ -17,6 +24,7 @@ def parse_commandline():
 
     parser.add_option("--doCall",  action="store_true", default=False)
     parser.add_option("--doText",  action="store_true", default=False)
+    parser.add_option("--doNight",  action="store_true", default=False)
 
     parser.add_option("-p","--phone")
 
@@ -50,11 +58,25 @@ if opts.doCall or opts.doText:
     client = Client()
     from_=os.environ.get('TWILIO_FROM')
 
+location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
+                                       2096*u.m)
+kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
+
 previous_status = -2
 while True:
     status, status_string = get_status()
+    tstart = Time.now()
+
     if not status == previous_status:
         print("Status change: %s"%status_string)
+
+        if opts.doNight:
+            coord = kp.sun_altaz(tstart)
+            alt = coord.alt.deg
+            if alt > -12.0:
+                print('Sun is at %.2f degrees... not calling.' % alt)
+                previous_status = status
+                continue
 
         if opts.doCall or opts.doText:
             message = 'Greetings human, this is KPED Notices. Your dome status is: %s!'%status_string

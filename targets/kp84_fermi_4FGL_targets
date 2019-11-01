@@ -1,0 +1,76 @@
+
+import os, sys, optparse, shutil, time
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.coordinates import Angle
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+Vizier.ROW_LIMIT = -1
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_fermi")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+
+filename = "../catalogs/gll_psc_v19.fit"
+hudl = fits.open(filename)
+data = hudl[1].data
+header = hudl[1].header
+
+if not os.path.isdir(opts.outputDir):
+    os.makedirs(opts.outputDir)
+
+indexes = []
+
+filename = os.path.join(opts.outputDir,'fermi_4FGL.dat')
+fid = open(filename,'w')
+for row in data:
+    name = row[0]
+    ra = row[1]
+    dec = row[2]
+    amaj = row[8]
+    amin = row[9]
+    phi = row[10]
+    f = row[17]
+    f_err = row[18]
+    index = row[22]
+    index_error = row[23]
+    c = row[56]
+
+    if not c == "": continue
+    print(c)
+    if dec < -30: continue
+    fid.write('%s %.5f %.5f %.5f %.5f %.5f %.5e %.5e %.5f %.5f\n'%(name.replace(" ","_"), ra, dec, amaj, amin, phi, f, f_err, index, index_error))
+
+    indexes.append(index)
+  
+fid.close()
+
+plotName = os.path.join(opts.outputDir,'fermi_4FGL.pdf')
+plt.figure()
+hist, bin_edges = np.histogram(indexes, bins=20, density=True)
+bins = (bin_edges[1:] + bin_edges[:-1])/2.0
+plt.plot(bins, hist, linestyle='-', drawstyle='steps')
+plt.savefig(plotName)
+plt.close()
+

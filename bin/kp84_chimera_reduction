@@ -256,8 +256,8 @@ def stack_images(stackDir,fitsfiles,nimages):
 
         nhdu, xshape, yshape = data.shape
         dateobs = utcparser(hdulist[0].header["UTCSTART"])
-        mjd = dateobs.mjd
-        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+        mjd = dateobs.mjd+(hdulist[0].header["AEXPTIM"]/2)/86400.0
+        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["KINCYCTI"]/86400.0
 
         hdulist2 = []
         cnt = 1
@@ -301,8 +301,8 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
 
         nhdu, xshape, yshape = data.shape
         dateobs = utcparser(hdulist[0].header["UTCSTART"])
-        mjd = dateobs.mjd
-        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+        mjd = dateobs.mjd+(hdulist[0].header["AEXPTIM"]/2)/86400.0
+        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["KINCYCTI"]/86400.0
 
         if cnt == 0:
             header = hdulist[0].header
@@ -484,8 +484,8 @@ if (opts.xstar<0) or (opts.ystar<0):
 
             nhdu, xshape, yshape = data_full.shape
             dateobs = utcparser(hdulist[0].header["UTCSTART"])
-            mjd = dateobs.mjd
-            mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+            mjd = dateobs.mjd+(hdulist[0].header["AEXPTIM"]/2)/86400.0
+            mjdall = mjd + np.arange(nhdu)*hdulist[0].header["KINCYCTI"]/86400.0
 
             for jj in range(nhdu):
                 if np.mod(jj,10) == 0:
