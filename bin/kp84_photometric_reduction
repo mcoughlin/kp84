@@ -706,11 +706,11 @@ for ii,fitsfile in enumerate(fitsfiles):
         cat = np.loadtxt(catfile)
         if not cat.size: continue
 
-        xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
+        xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, cxx, cyy, cxy, cxx_world, cyy_world, cxy_world, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16], cat[:,17], cat[:,18], cat[:,19], cat[:,20], cat[:,21], cat[:,22]
 
         if opts.doZP and opts.doSubtraction:
             catzp = np.loadtxt(catfile_zp)
-            xs_zp, ys_zp, fluxes_zp, fluxerrs_zp, mags_zp, magerrs_zp, ras_zp, decs_zp, A_zp, B_zp, A_world_zp, B_world_zp, theta_zp, theta_world_zp, fwhms_zp, fwhms_world_zp, extnumber_zp = catzp[:,0], catzp[:,1], catzp[:,2], catzp[:,3], catzp[:,4], catzp[:,5], catzp[:,6], catzp[:,7], catzp[:,8], catzp[:,9], catzp[:,10], catzp[:,11], catzp[:,12], catzp[:,13], catzp[:,14], catzp[:,15], catzp[:,16]
+            xs_zp, ys_zp, fluxes_zp, fluxerrs_zp, mags_zp, magerrs_zp, ras_zp, decs_zp, cxx_zp, cyy_zp, cxy_zp, cxx_world_zp, cyy_world_zp, cxy_world_zp, A_zp, B_zp, A_world_zp, B_world_zp, theta_zp, theta_world_zp, fwhms_zp, fwhms_world_zp, extnumber_zp = catzp[:,0], catzp[:,1], catzp[:,2], catzp[:,3], catzp[:,4], catzp[:,5], catzp[:,6], catzp[:,7], catzp[:,8], catzp[:,9], catzp[:,10], catzp[:,11], catzp[:,12], catzp[:,13], catzp[:,14], catzp[:,15], catzp[:,16], catzp[:,17], catzp[:,18], catzp[:,19], catzp[:,20], catzp[:,21], catzp[:,22]
 
         if opts.doZP:
             if opts.doZP and opts.doSubtraction:
@@ -831,11 +831,11 @@ for ii,fitsfile in enumerate(fitsfiles):
 
     if not opts.doSkipSextractor:
         if cnt == 0:
-            tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
+            tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','CXX','CYY','CXY','CXX_World','CYY_World','CXY_World','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
             tbl['FILE_INDEX'] = ii
             tbl['fitsfile'] = fitsfileBase
         else:
-            tbltemp = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
+            tbltemp = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','CXX','CYY','CXY','CXX_World','CYY_World','CXY_World','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
             tbltemp['FILE_INDEX'] = ii
             tbltemp['fitsfile'] = fitsfileBase
             tbl = vstack([tbl,tbltemp])
@@ -852,7 +852,7 @@ for ii,fitsfile in enumerate(fitsfiles):
 if not opts.doSkipSextractor:
     catfile = '%s/catfile.dat'%(path_out_dir)
     ascii.write(tbl,catfile,overwrite=True)
-    tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
+    tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','CXX','CYY','CXY','CXX_World','CYY_World','CXY_World','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
 
 if opts.doForcedPhotometry:
     forcedfile = '%s/forced.dat'%(path_out_dir)
