@@ -72,6 +72,7 @@ def parse_commandline():
     parser.add_option("--doSaveImages",  action="store_true", default=False)
     parser.add_option("--doDifferential",  action="store_true", default=False)
     parser.add_option("--doZP",  action="store_true", default=False)
+    parser.add_option("--doSkipSextractor",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -79,16 +80,19 @@ def parse_commandline():
 
 def dark_image(calibrationDir,camsetting):
 
-    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d*.fits'%camsetting))
+    darkfiles = glob.glob(os.path.join(calibrationDir,'darks_*.fits.fz'))
+    if len(darkfiles) == 0:
+        print('Warning: Could not find darks...')
+        return 0
+
     for ii, darkfile in enumerate(darkfiles):
         hdulist = fits.open(darkfile)
         if ii == 0:
-            if hdulist[0].data is None:
-                hdulist = hdulist[1:]
-            xshape, yshape = hdulist[0].data.shape
+            xshape, yshape = hdulist[1].data.shape
             dark = np.empty([xshape,yshape,0])
-        for hdu in hdulist: 
-            dark = np.append(dark,np.expand_dims(hdu.data,axis=2),axis=2)
+        for jj in range(len(hdulist)):
+            if jj == 0: continue
+            dark = np.append(dark,np.expand_dims(hdulist[jj].data,axis=2),axis=2)
     dark = np.median(dark,axis=2)
 
     return dark
@@ -97,14 +101,16 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
                   filt,camsetting,nimages):
     dark = dark_image(calibrationDir,camsetting)
 
-    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s*.fits'%filt))
+    flatfiles = glob.glob(os.path.join(calibrationDir,'flats_*.fits.fz'))
     for ii, flatfile in enumerate(flatfiles):
         hdulist = fits.open(flatfile)
         if ii == 0:
-            xshape, yshape = hdulist[0].data.shape
+            xshape, yshape = hdulist[1].data.shape
             flat = np.empty([xshape,yshape,0])
-        for hdu in hdulist: 
-            flat = np.append(flat,np.expand_dims(hdu.data,axis=2),axis=2)
+        for jj in range(len(hdulist)):
+            if jj == 0: continue
+            if np.median(hdulist[jj].data) > 50000: continue
+            flat = np.append(flat,np.expand_dims(hdulist[jj].data,axis=2),axis=2)
     flat = np.median(flat,axis=2)
 
     IFminusIB = flat - dark
@@ -167,8 +173,6 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
         hdulist = fits.open(fitsfiles[ii])
         if cnt == 0:
             reference = hdulist[1].data
-
-        hdulist = fits.open(fitsfiles[ii])
 
         if os.path.isfile(scienceimage): continue
 
@@ -448,7 +452,7 @@ xstar = opts.xstar
 ystar = opts.ystar
 
 dataDirSplit = list(filter(None,dataDir.split("/")))
-calibrationDir = "/"+"/".join(dataDirSplit[:-1])+"/calib"
+calibrationDir = "/"+"/".join(dataDirSplit[:-2])+"/calib"
 objectSplit = dataDirSplit[-1].split("_")
 
 star, camsetting, passband = objectSplit[0], int(objectSplit[1]), objectSplit[2] 
@@ -473,7 +477,7 @@ else:
 wcsfiles = glob.glob(os.path.join(opts.dataDir,'registration','*wcs*.fits'))
 sumfiles = glob.glob(os.path.join(opts.dataDir,'registration','*registered_sum.fits'))
 
-header = fits.getheader(fitsfiles[0],ext=0)
+header = fits.getheader(fitsfiles[0],ext=1)
 if not 'DATE' in header:
     print('Trying to unpack the files...')
     for fitsfile in fitsfiles:
@@ -825,15 +829,16 @@ for ii,fitsfile in enumerate(fitsfiles):
     cat = np.loadtxt(catfile)
     if not cat.size: continue
 
-    if cnt == 0:
-        tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
-        tbl['FILE_INDEX'] = ii
-        tbl['fitsfile'] = fitsfileBase
-    else:
-        tbltemp = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
-        tbltemp['FILE_INDEX'] = ii
-        tbltemp['fitsfile'] = fitsfileBase
-        tbl = vstack([tbl,tbltemp])
+    if not opts.doSkipSextractor:
+        if cnt == 0:
+            tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
+            tbl['FILE_INDEX'] = ii
+            tbl['fitsfile'] = fitsfileBase
+        else:
+            tbltemp = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD'])
+            tbltemp['FILE_INDEX'] = ii
+            tbltemp['fitsfile'] = fitsfileBase
+            tbl = vstack([tbl,tbltemp])
 
     if opts.doForcedPhotometry:
         if cnt == 0:
@@ -844,9 +849,10 @@ for ii,fitsfile in enumerate(fitsfiles):
 
     cnt = cnt + 1   
 
-catfile = '%s/catfile.dat'%(path_out_dir)
-ascii.write(tbl,catfile,overwrite=True)
-tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
+if not opts.doSkipSextractor:
+    catfile = '%s/catfile.dat'%(path_out_dir)
+    ascii.write(tbl,catfile,overwrite=True)
+    tbl = ascii.read(catfile,names=['X','Y','flux','fluxerr','mag','magerr','RA','Declination','A','B','A_World','B_World','Theta','Theta_World','FWHM_World','FWHM','EXT','MJD','FILE_INDEX','fitsfile'])
 
 if opts.doForcedPhotometry:
     forcedfile = '%s/forced.dat'%(path_out_dir)
@@ -857,57 +863,58 @@ if opts.doForcedPhotometry:
     mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
     flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
 
-lims = 25
-idx1s = np.where(np.sqrt((tbl['X']-x0)**2 + (tbl['Y']-y0)**2)<=lims)[0]
-idx1s = idx1s.astype(int)
-if opts.doDifferential:
-    idx2s = np.where(np.sqrt((tbl['X']-xfield)**2 + (tbl['Y']-yfield)**2)<=lims)[0]
-    idx2s = idx2s.astype(int)
-
-x1, y1 = tbl[idx1s]['X'].data, tbl[idx1s]['Y'].data
-mjd1 = tbl[idx1s]['MJD'].data
-mag1, magerr1 = tbl[idx1s]['mag'].data, tbl[idx1s]['magerr'].data
-flux1, fluxerr1 = tbl[idx1s]['flux'].data, tbl[idx1s]['fluxerr'].data
-
-if opts.doDifferential:
-    x2, y2 = tbl[idx2s]['X'].data, tbl[idx2s]['Y'].data
-    mjd2 = tbl[idx2s]['MJD'].data
-    mag2, magerr2 = tbl[idx2s]['mag'].data, tbl[idx2s]['magerr'].data
-    flux2, fluxerr2 = tbl[idx2s]['flux'].data, tbl[idx2s]['fluxerr'].data
-
-mjd, mag, magerr, flux, fluxerr = [], [], [], [], [] 
-for ii in range(len(mjd1)):
-    idx3 = np.where(mjd1[ii] == mjd2)[0] 
-    if len(idx3) == 0: continue        
-    idx3 = idx3[np.argmax(mag2[idx3])]
-
-    mjd.append(mjd1[ii])
+if not opts.doSkipSextractor:
+    lims = 25
+    idx1s = np.where(np.sqrt((tbl['X']-x0)**2 + (tbl['Y']-y0)**2)<=lims)[0]
+    idx1s = idx1s.astype(int)
     if opts.doDifferential:
-        mag.append(mag1[ii] - mag2[idx3])
-        magerr.append(np.sqrt(magerr1[ii]**2 + magerr2[idx3]**2))
-        flux.append(flux1[ii]/flux2[idx3])
-        fluxerr.append((flux1[ii]/flux2[idx3])*np.sqrt((fluxerr1[ii]/flux1[ii])**2 + (fluxerr2[idx3]/flux2[idx3])**2))
-    else:
-        mag.append(mag1[ii])
-        magerr.append(magerr1[ii])
-        flux.append(flux1[ii])
-        fluxerr.append(fluxerr1[ii])
-
-idx = np.argsort(mjd)
-mjd, mag, magerr, flux, fluxerr = np.array(mjd), np.array(mag), np.array(magerr), np.array(flux), np.array(fluxerr)
-mjd, mag, magerr, flux, fluxerr = mjd[idx], mag[idx], magerr[idx], flux[idx], fluxerr[idx] 
-
-filename = os.path.join(path_out_dir,'phot.dat')
-fid = open(filename,'w')
-for ii in range(len(mjd)):
-    fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
-fid.close()
-   
-filename = os.path.join(path_out_dir,'star.dat')
-fid = open(filename,'w')
-for ii in range(len(mjd)):
-    fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd1[ii],mag1[ii],magerr1[ii],flux1[ii],fluxerr1[ii]))
-fid.close()
+        idx2s = np.where(np.sqrt((tbl['X']-xfield)**2 + (tbl['Y']-yfield)**2)<=lims)[0]
+        idx2s = idx2s.astype(int)
+    
+    x1, y1 = tbl[idx1s]['X'].data, tbl[idx1s]['Y'].data
+    mjd1 = tbl[idx1s]['MJD'].data
+    mag1, magerr1 = tbl[idx1s]['mag'].data, tbl[idx1s]['magerr'].data
+    flux1, fluxerr1 = tbl[idx1s]['flux'].data, tbl[idx1s]['fluxerr'].data
+    
+    if opts.doDifferential:
+        x2, y2 = tbl[idx2s]['X'].data, tbl[idx2s]['Y'].data
+        mjd2 = tbl[idx2s]['MJD'].data
+        mag2, magerr2 = tbl[idx2s]['mag'].data, tbl[idx2s]['magerr'].data
+        flux2, fluxerr2 = tbl[idx2s]['flux'].data, tbl[idx2s]['fluxerr'].data
+    
+    mjd, mag, magerr, flux, fluxerr = [], [], [], [], [] 
+    for ii in range(len(mjd1)):
+        idx3 = np.where(mjd1[ii] == mjd2)[0] 
+        if len(idx3) == 0: continue        
+        idx3 = idx3[np.argmax(mag2[idx3])]
+    
+        mjd.append(mjd1[ii])
+        if opts.doDifferential:
+            mag.append(mag1[ii] - mag2[idx3])
+            magerr.append(np.sqrt(magerr1[ii]**2 + magerr2[idx3]**2))
+            flux.append(flux1[ii]/flux2[idx3])
+            fluxerr.append((flux1[ii]/flux2[idx3])*np.sqrt((fluxerr1[ii]/flux1[ii])**2 + (fluxerr2[idx3]/flux2[idx3])**2))
+        else:
+            mag.append(mag1[ii])
+            magerr.append(magerr1[ii])
+            flux.append(flux1[ii])
+            fluxerr.append(fluxerr1[ii])
+    
+    idx = np.argsort(mjd)
+    mjd, mag, magerr, flux, fluxerr = np.array(mjd), np.array(mag), np.array(magerr), np.array(flux), np.array(fluxerr)
+    mjd, mag, magerr, flux, fluxerr = mjd[idx], mag[idx], magerr[idx], flux[idx], fluxerr[idx] 
+    
+    filename = os.path.join(path_out_dir,'phot.dat')
+    fid = open(filename,'w')
+    for ii in range(len(mjd)):
+        fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
+    fid.close()
+       
+    filename = os.path.join(path_out_dir,'star.dat')
+    fid = open(filename,'w')
+    for ii in range(len(mjd)):
+        fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd1[ii],mag1[ii],magerr1[ii],flux1[ii],fluxerr1[ii]))
+    fid.close()
 
 if opts.doPlots:
  
@@ -917,9 +924,10 @@ if opts.doPlots:
         plt.errorbar(mjd_forced-mjd_forced[0],mag_forced,magerr_forced,fmt='ko')
         plt.xlabel('Time from %.5f [days]'%mjd_forced[0])
         plt.ylabel('Magnitude [arb]')
+        idx = np.where(np.isfinite(mag_forced))[0]
         ymed = np.nanmedian(mag_forced)
-        y10, y90 = np.nanpercentile(mag_forced,10), np.nanpercentile(mag_forced,90)
-        ystd = np.nanmedian(magerr_forced)
+        y10, y90 = np.nanpercentile(mag_forced[idx],10), np.nanpercentile(mag_forced[idx],90)
+        ystd = np.nanmedian(magerr_forced[idx])
         ymin = y10 - 3*ystd
         ymax = y90 + 3*ystd
         plt.ylim([ymin,ymax])
@@ -937,96 +945,97 @@ if opts.doPlots:
         plt.savefig(plotName)
         plt.close()
 
-    if mjd1.size == 0:
-        print("Warning ... no sources consistent with object identified.")
-        exit(0)
+    if not opts.doSkipSextractor:
+        if mjd1.size == 0:
+            print("Warning ... no sources consistent with object identified.")
+            exit(0)
 
-    plotName = os.path.join(path_out_dir,'star.pdf')
-    fig = plt.figure(figsize=(20,8))
-    plt.errorbar(mjd1-mjd1[0],mag1,magerr1,fmt='ko')
-    plt.xlabel('Time from %.5f [days]'%mjd1[0])
-    plt.ylabel('Magnitude [arb]')
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'drift.pdf')
-    plt.scatter(x1,y1,s=20,c=mag1)
-    plt.xlabel('X [pixels]')
-    plt.ylabel('Y [pixels]')
-    cbar = plt.colorbar()
-    cbar.set_label('Magnitude [arb]')
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'drift_numbers.pdf')
-    plt.scatter(x1,y1,s=20,c=np.arange(len(x1)))
-    plt.xlabel('X [pixels]')
-    plt.ylabel('Y [pixels]')
-    plt.xlim([570,630])
-    plt.ylim([537,545])
-    cbar = plt.colorbar()
-    cbar.set_label('Image Number')
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'star_field.pdf')
-    fig = plt.figure(figsize=(20,8))
-    plt.errorbar(mjd2-mjd2[0],mag2,magerr2,fmt='ko')
-    plt.xlabel('Time from %.5f [days]'%mjd2[0])
-    plt.ylabel('Magnitude [arb]')
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'drift_field.pdf')
-    plt.scatter(x2,y2,s=20,c=mag2)
-    plt.xlabel('X [pixels]')
-    plt.ylabel('Y [pixels]')
-    cbar = plt.colorbar()
-    cbar.set_label('Magnitude [arb]')
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'mag_relative.pdf')
-    fig = plt.figure(figsize=(20,8))
-    plt.errorbar(mjd-mjd[0],mag,magerr,fmt='ko')
-    plt.xlabel('Time from %.5f [days]'%mjd[0])
-    plt.ylabel('Magnitude [arb]')
-    #plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'flux_relative.pdf')
-    fig = plt.figure(figsize=(20,8))
-    plt.errorbar(mjd-mjd[0],flux,fluxerr,fmt='ko')
-    plt.xlabel('Time from %.5f [days]'%mjd[0])
-    plt.ylabel('Flux Ratio')
-    plt.ylim([np.percentile(flux,5)*0.9,np.percentile(flux,95)*1.1])
-    plt.tight_layout()
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'AoverB.pdf')
-    plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["A"]/tbl["B"])
-    plt.xlabel('X [pixels]')
-    plt.ylabel('Y [pixels]')
-    cbar = plt.colorbar()
-    cbar.set_label('A/B')
-    plt.savefig(plotName)
-    plt.close()
-
-    plotName = os.path.join(path_out_dir,'fwhm.pdf')
-    plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["FWHM_World"])
-    plt.xlabel('X [pixels]')
-    plt.ylabel('Y [pixels]')
-    cbar = plt.colorbar()
-    cbar.set_label('FWHM')
-    plt.savefig(plotName)
-    plt.close()
+        plotName = os.path.join(path_out_dir,'star.pdf')
+        fig = plt.figure(figsize=(20,8))
+        plt.errorbar(mjd1-mjd1[0],mag1,magerr1,fmt='ko')
+        plt.xlabel('Time from %.5f [days]'%mjd1[0])
+        plt.ylabel('Magnitude [arb]')
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'drift.pdf')
+        plt.scatter(x1,y1,s=20,c=mag1)
+        plt.xlabel('X [pixels]')
+        plt.ylabel('Y [pixels]')
+        cbar = plt.colorbar()
+        cbar.set_label('Magnitude [arb]')
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'drift_numbers.pdf')
+        plt.scatter(x1,y1,s=20,c=np.arange(len(x1)))
+        plt.xlabel('X [pixels]')
+        plt.ylabel('Y [pixels]')
+        plt.xlim([570,630])
+        plt.ylim([537,545])
+        cbar = plt.colorbar()
+        cbar.set_label('Image Number')
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'star_field.pdf')
+        fig = plt.figure(figsize=(20,8))
+        plt.errorbar(mjd2-mjd2[0],mag2,magerr2,fmt='ko')
+        plt.xlabel('Time from %.5f [days]'%mjd2[0])
+        plt.ylabel('Magnitude [arb]')
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'drift_field.pdf')
+        plt.scatter(x2,y2,s=20,c=mag2)
+        plt.xlabel('X [pixels]')
+        plt.ylabel('Y [pixels]')
+        cbar = plt.colorbar()
+        cbar.set_label('Magnitude [arb]')
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'mag_relative.pdf')
+        fig = plt.figure(figsize=(20,8))
+        plt.errorbar(mjd-mjd[0],mag,magerr,fmt='ko')
+        plt.xlabel('Time from %.5f [days]'%mjd[0])
+        plt.ylabel('Magnitude [arb]')
+        #plt.ylim([np.percentile(mag,5)*0.9,np.percentile(mag,95)*1.1])
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'flux_relative.pdf')
+        fig = plt.figure(figsize=(20,8))
+        plt.errorbar(mjd-mjd[0],flux,fluxerr,fmt='ko')
+        plt.xlabel('Time from %.5f [days]'%mjd[0])
+        plt.ylabel('Flux Ratio')
+        plt.ylim([np.percentile(flux,5)*0.9,np.percentile(flux,95)*1.1])
+        plt.tight_layout()
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'AoverB.pdf')
+        plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["A"]/tbl["B"])
+        plt.xlabel('X [pixels]')
+        plt.ylabel('Y [pixels]')
+        cbar = plt.colorbar()
+        cbar.set_label('A/B')
+        plt.savefig(plotName)
+        plt.close()
+    
+        plotName = os.path.join(path_out_dir,'fwhm.pdf')
+        plt.scatter(tbl["X"],tbl["Y"],s=20,c=tbl["FWHM_World"])
+        plt.xlabel('X [pixels]')
+        plt.ylabel('Y [pixels]')
+        cbar = plt.colorbar()
+        cbar.set_label('FWHM')
+        plt.savefig(plotName)
+        plt.close()
 
 
