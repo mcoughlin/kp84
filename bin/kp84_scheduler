@@ -271,6 +271,101 @@ def load_time_sensitive(filename):
 
     return targets
 
+def load_periodic_time_sensitive(filename,buffertime=15./60/24):
+
+    filenameSplit = filename.split("_")
+    priority = float(filenameSplit[-1].replace(".dat",""))
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = astropy.io.ascii.read(filename,names=names)
+
+    jd_now = Time.now().jd
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    exposures = []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        # units are in days, format is HJD
+        p,t0,window = float(commentSplit[0]), float(commentSplit[1]), float(commentSplit[2])
+
+        sig, period = priority, 0
+ 
+        # convert to heliocentre
+        ut_helio = JD2HJD(jd_now,ra,dec)
+
+        # calculate the number of eclipses since t0
+        N = (ut_helio-t0).value//p
+
+        tn = t0+p*(N+1) - ut_helio # time until next window midpoint 
+        if tn + 0.5*window + buffertime > 0 or tn + 0.5*window < 0
+            # if next window is too far away or already ongoing, skip
+            continue
+
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+        exposures.append((window+tn)*3600*24) # set the exposuretime to windowsize + time untill window start
+
+    if len(sigs) == 0:
+        return []
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["exposure_time"] = exposures
+    targets["programID"] = 1
+    targets["priority"] = np.array(sigs) + priority
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    return targets
+
+def HJD2JD(HJD,ra,dec,site=kp):
+    # convert HJD to JD
+    target = coord.SkyCoord(ra*u.deg,dec*u.deg, frame='icrs')
+    tsite = coord.EarthLocation.of_site(site)
+    times = Time(HJD, format='jd',
+                      scale='utc', location=tsite)
+    ltt_helio = times.light_travel_time(target, 'heliocentric')
+
+    JD = HJD-ltt_helio
+
+    return JD
+
+def JD2HJD(JD,ra,dec,site=kp):
+    # convert JD to HJD
+    target = coord.SkyCoord(ra*u.deg,dec*u.deg, frame='icrs')
+    tsite = coord.EarthLocation.of_site(site)
+    times = Time(JD, format='jd',
+                      scale='utc', location=tsite)
+    ltt_helio = times.light_travel_time(target, 'heliocentric')
+
+    HJD = JD+ltt_helio
+
+    return HJD
+
 def load_variables(filename):
 
     filenameSplit = filename.split("_")
