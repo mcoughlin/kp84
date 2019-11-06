@@ -1,0 +1,1 @@
+python kp84_photometric_reduction --dataDir /Data3/archive_kped/data/reductions/20190315/ZTFJ13165705/ZTFJ13165705_1_g --outputDir ../output/20190315/ZTFJ13165705 --doPlots --doForcedPhotometry --doRegistration --doDifferential --doStack -n 32 --xstar 755  --ystar 378 --xstar_field 566 --ystar_field 336 --doMakeMovie

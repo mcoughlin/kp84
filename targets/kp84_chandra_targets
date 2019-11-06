@@ -1,0 +1,104 @@
+
+import os, sys, optparse, shutil, time
+import glob
+import numpy as np
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.coordinates import Angle
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+from astroquery.vizier import Vizier
+Vizier.ROW_LIMIT = -1
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_chandra")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def chandra_query(maxsources=10000000): 
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field 
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['CXO', 'RAJ2000', 'DEJ2000',
+                             'ePos',
+                             'Fb', 'b_Fb', 'B_Fb',
+                             'hr2', 'hr1'],
+                    row_limit = maxsources) 
+
+    sources = vquery.get_catalogs("IX/45/csc11")
+    return sources[0]
+
+def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=25,
+               maxsources=1):
+    """
+    Query Gaia DR1 @ VizieR using astroquery.vizier
+    parameters: ra_deg, dec_deg, rad_deg: RA, Dec, field
+                                          radius in degrees
+                maxmag: upper limit G magnitude (optional)
+                maxsources: maximum number of sources
+    returns: astropy.table object
+    """
+    vquery = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS',
+                             'phot_g_mean_mag','phot_r_mean_mag',
+                             'Plx', 'e_Plx', 'BP-RP'],
+                    column_filters={"phot_g_mean_mag":
+                                    ("<%f" % maxmag),
+                                   "phot_r_mean_mag":
+                                    ("<%f" % maxmag)},
+                    row_limit = maxsources)
+
+    field = SkyCoord(ra=ra_deg, dec=dec_deg,
+                           unit=(u.deg, u.deg),
+                           frame='icrs')
+
+    try:
+        source = vquery.query_region(field,
+                               width=("%fd" % rad_deg),
+                               catalog="I/345/gaia2")
+        return source[0]
+    except:
+        return []
+
+# Parse command line
+opts = parse_commandline()
+cat = chandra_query(maxsources=10000000)
+
+if not os.path.isdir(opts.outputDir):
+    os.makedirs(opts.outputDir)
+
+errlim = 60.0 # 1 arcminute
+
+filename = os.path.join(opts.outputDir,'chandra.dat')
+fid = open(filename,'w')
+names, ras, decs, ePos, Flux, Flux_down, Flux_up, hr1, hr2 = cat['CXO'], cat['RAJ2000'], cat['DEJ2000'], cat['ePos'], cat['Fb'], cat['b_Fb'], cat['B_Fb'], cat['hr1'], cat['hr2']
+for name, ra, dec, err, f, f_down, f_up, h1, h2 in zip(names, ras, decs, ePos, Flux, Flux_down, Flux_up, hr1, hr2):
+    ra  = Angle(ra, unit=u.deg).deg
+    dec = Angle(dec, unit=u.deg).deg
+
+    if (err>errlim):
+        continue
+
+    if dec < -30: continue
+    fid.write('%s %.5f %.5f %.5f %.5e %.5e %.5e %.5f %.5f\n'%(name, ra, dec, err, f, f_down, f_up, h1, h2))
+fid.close()
+
+

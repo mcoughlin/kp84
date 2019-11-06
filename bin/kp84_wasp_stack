@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+from astropy.io import fits
+
+from skimage.feature import register_translation
+import image_registration
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-i","--inputfiles",default="/media/Data/mcoughlin/WASP/1815F_HAlpha_*")
+    parser.add_option("-f","--flatfiles",default="/media/Data/mcoughlin/WASP/FLAT_HALPHA_*")
+    parser.add_option("-b","--biasfiles",default="/media/Data/mcoughlin/WASP/BIAS_*")
+    parser.add_option("-o","--outputfile",default="/home/mcoughlin/WASP_stack.fits")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def stack_images(fitsfiles,doRegister=False):
+    hdulist2 = []
+    cnt = 1
+    for jj in range(len(fitsfiles)):
+        print(jj,fitsfiles[jj])
+        fitsfile = fitsfiles[jj]
+        hdulist = fits.open(fitsfile)
+        if cnt == 1:
+            hdulist_hold = copy.copy(hdulist[0])
+            xshape, yshape = hdulist_hold.data.shape
+            data = np.empty([xshape,yshape,0])
+            reference = hdulist[0].data
+
+        if doRegister:
+            shift, error, diffphase = register_translation(reference, hdulist[0].data, upsample_factor=1)
+            shifted = image_registration.fft_tools.shiftnd(hdulist[0].data, (shift[0], shift[1]))
+            data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+        else:
+            data = np.append(data,np.expand_dims(hdulist[0].data,axis=2),axis=2)
+        cnt = cnt + 1
+
+    hdulist_hold.data = np.median(data,axis=2)
+    return hdulist_hold
+
+opts = parse_commandline()
+inputfiles = opts.inputfiles
+outputfile = opts.outputfile
+flatfiles = opts.flatfiles
+biasfiles = opts.biasfiles
+
+fitsfiles = sorted(glob.glob(inputfiles))
+hdulist = stack_images(fitsfiles,doRegister=True)
+
+flatfiles = sorted(glob.glob(flatfiles))
+hdulist_flat = stack_images(flatfiles,doRegister=False)
+
+biasfiles = sorted(glob.glob(biasfiles))
+hdulist_bias = stack_images(biasfiles,doRegister=False)
+
+bias = hdulist_bias.data
+flat = hdulist_flat.data
+IFminusIB = flat - bias
+
+m = np.mean(IFminusIB)
+hdulist.data = ((hdulist.data - bias)*m)/IFminusIB
+hdulist2 = fits.HDUList(hdus=hdulist)
+hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
+

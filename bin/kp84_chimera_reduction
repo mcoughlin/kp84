@@ -30,24 +30,28 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="/Users/mcoughlin/Code/KP84/observing/1718r_20180706")
+    parser.add_option("--dataDir",default="/media/Data/mcoughlin/1815f/20181213//")
 
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("-i","--inputDir",default="../input")
-    parser.add_option("-o","--outputDir",default="../output")
+    parser.add_option("-o","--outputDir",default="../output/chimera_1815f")
     parser.add_option("-d","--defaultsDir",default="../defaults")
+    parser.add_option("-s","--star",default="1815f")
+    parser.add_option("--passband",default="g")
 
     parser.add_option("-n","--nimages",default=16,type=int)
     parser.add_option("-x","--xstar",default=-1,type=float)
     parser.add_option("-y","--ystar",default=-1,type=float)
     parser.add_option("--xstar_field",default=-1,type=float)
     parser.add_option("--ystar_field",default=-1,type=float)
+    parser.add_option("-f","--fwhm",default=10.0,type=float)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False)
     parser.add_option("--doStack",  action="store_true", default=False)
-    parser.add_option("--doRegister",  action="store_true", default=False) 
+    parser.add_option("--doRegistration",  action="store_true", default=False) 
+    parser.add_option("--doZP",  action="store_true", default=False)
 
     parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--phase",default=0.004800835466385,type=float)
@@ -56,11 +60,15 @@ def parse_commandline():
     parser.add_option("--doCalibration",  action="store_true", default=False)
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
+    parser.add_option("--doDifferential",  action="store_true", default=False)
 
     parser.add_option("--doSubtraction",  action="store_true", default=False)
     parser.add_option("--subtractionDir",default="../subtraction")
     parser.add_option("--subtractionSource",default="ps1")
     parser.add_option("--image_size",default=4000,type=int)
+
+    parser.add_option("--doSaveImages",  action="store_true", default=False)
+    parser.add_option("--doAstrometryNet",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -91,85 +99,126 @@ def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=20,
                                width=("%fd" % rad_deg),
                                catalog="II/349/ps1")[0]
 
-def dark_image(calibrationDir,camsetting):
+def bias_image(calibrationDir,biasfileall):
 
-    darkfiles = glob.glob(os.path.join(calibrationDir,'dark_%d.fits'%camsetting))
-    for ii, darkfile in enumerate(darkfiles):
-        hdulist = fits.open(darkfile)
+    biasfiles = glob.glob(os.path.join(calibrationDir,'*_bias_*.fits'))
+    nbias = 10
+    cnt = 0
+
+    for ii, biasfile in enumerate(biasfiles):
+        print('%d/%d'%(ii,len(biasfiles)))
+
+        hdulist = fits.open(biasfile, ignore_missing_end = True)
+        header = hdulist[0].header
+        data = hdulist[0].data 
+
+        nhdu, xshape, yshape = data.shape
+
         if ii == 0:
-            if hdulist[0].data is None:
-                hdulist = hdulist[1:]
-            xshape, yshape = hdulist[0].data.shape
-            dark = np.empty([xshape,yshape,0])
-        for hdu in hdulist: 
-            dark = np.append(dark,np.expand_dims(hdu.data,axis=2),axis=2)
-    dark = np.median(dark,axis=2)
+            bias = np.empty([xshape,yshape,0])
+            biastmp = np.empty([xshape,yshape,0])
 
-    return dark
+        for jj in range(nhdu):
+            thisdata = data[jj,:,:]
+            biastmp = np.append(biastmp,np.expand_dims(thisdata,axis=2),axis=2)
+            cnt = cnt + 1 
 
-def correct_image(calibrationDir,fitsfile,scienceimage,
-                  filt,camsetting,nimages):
-    dark = dark_image(calibrationDir,camsetting)
+            if cnt == nbias:
+                biastmp = np.median(biastmp,axis=2)
+                bias = np.append(bias,np.expand_dims(biastmp,axis=2),axis=2)
+                cnt = 0
+                biastmp = np.empty([xshape,yshape,0])
 
-    flatfiles = glob.glob(os.path.join(calibrationDir,'flat_%s.fits'%filt))
+    bias = np.median(bias,axis=2)
+    hdu = fits.PrimaryHDU(bias)
+    hdu.writeto(biasfileall)
+
+def flat_image(calibrationDir,flatfileall):
+
+    flatfiles = glob.glob(os.path.join(calibrationDir,'*_flat_*.fits'))
+    nflat = 10
+    cnt = 0
+
     for ii, flatfile in enumerate(flatfiles):
-        hdulist = fits.open(flatfile)
-        if ii == 0:
-            xshape, yshape = hdulist[0].data.shape
-            flat = np.empty([xshape,yshape,0])
-        for hdu in hdulist: 
-            flat = np.append(flat,np.expand_dims(hdu.data,axis=2),axis=2)
-    flat = np.median(flat,axis=2)
+        print('%d/%d'%(ii,len(flatfiles)))
 
-    IFminusIB = flat - dark
+        hdulist = fits.open(flatfile, ignore_missing_end = True)
+        header = hdulist[0].header
+        data = hdulist[0].data
+
+        nhdu, xshape, yshape = data.shape
+
+        if ii == 0:
+            flat = np.empty([xshape,yshape,0])
+            flattmp = np.empty([xshape,yshape,0])
+
+        for jj in range(nhdu):
+            thisdata = data[jj,:,:]
+            flattmp = np.append(flattmp,np.expand_dims(thisdata,axis=2),axis=2)
+            cnt = cnt + 1
+
+            if cnt == nflat:
+                flattmp = np.median(flattmp,axis=2)
+                flat = np.append(flat,np.expand_dims(flattmp,axis=2),axis=2)
+                cnt = 0
+                flattmp = np.empty([xshape,yshape,0])
+
+    flat = np.median(flat,axis=2)
+    hdu = fits.PrimaryHDU(flat)
+    hdu.writeto(flatfileall)
+
+def correct_image(calibrationDir,fitsfile,scienceimage):
+
+    biasfile = os.path.join(calibrationDir,'bias.fits')
+    if not os.path.isfile(biasfile):
+        bias_image(calibrationDir,biasfile)
+    hdul = fits.open(biasfile)
+    bias = hdul[0].data 
+
+    flatfile = os.path.join(calibrationDir,'flat.fits')
+    if not os.path.isfile(flatfile):
+        flat_image(calibrationDir,flatfile)
+    hdul = fits.open(flatfile)
+    flat = hdul[0].data
+
+    print(flat,bias)
+
+    IFminusIB = flat - bias
     m = np.mean(IFminusIB)
 
-    hdulist = fits.open(fitsfile,memmap=True)
-    for ii in range(len(hdulist)):
-        if ii == 0: continue
-        hdulist[ii].data = ((hdulist[ii].data - dark)*m)/IFminusIB
+    hdulist = fits.open(fitsfile, ignore_missing_end = True)
+    header = hdulist[0].header
+    data = hdulist[0].data
 
-    if nimages == 1:
-        hdulist2 = hdulist
-    else:
-        hdulist2 = []
-        cnt = 1
-        for ii in range(len(hdulist)):
-            if ii == 0:
-                hdulist2.append(hdulist[ii])
-            else:
-                if cnt == 1:
-                    hdulist_hold = copy.copy(hdulist[ii])
-                    xshape, yshape = hdulist_hold.data.shape
-                    data = np.empty([xshape,yshape,0])
-                data = np.append(data,np.expand_dims(hdulist[ii].data,axis=2),axis=2)
-                cnt = cnt + 1            
+    nhdu, xshape, yshape = data.shape
 
-                if cnt == nimages:
-                    hdulist_hold.data = np.mean(data,axis=2)
-                    hdulist2.append(hdulist_hold)
-                    cnt = 1    
-
-        hdulist2 = fits.HDUList(hdus=hdulist2)
-
-    keywords_to_remove = ["RAD","DECD","TELRA","TELDEC","TELRAD","TELDECD","CRPIX1","CRPIX2","CRVAL1","CRVAL2","CD1_1","CD1_2","CD2_1","CD2_2","CCD_ROT","PIXSCALX","PIXSCALY","CUNIT1","CUNIT2","WCSAXES","WCSNAME","RADESYS","WCSVERS","CTYPE1","CTYPE2","RA","DEC"]
-    for ii in range(len(hdulist2)):
-        for keyword in keywords_to_remove:
-            if keyword in hdulist2[ii].header:
-                del hdulist2[ii].header[keyword]
-
-    hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
+    for jj in range(nhdu):
+        hdulist[0].data[jj,:,:] = ((hdulist[0].data[jj,:,:] - bias)*m)/IFminusIB
+    hdulist.writeto(scienceimage,output_verify='fix',overwrite=True)
 
 def register_images(registerDir,fitsfiles):
+
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+        try:
+            try:
+                num = int(fitsfileSplit[-2][-2:])
+            except:
+                num = int(fitsfileSplit[-2][-1:])
+        except:
+            num = int(fitsfileSplit[-1])
+        nums.append(num)
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
 
     cnt = 0
     for ii in range(len(fitsfiles)):
         filename = fitsfiles[ii].split("/")[-1]
-        filename = filename.replace(".fits","_%s.fits"%ii)
+        #filename = filename.replace(".fits","_%s.fits"%ii)
         scienceimage = os.path.join(registerDir,filename)
         if os.path.isfile(scienceimage): continue
 
-        hdulist = fits.open(fitsfiles[ii])
+        hdulist = fits.open(fitsfiles[ii],ignore_missing_end = True)
         header = hdulist[0].header
         data = hdulist[0].data
 
@@ -177,6 +226,7 @@ def register_images(registerDir,fitsfiles):
             reference = hdulist[0].data[0,:,:]
 
         nhdu, xshape, yshape = data.shape
+        
         hdulist2 = copy.copy(hdulist)
         cnt = 1
         for jj in range(nhdu):
@@ -206,8 +256,8 @@ def stack_images(stackDir,fitsfiles,nimages):
 
         nhdu, xshape, yshape = data.shape
         dateobs = utcparser(hdulist[0].header["UTCSTART"])
-        mjd = dateobs.mjd
-        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+        mjd = dateobs.mjd+(hdulist[0].header["AEXPTIM"]/2)/86400.0
+        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["KINCYCTI"]/86400.0
 
         hdulist2 = []
         cnt = 1
@@ -251,8 +301,8 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
 
         nhdu, xshape, yshape = data.shape
         dateobs = utcparser(hdulist[0].header["UTCSTART"])
-        mjd = dateobs.mjd
-        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+        mjd = dateobs.mjd+(hdulist[0].header["AEXPTIM"]/2)/86400.0
+        mjdall = mjd + np.arange(nhdu)*hdulist[0].header["KINCYCTI"]/86400.0
 
         if cnt == 0:
             header = hdulist[0].header
@@ -273,8 +323,6 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
             datas[:,:,idx] = datas[:,:,idx] + shifted
             phase_counts[idx] = phase_counts[idx] + 1
 
-        print(ii,np.mean(phase_counts))
-
         cnt = cnt + 1
 
     hdulist = fits.open(fitsfiles[0])
@@ -294,20 +342,36 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
 
 def makemovie(movieDir,fitsfiles,x=None,y=None):
 
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+        try:
+            try:
+                num = int(fitsfileSplit[-2][-2:])
+            except:
+                num = int(fitsfileSplit[-2][-1:])
+        except:
+            num = int(fitsfileSplit[-1])
+
+        nums.append(num)
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
+
     cnt = 0
     for ii in range(len(fitsfiles)):
         hdulist = fits.open(fitsfiles[ii])
-        for jj in range(len(hdulist)):
-            if jj == 0: continue
-            header = hdulist[jj].header
-            data = hdulist[jj].data
+        header = hdulist[0].header
+        data = hdulist[0].data
 
-            vmin = np.percentile(data,5)
-            vmax = np.percentile(data,95)
+        nhdu, xshape, yshape = data.shape
+        for jj in range(nhdu):
+            thisdata = data[jj,:,:]
+
+            vmin = np.percentile(thisdata,5)
+            vmax = np.percentile(thisdata,95)
 
             plotName = os.path.join(movieDir,'image_%04d.png'%cnt)
             plt.figure()
-            plt.imshow(data,vmin=vmin,vmax=vmax,cmap='gray')
+            plt.imshow(thisdata,vmin=vmin,vmax=vmax,cmap='gray')
             if not x == None:
                 plt.xlim(x)
                 plt.ylim(y)
@@ -365,14 +429,12 @@ defaultsDir = opts.defaultsDir
 dataDir = opts.dataDir
 xstar = opts.xstar
 ystar = opts.ystar
+star = opts.star
+passband = opts.passband
 
 dataDirSplit = list(filter(None,dataDir.split("/")))
 calibrationDir = "/"+"/".join(dataDirSplit[:-1])+"/calib"
 objectSplit = dataDirSplit[-1].split("_")
-
-#star, camsetting, passband = objectSplit[0], int(objectSplit[1]), objectSplit[2] 
-star = "1815f"
-
 
 observedFile = "%s/observed.dat"%inputDir
 lines = [line.rstrip('\n') for line in open(observedFile)]
@@ -390,7 +452,7 @@ if not os.path.isdir(outputDir):
 
 fitsfiles = []
 for dataDir in opts.dataDir.split(","):
-    fitsfiles = fitsfiles + sorted(glob.glob(os.path.join(dataDir,'*final.fits')))
+    fitsfiles = fitsfiles + sorted(glob.glob(os.path.join(dataDir,'*.fits')))
 
 header = fits.getheader(fitsfiles[0],ext=0)
 T0 = header['UTCSTART']
@@ -404,11 +466,46 @@ if not os.path.isdir(path_out_dir):
     os.makedirs(path_out_dir)
 
 if (opts.xstar<0) or (opts.ystar<0):
+    cnt = 0
     if len(fitsfiles)>0:
-        wcsfile = fitsfiles[0]
+        wcsfile = os.path.join(path_out_dir,'wcs.fits')
+        hdulist = fits.open(fitsfiles[0])
+
+        for ii in range(len(fitsfiles)):
+            hdulist = fits.open(fitsfiles[ii])
+            header = hdulist[0].header
+            data_full = hdulist[0].data
+
+            if cnt == 0:
+                hdulist_hold = copy.copy(hdulist[ii])
+                reference = hdulist[0].data[0,:,:]
+                xshape, yshape = reference.shape
+                data = np.zeros((xshape,yshape))
+
+            nhdu, xshape, yshape = data_full.shape
+            dateobs = utcparser(hdulist[0].header["UTCSTART"])
+            mjd = dateobs.mjd+(hdulist[0].header["AEXPTIM"]/2)/86400.0
+            mjdall = mjd + np.arange(nhdu)*hdulist[0].header["KINCYCTI"]/86400.0
+
+            for jj in range(nhdu):
+                if np.mod(jj,10) == 0:
+                    print("%d/%d"%(jj,nhdu))
+
+                shift, error, diffphase = register_translation(reference, data_full[jj,:,:], upsample_factor=1)
+                shifted = image_registration.fft_tools.shiftnd(data_full[jj,:,:], (shift[0], shift[1]))
+                #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+                data = data + shifted
+                cnt = cnt + 1
+
+        hdulist_hold.data = data
+        #hdulist_hold.data = np.mean(data,axis=2)
+        hdulist2 = fits.HDUList(hdus=hdulist_hold)
+        hdulist2.writeto(wcsfile,output_verify='fix',overwrite=True)
+
+        ztfsub.utils.astrometrynet(wcsfile,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100,cutedges=-1)
         wcs_header = fits.getheader(wcsfile)
         w = WCS(wcs_header)
-        x0,y0 = w.wcs_world2pix(ra,dec,1,1)
+        x0,y0 = w.wcs_world2pix(ra,dec,1)
     else:
         print("No WCS solution provided... please use --xstar and --ystar.")
 else:
@@ -442,6 +539,26 @@ if opts.doSubtraction:
     else:
         refgood = True
 
+if opts.doZP:
+    radius_deg = 0.2
+    result = ps1_query(ra, dec, radius_deg, maxmag=22,
+               maxsources=10000)
+    ps1_ra, ps1_dec = result["RAJ2000"], result["DEJ2000"]
+    if passband == "U":
+        ps1_mag = result["gmag"]
+    elif passband == "B":
+        ps1_mag = result["gmag"]
+    elif passband == "V":
+        ps1_mag = result["rmag"]
+    elif passband == "R":
+        ps1_mag = result["imag"]
+    elif passband == "I":
+        ps1_mag = result["zmag"]
+    elif passband == "g":
+        ps1_mag = result["gmag"]
+    elif passband == "r":
+        ps1_mag = result["rmag"]
+
 if opts.doStack:
     stackDir = os.path.join(path_out_dir,'stack')
     if not os.path.isdir(stackDir):
@@ -452,13 +569,26 @@ if opts.doStack:
     else:
         print("You asked to stack but with --nimages 1... passing.")
 
-if opts.doRegister:
+if opts.doRegistration:
     registerDir = os.path.join(path_out_dir,'register')
     if not os.path.isdir(registerDir):
         os.makedirs(registerDir)
     if opts.nimages > 1:
         register_images(registerDir,fitsfiles)
         fitsfiles = sorted(glob.glob(os.path.join(registerDir,'*.fits*')))
+
+        nums = []
+        for fitsfile in fitsfiles:
+            fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+            try:
+                try:
+                    num = int(fitsfileSplit[-2][-2:])
+                except:
+                    num = int(fitsfileSplit[-2][-1:])
+            except:
+                num = int(fitsfileSplit[-1])
+            nums.append(num)
+        fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
 
 if opts.doPhase:
     phaseDir = os.path.join(path_out_dir,'phase')
@@ -486,17 +616,22 @@ for ii,fitsfile in enumerate(fitsfiles):
         os.makedirs(path_out_dir_tmp)
 
     scienceimage = '%s/science.fits'%(path_out_dir_tmp)
+    scienceimage_fz = '%s/science.fits.fz'%(path_out_dir_tmp)
     catfile = scienceimage.replace(".fits",".cat")
+    catfile_zp = scienceimage.replace(".fits",".catzp")
     backfile = scienceimage.replace(".fits",".background.fits")
+    subfile = scienceimage.replace(".fits",".sub.fits")
 
     if not os.path.isfile(catfile):
 
         if opts.doCalibration:
-            correct_image(calibrationDir,fitsfile,scienceimage,
-                  opts.filter,opts.camsetting,opts.nimages)
+            correct_image(calibrationDir,fitsfile,scienceimage)
         else:
             system_command = "cp %s %s"%(fitsfile,scienceimage)
             os.system(system_command)
+
+        if opts.doAstrometryNet:
+            ztfsub.utils.astrometrynet(scienceimage,pixel_scale=0.26,ra=ra,dec=dec,radius=5.0,depth=100,cutedges=-1)
 
         if opts.doSubtraction:
 
@@ -506,6 +641,7 @@ for ii,fitsfile in enumerate(fitsfiles):
 
             hdulist = fits.open(fitsfile)
             hdulistsub = copy.copy(hdulist)
+
             for kk in range(len(hdulist)):
                 if kk == 0:
                     hdu_primary = copy.copy(hdulist[kk])
@@ -531,12 +667,54 @@ for ii,fitsfile in enumerate(fitsfiles):
             filename = scienceimage.replace(".fits",".sub.fits")
             hdulist2.writeto(filename,output_verify='fix',overwrite=True)
 
-        ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+        if opts.doSubtraction:
+            ztfsub.utils.sextractor(subfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+            if opts.doZP:
+                ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile_zp,backfile=backfile)
+        else:
+            ztfsub.utils.sextractor(scienceimage,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
 
         cat = np.loadtxt(catfile)
         if not cat.size: continue
 
         xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16]
+
+        if opts.doZP and opts.doSubtraction:
+            catzp = np.loadtxt(catfile_zp)
+            xs_zp, ys_zp, fluxes_zp, fluxerrs_zp, mags_zp, magerrs_zp, ras_zp, decs_zp, A_zp, B_zp, A_world_zp, B_world_zp, theta_zp, theta_world_zp, fwhms_zp, fwhms_world_zp, extnumber_zp = catzp[:,0], catzp[:,1], catzp[:,2], catzp[:,3], catzp[:,4], catzp[:,5], catzp[:,6], catzp[:,7], catzp[:,8], catzp[:,9], catzp[:,10], catzp[:,11], catzp[:,12], catzp[:,13], catzp[:,14], catzp[:,15], catzp[:,16]
+
+        if opts.doZP:
+            if opts.doZP and opts.doSubtraction:
+                imX = np.vstack((ras_zp,decs_zp)).T
+            else:
+                imX = np.vstack((ras,decs)).T
+            stX = np.vstack((np.array(ps1_ra),np.array(ps1_dec))).T
+            max_radius = 1.5 / 3600  # 1 arcsec
+            dist, ind_im = crossmatch_angular(imX, stX, max_radius)
+
+            #if opts.doPlots:
+            #    plotName = os.path.join(path_out_dir_tmp,'XY.pdf')
+            #    fig = plt.figure(figsize=(20,8))
+            #    plt.plot(imX[:,0],imX[:,1],'ko')
+            #    plt.plot(stX[:,0],stX[:,1],'gx')
+            #    plt.tight_layout()
+            #    plt.savefig(plotName)
+            #    plt.close()
+
+            # getting ZP
+            ZP_mag = []
+            if opts.doZP and opts.doSubtraction:
+                for ii in range(len(ind_im)):
+                    if ind_im[ii] < len(ps1_mag) and np.abs(magerrs_zp[ii])<0.025 :
+                        ZP_mag.append(-mags_zp[ii]+ps1_mag[ind_im[ii]])
+            else:
+                for ii in range(len(ind_im)):
+                    if ind_im[ii] < len(ps1_mag) and np.abs(magerrs[ii])<0.025 :
+                        ZP_mag.append(-mags[ii]+ps1_mag[ind_im[ii]])
+
+            print('number of standards used:', len(ZP_mag))
+            print('ZP = ',np.round(np.mean(ZP_mag),3),'+-',np.round(np.std(ZP_mag),3))#,np.mean(ZP_mag)-np.median(ZP_mag))
+            mags = mags + np.mean(ZP_mag)
 
         hdulist = fits.open(scienceimage)
         if len(hdulist) == 1:
@@ -570,18 +748,43 @@ for ii,fitsfile in enumerate(fitsfiles):
         forcedfile = scienceimage.replace(".fits",".forced")
         if not os.path.isfile(forcedfile):
 
-            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=10.0)
-            mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=10.0)
+            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm)
 
-            mag = mag_forced - mag_forced_field
-            magerr = np.sqrt(magerr_forced**2 + magerr_forced_field**2)
-            flux = flux_forced/flux_forced_field
-            fluxerr = flux*np.sqrt((fluxerr_forced/flux_forced)**2 + (fluxerr_forced_field/flux_forced_field)**2)
+            if opts.doDifferential:
 
-            fid = open(forcedfile,'w')
-            for ii in range(len(mjd_forced)):
-                fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
-            fid.close()
+                mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=opts.fwhm)
+
+                mag = mag_forced - mag_forced_field
+                magerr = np.sqrt(magerr_forced**2 + magerr_forced_field**2)
+                flux = flux_forced/flux_forced_field
+                fluxerr = flux*np.sqrt((fluxerr_forced/flux_forced)**2 + (fluxerr_forced_field/flux_forced_field)**2)
+
+            else:
+                mag, magerr, flux, fluxerr = mag_forced, magerr_forced, flux_forced, fluxerr_forced
+
+            if opts.doZP:
+                mag = mag + np.mean(ZP_mag)
+
+            try:
+                fid = open(forcedfile,'w')
+                for ii in range(len(mjd_forced)):
+                    fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced[ii],mag[ii],magerr[ii],flux[ii],fluxerr[ii]))
+                fid.close()
+            except:
+                fid = open(forcedfile,'w')
+                fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced,mag,magerr,flux,fluxerr))
+                fid.close()
+
+    if not opts.doSaveImages:
+        if os.path.isfile(scienceimage):
+            rm_command = "rm %s"%scienceimage
+            os.system(rm_command)
+        if os.path.isfile(scienceimage_fz):
+            rm_command = "rm %s"%scienceimage_fz
+            os.system(rm_command)
+        if os.path.isfile(backfile):
+            rm_command = "rm %s"%backfile
+            os.system(rm_command)
 
 cnt = 0
 for ii,fitsfile in enumerate(fitsfiles):
@@ -631,17 +834,22 @@ if opts.doForcedPhotometry:
 
 lims = 25
 idx1s = np.where(np.sqrt((tbl['X']-x0)**2 + (tbl['Y']-y0)**2)<=lims)[0]
-idx2s = np.where(np.sqrt((tbl['X']-xfield)**2 + (tbl['Y']-yfield)**2)<=lims)[0]
 idx1s = idx1s.astype(int)
-idx2s = idx2s.astype(int)
 
-x1, x2 = tbl[idx1s]['X'].data, tbl[idx2s]['X'].data
-y1, y2 = tbl[idx1s]['Y'].data, tbl[idx2s]['Y'].data
-mjd1, mjd2 = tbl[idx1s]['MJD'].data, tbl[idx2s]['MJD'].data
-mag1, mag2 = tbl[idx1s]['mag'].data, tbl[idx2s]['mag'].data
-magerr1, magerr2 = tbl[idx1s]['magerr'].data, tbl[idx2s]['magerr'].data
-flux1, flux2 = tbl[idx1s]['flux'].data, tbl[idx2s]['flux'].data
-fluxerr1, fluxerr2 = tbl[idx1s]['fluxerr'].data, tbl[idx2s]['fluxerr'].data
+if opts.doDifferential:
+    idx2s = np.where(np.sqrt((tbl['X']-xfield)**2 + (tbl['Y']-yfield)**2)<=lims)[0]
+    idx2s = idx2s.astype(int)
+
+x1, y1 = tbl[idx1s]['X'].data, tbl[idx1s]['Y'].data
+mjd1 = tbl[idx1s]['MJD'].data
+mag1, magerr1 = tbl[idx1s]['mag'].data, tbl[idx1s]['magerr'].data
+flux1, fluxerr1 = tbl[idx1s]['flux'].data, tbl[idx1s]['fluxerr'].data
+
+if opts.doDifferential:
+    x2, y2 = tbl[idx2s]['X'].data, tbl[idx2s]['Y'].data
+    mjd2 = tbl[idx2s]['MJD'].data
+    mag2, magerr2 = tbl[idx2s]['mag'].data, tbl[idx2s]['magerr'].data
+    flux2, fluxerr2 = tbl[idx2s]['flux'].data, tbl[idx2s]['fluxerr'].data
 
 mjd, mag, magerr, flux, fluxerr = [], [], [], [], [] 
 for ii in range(len(mjd1)):
@@ -650,10 +858,16 @@ for ii in range(len(mjd1)):
     idx3 = idx3[np.argmax(mag2[idx3])]
 
     mjd.append(mjd1[ii])
-    mag.append(mag1[ii] - mag2[idx3])
-    magerr.append(np.sqrt(magerr1[ii]**2 + magerr2[idx3]**2))
-    flux.append(flux1[ii]/flux2[idx3])
-    fluxerr.append((flux1[ii]/flux2[idx3])*np.sqrt((fluxerr1[ii]/flux1[ii])**2 + (fluxerr2[idx3]/flux2[idx3])**2))
+    if opts.doDifferential:
+        mag.append(mag1[ii] - mag2[idx3])
+        magerr.append(np.sqrt(magerr1[ii]**2 + magerr2[idx3]**2))
+        flux.append(flux1[ii]/flux2[idx3])
+        fluxerr.append((flux1[ii]/flux2[idx3])*np.sqrt((fluxerr1[ii]/flux1[ii])**2 + (fluxerr2[idx3]/flux2[idx3])**2))
+    else:
+        mag.append(mag1[ii])
+        magerr.append(magerr1[ii])
+        flux.append(flux1[ii])
+        fluxerr.append(fluxerr1[ii])
 
 idx = np.argsort(mjd)
 mjd, mag, magerr, flux, fluxerr = np.array(mjd), np.array(mag), np.array(magerr), np.array(flux), np.array(fluxerr)

@@ -1,0 +1,84 @@
+
+import time
+import requests
+import inotify.adapters
+
+import os, sys, optparse, shutil
+from requests import Request
+
+from astropy import units as u
+from astropy.coordinates import EarthLocation
+from astropy.time import Time, TimeDelta
+
+from astroplan import Observer
+from astroplan import FixedTarget
+
+from twilio.rest import Client
+from twilio.twiml.voice_response import Say, Sms
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--doCall",  action="store_true", default=False)
+    parser.add_option("--doText",  action="store_true", default=False)
+    parser.add_option("--doNight",  action="store_true", default=False)
+
+    parser.add_option("-n","--notices",default="/home/kped/Software/Queue/Michael_queue/notices/")
+
+    parser.add_option("-p","--phone")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+opts = parse_commandline()
+notices = opts.notices
+
+if opts.doCall or opts.doText:
+    client = Client()
+    from_=os.environ.get('TWILIO_FROM')
+
+location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
+                                       2096*u.m)
+kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
+
+notifier = inotify.adapters.Inotify()
+notifier.add_watch(opts.notices)
+
+for event in notifier.event_gen():
+    if event is not None:
+        #print(event)      # uncomment to see all events generated
+        if 'IN_CREATE' in event[1]:
+             if "swp" in event[3]: continue
+             time.sleep(5)
+             #print("file '{0}' created in '{1}'".format(event[3], event[2]))
+             filename = os.path.join(event[2], event[3])             
+
+             tstart = Time.now()
+
+             if opts.doNight:
+                 coord = kp.sun_altaz(tstart)
+                 alt = coord.alt.deg
+                 if alt > -12.0:
+                     print('Sun is at %.2f degrees... not calling.' % alt)
+                     previous_status = status
+                     continue
+
+             if opts.doCall or opts.doText:
+                 lines = [line.rstrip('\n') for line in open(filename)]
+                 lines = ['Greetings human, this is KPED Notices.'] + lines
+                 message = " ".join(lines)
+                 r = Request('GET', 'http://twimlets.com/message', params={'Message':message} )
+                 url = r.prepare().url
+
+                 if opts.doText:
+                     client.messages.create(to=opts.phone,
+                                            from_=from_,
+                                            body=message)
+                 if opts.doCall:
+                     client.calls.create(to=opts.phone,
+                                         from_=from_,
+                                         url=url)

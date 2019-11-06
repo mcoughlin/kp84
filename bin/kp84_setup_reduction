@@ -8,9 +8,10 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--KPED_data",default="/nas_data/KPED_data")
+    parser.add_option("--KPED_data",default="/Data3/data")
     parser.add_option("--setupDir",default="/Data3/archive_kped/data/reductions/")    
     parser.add_option("--day",default="20180923")
+    parser.add_option("--objname",default=None)
 
     opts, args = parser.parse_args()
 
@@ -19,6 +20,7 @@ def parse_commandline():
 # Parse command line
 opts = parse_commandline()
 KPED_data = opts.KPED_data
+objname = opts.objname
 setupDir = opts.setupDir
 day = opts.day
 
@@ -28,7 +30,10 @@ if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
 dataDir = os.path.join(KPED_data,day)
-filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
+if not opts.objname == None:
+    filenames = glob.glob('%s/%s*.fits'%(dataDir,opts.objname)) + glob.glob('%s/%s*.fits.fz'%(dataDir,objname))
+else:
+    filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
 for filename in filenames:
     filenameSplit = filename.split('/')    
     outfile = "%s/%s"%(outputDir,filenameSplit[-1])
@@ -37,8 +42,8 @@ for filename in filenames:
         os.system(cp_command)
 
 # first unpack single image files (i.e. transients)
-funpack_command = "cd %s; funpack -D ZTF*.fits.fz"%(outputDir)
-os.system(funpack_command)
+#funpack_command = "cd %s; funpack -D ZTF*.fits.fz"%(outputDir)
+#os.system(funpack_command)
 
 filenames = glob.glob('%s/*.fits'%outputDir) + glob.glob('%s/*.fits.fz'%outputDir)
 
@@ -46,7 +51,14 @@ objs = []
 for filename in filenames:
     filenameSplit = filename.split('/')
     filenameSplit = filenameSplit[-1].split('_')
-    obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
+    if filenameSplit[0] in ["darks","flats"]:
+        continue
+
+    if filenameSplit[0] == "kped":
+        #obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
+        obj = "%s_%s_%s"%(filenameSplit[3],'9','g')
+    else:
+        obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
 
     if obj not in objs:
         objs.append(obj)
@@ -54,11 +66,13 @@ for filename in filenames:
 fid = open('run_analysis.sh','w')
 
 for obj in objs:
-    fitsfiles = glob.glob('%s/%s*'%(outputDir,obj)) 
-    notTransient = "fits.fz" in fitsfiles[0]
+    #notTransient = "fits.fz" in fitsfiles[0]
+    notTransient = True
     objsplit = obj.split("_")   
 
-    if len(fitsfiles) <= 15:
+    fitsfiles = sorted(glob.glob('%s/*%s*'%(outputDir,objsplit[0]))) 
+
+    if len(fitsfiles) <= 100:
         folderName = "%s/%s/%s"%(outputDir,objsplit[0],obj)
         folderName_registration = "%s/registration"%(folderName)
 
@@ -70,7 +84,7 @@ for obj in objs:
         else:
             fid.write('python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s --doPlots --doForcedPhotometry --doRegistration --doAstrometryNet --doSubtraction\n'%(folderName,day,objsplit[0]))
 
-        mv_command = "mv %s/%s* %s"%(outputDir,obj,folderName_registration)
+        mv_command = "mv %s/*%s* %s"%(outputDir,objsplit[0],folderName_registration)
         os.system(mv_command)
     else:
 

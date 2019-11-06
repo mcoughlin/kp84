@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed May 31 15:05:27 2017
+
+@author: kburdge
+"""
+
+import os, sys
+import time
+import optparse
+import pandas as pd
+import numpy as np
+import h5py
+import glob
+import json
+
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.rcParams.update({'font.size': 12})
+matplotlib.rcParams['contour.negative_linestyle'] = 'solid'
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from matplotlib.colors import LogNorm
+
+from astropy.time import Time, TimeDelta
+from astropy.coordinates import SkyCoord, BarycentricTrueEcliptic, EarthLocation
+import astropy.units as u
+from astropy.io import fits
+
+from zvm import zvm
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--infile",default="/Users/mcoughlin/Downloads/forced_ZTFJ20291534_ZTFJ20291534_9_g_20190930_035609_sg_o.dat")
+    parser.add_option("-o","--outputDir",default="../output")
+
+    parser.add_option("--doMarshal",  action="store_true", default=False)
+    parser.add_option("--doAverage",  action="store_true", default=False)
+
+    parser.add_option("-u","--user")
+    parser.add_option("-w","--pwd")
+
+    parser.add_option("-r","--ra",type=float)
+    parser.add_option("-d","--declination",type=float)
+
+    parser.add_option("-c","--comparison_mag",default=0.0,type=float)
+
+    parser.add_option("-i","--id",type=int)
+
+    parser.add_option("-f","--filter")
+
+    parser.add_option("-p","--program_name",default="Xray Sources")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def BJDConvert(mjd, RA, Dec):
+        times=mjd
+        t = Time(times,format='mjd',scale='utc')
+        t2=t.tdb
+        c = SkyCoord(RA,Dec, unit="deg")
+        d=c.transform_to(BarycentricTrueEcliptic)
+        Palomar=EarthLocation.of_site('Palomar')
+        delta=t2.light_travel_time(c,kind='barycentric',location=Palomar)
+        BJD_TDB=t2+delta
+
+        return BJD_TDB
+
+# Parse command line
+opts = parse_commandline()
+infile = opts.infile
+outputDir = opts.outputDir
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+data = np.loadtxt(infile, skiprows=1)
+idx = np.where(np.isnan(data[:,1]))[0]
+if len(idx) > 0:
+    idx = np.arange(idx[0])
+else:
+    idx = np.arange(len(data[:,1]))
+data = data[idx,:]
+mjd = data[:,0]
+mag = data[:,1]
+magerr = data[:,2]
+hjd = BJDConvert(mjd, opts.ra, opts.declination)
+
+outputFile = os.path.join(outputDir,'lc.json')
+fluxdat = []
+for mj, hj, m, merr in zip(mjd, hjd, mag, magerr):
+    fluxdat.append({"mjd": str(mj),
+                    "hjd": str(hj),
+                    "mag": str(m+opts.comparison_mag),
+                    "magerr": str(merr)})
+
+spec = {"telescope": "%s" % "KPNO:2.1m",
+        "instrument": "KPED",
+        "id": opts.id,
+        "filter": opts.filter,
+        "lc_type": "temporal",
+        "data": fluxdat 
+}
+
+with open(outputFile, 'w') as f:
+    json.dump(spec, f)
+
+if opts.doMarshal:
+    secrets = {
+        "zvm": {
+            "protocol": "http",
+            "host": "skipper.caltech.edu",
+            "port": "",
+            "username": opts.user,
+            "password": opts.pwd
+        }
+    }
+
+    z = zvm(**secrets['zvm'], verbose=False)
+    print(f'Connection OK: {z.check_connection()}')
+    r = z.api(endpoint='programs', method='get', data={'format': 'json'})
+    program_id = -1
+    for prog in r:
+        if prog["name"] == opts.program_name:
+            program_id = prog["_id"]
+    if program_id < 0:
+        print('Program ID not found...')
+        exit(0)  
+
+    ra, dec = opts.ra, opts.declination
+    r = z.api(endpoint='sources', method='put',
+              data={'ra': ra, 'dec': dec, 
+                    'zvm_program_id': program_id,
+                    'automerge': True})
+    
+    source_id = r["result"]["_id"]
+
+    if opts.doAverage:
+        key = 'ZTF_sources_20190718'
+        mags = []
+        bands = {'g': 1, 'r': 2, 'i': 3}
+        for data in r["result"]["lc"]:
+            if not bands[opts.filter] == data["filter"]:
+                continue
+            data = data["data"]
+            for dat in data:
+                mags.append(dat['mag'])
+
+        fluxdat = []
+        for mj, hj, m, merr in zip(mjd, hjd, mag, magerr):
+            fluxdat.append({"mjd": str(mj),
+                            "hjd": str(hj),
+                            "mag": str(m+np.median(mags)-np.median(mag)),
+                            "magerr": str(merr)})
+
+        spec = {"telescope": "%s" % "KPNO:2.1m",
+                "instrument": "KPED",
+                "id": opts.id,
+                "filter": opts.filter,
+                "lc_type": "temporal",
+                "data": fluxdat
+        }
+
+    r = z.api(endpoint=f'sources/{source_id}',
+              method='post', 
+              data={'source_id': source_id,
+                    'action': 'upload_lc',
+                    'data': spec})
+
+    print("ZTF Marshal Source ID: %s" % source_id)
+    print("Lightcurve upload status: %s" % r["message"])

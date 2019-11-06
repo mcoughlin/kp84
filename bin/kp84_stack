@@ -7,55 +7,83 @@ from astropy.io import fits
 from skimage.feature import register_translation
 import image_registration
 
-#fitsfiles = glob.glob("/Users/mcoughlin/Code/KP84/observing/20180627/ZTFHC7_10_g_20180627_080418.036682*.fits")
-#fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/ZTFHC7_10_g_20180627_080418.036682_o_stack.fits"
-#fitsfiles = fitsfiles[:5]
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
 
-fitsfiles = ["/Users/mcoughlin/Code/KP84/observing/20180804/ZTFHC10_10_g_20180804_042052.034227_o/registration/ZTFHC10_10_g_20180804_042052.034227_o.fits"]
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/stack.fits"
+    parser.add_option("-i","--inputfiles",default="/Data/20190612/*_o.fits.fz")
+    parser.add_option("-o","--outputfile",default="/home/kped/stack.fits")
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_r_20180807_111121.034742_o/registration/*.fits"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_r_20180807_111121.034742_o/stack.fits"
+    parser.add_option("--doIndividual",  action="store_true", default=False)
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_g_20180807_111751.035561_o/registration/*.fits"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_g_20180807_111751.035561_o/stack.fits"
+    opts, args = parser.parse_args()
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_I_20180807_112446.034657_o/registration/*.fits"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/20180807/NGC45-LRN_10_I_20180807_112446.034657_o/stack.fits"
+    return opts
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_I_*"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_I.fits"
+opts = parse_commandline()
+inputfiles = opts.inputfiles
+outputfile = opts.outputfile
+fitsfiles = sorted(glob.glob(inputfiles))
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_g_*"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_g.fits"
+if opts.doIndividual:
+    outputfileSplit = outputfile.split("/")
+    outputfolder = "/".join(outputfileSplit[:-1])
+    for jj in range(len(fitsfiles)):
+        hdulist2 = []
+        cnt = 1
+        fitsfile = fitsfiles[jj]
+        fitsfileSplit = fitsfile.split("/")
+        filename = fitsfileSplit[-1].replace(".fz","")
+        outputfile = os.path.join(outputfolder, filename)
 
-fitsfiles = sorted(glob.glob("/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_r_*"))
-fitsfile_stack = "/Users/mcoughlin/Code/KP84/observing/Kishalay/ZTF18abkmbpy_10_r.fits"
+        hdulist = fits.open(fitsfile)
+        for ii in range(len(hdulist)):
+            if ii == 0: continue
+            if np.mod(ii,10) == 0:
+                print("%d/%d"%(ii,len(hdulist)))
+            if cnt == 1:
+                hdulist_hold = copy.copy(hdulist[ii])
+                xshape, yshape = hdulist_hold.data.shape
+                data = np.zeros([xshape,yshape])
+                reference = hdulist[ii].data
+            shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
+            shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
+            #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+            data = data + shifted
+            cnt = cnt + 1
 
-hdulist2 = []
-cnt = 1
-for jj in range(len(fitsfiles)):
-    print(jj,fitsfiles[jj])
-    fitsfile = fitsfiles[jj]
-    hdulist = fits.open(fitsfile)
-    for ii in range(len(hdulist)):
-        if ii == 0: continue
-        if np.mod(ii,10) == 0:
-            print("%d/%d"%(ii,len(hdulist)))
-        if cnt == 1:
-            hdulist_hold = copy.copy(hdulist[ii])
-            xshape, yshape = hdulist_hold.data.shape
-            data = np.empty([xshape,yshape])
-            reference = hdulist[ii].data
-        shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
-        shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
-        #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
-        data = data + shifted
-        cnt = cnt + 1            
+        hdulist_hold.data = data
+        #hdulist_hold.data = np.mean(data,axis=2)
+        hdulist2 = fits.HDUList(hdus=hdulist_hold)
+        hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
 
-hdulist_hold.data = data
-#hdulist_hold.data = np.mean(data,axis=2)
-hdulist2 = fits.HDUList(hdus=hdulist_hold)
-hdulist2.writeto(fitsfile_stack,output_verify='fix',overwrite=True)
-
-
+else: 
+    hdulist2 = []
+    cnt = 1
+    for jj in range(len(fitsfiles)):
+        print(jj,fitsfiles[jj])
+        fitsfile = fitsfiles[jj]
+        hdulist = fits.open(fitsfile)
+        for ii in range(len(hdulist)):
+            if ii == 0: continue
+            if np.mod(ii,10) == 0:
+                print("%d/%d"%(ii,len(hdulist)))
+            if cnt == 1:
+                hdulist_hold = copy.copy(hdulist[ii])
+                xshape, yshape = hdulist_hold.data.shape
+                data = np.zeros([xshape,yshape])
+                reference = hdulist[ii].data
+            shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
+            shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
+            #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+            data = data + shifted
+            cnt = cnt + 1            
+    
+    hdulist_hold.data = data
+    #hdulist_hold.data = np.mean(data,axis=2)
+    hdulist2 = fits.HDUList(hdus=hdulist_hold)
+    hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
+    
+    

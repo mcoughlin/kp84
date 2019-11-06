@@ -1,0 +1,2 @@
+python kp84_photometric_reduction --dataDir /Data3/archive_kped/data/reductions/20181118/ZTFJ18321130/ZTFJ18321130_10_g --outputDir ../output/20181118/ZTFJ18321130 --doPlots --doForcedPhotometry --doRegistration --doDifferential
+python kp84_photometric_reduction --dataDir /Data3/archive_kped/data/reductions/20181118/ZTFJ18231027/ZTFJ18231027_10_g --outputDir ../output/20181118/ZTFJ18231027 --doPlots --doForcedPhotometry --doRegistration --doDifferential

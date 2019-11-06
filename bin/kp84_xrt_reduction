@@ -1,0 +1,135 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+import scipy.signal
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, vstack
+from astropy.io import ascii
+from astropy.time import Time
+from astropy.io import fits
+from astropy.wcs import WCS
+
+from shapely import geometry
+
+import ztfsub.utils
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--dataDir",default="/Users/mcoughlin/Desktop/1815fSwift/00010787002/xrt/event")
+
+    parser.add_option("-i","--inputDir",default="../input")
+    parser.add_option("-o","--outputDir",default="../output")
+
+    parser.add_option("--doPlots",  action="store_true", default=False)
+
+    parser.add_option("-s","--star",default="1815f")
+    parser.add_option("-a","--aperture",type=float,default=18.0)
+    parser.add_option("-n","--nbackground",type=int,default=5000)
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+inputDir = opts.inputDir
+outputDir = opts.outputDir
+dataDir = opts.dataDir
+star = opts.star
+aperture = opts.aperture
+nbackground = opts.nbackground
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+path_out_dir='%s/%s/%s'%(outputDir,'xray',star)
+if not os.path.isdir(path_out_dir):
+    os.makedirs(path_out_dir)
+
+observedFile = "%s/observed.dat"%inputDir
+lines = [line.rstrip('\n') for line in open(observedFile)]
+for ii,line in enumerate(lines):
+    lineSplit = list(filter(None,line.split(" ")))
+    obj, ra, dec = lineSplit[0], float(lineSplit[1]), float(lineSplit[2])
+    if obj == star:
+        break
+    if ii == len(lines)-1:
+        print("%s missing from observed list, please add."%star)
+        exit(0)
+
+fitsfile = glob.glob(os.path.join(dataDir,"*po_cl.evt"))[0]
+hdulist = fits.open(fitsfile)
+photondata = hdulist[1].data
+
+fitsfile = os.path.join(dataDir,"image.fits")
+wcs_header = fits.getheader(fitsfile)
+w = WCS(wcs_header)
+x0,y0 = w.wcs_world2pix(ra,dec,1)
+
+hdulist = fits.open(fitsfile)
+scienceimage = hdulist[0].data
+exposuretime = hdulist[0].header["EXPOSURE"]
+xshape, yshape = scienceimage.shape
+X, Y = np.meshgrid(np.arange(xshape),np.arange(yshape))
+idx = np.where(scienceimage.flatten()>0)[0]
+xs, ys = X.flatten()[idx], Y.flatten()[idx]
+xmin, xmax = np.min(xs), np.max(xs)
+ymin, ymax = np.min(ys), np.max(ys)
+
+pnts = geometry.MultiPoint([[x, y] for x,y in zip(xs,ys)])
+poly = pnts.convex_hull
+
+plate_scale = 2.86 # arcsec / pixel
+mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(fitsfile,x=x0,y=y0,fwhm=aperture/plate_scale)
+
+fluxes = []
+while len(fluxes) < nbackground:
+    if np.mod(len(fluxes),100) == 0:
+        print('%d/%d'%(len(fluxes),nbackground))
+ 
+    xrand, yrand = (xmax-xmin)*np.random.uniform() + xmin, (ymax-ymin)*np.random.uniform() + ymin
+
+    pnt = geometry.Point([xrand, yrand])
+    if not poly.contains(pnt):
+        continue
+
+    mjd_forced_background, mag_forced_background, magerr_forced_background, flux_forced_background, fluxerr_forced_background = ztfsub.utils.forcedphotometry(fitsfile,x=xrand,y=yrand,fwhm=aperture/plate_scale)
+
+    flux_forced_background = flux_forced_background[0]
+    if not np.isnan(flux_forced_background):
+        fluxes.append(flux_forced_background)
+
+perc_95 = np.percentile(fluxes,95)
+print('95%% upperlimit: %.3e cnts/s'%(perc_95/exposuretime))
+
+if opts.doPlots:
+
+    bins = np.linspace(0,3.0,41)
+    hist1, bin_edges = np.histogram(fluxes,bins=bins)
+    hist1 = hist1 / np.sum(hist1)
+    bins1 = (bin_edges[:-1]+bin_edges[1:])/2.0
+    plotName = os.path.join(path_out_dir,'hist.pdf')
+    fig = plt.figure(figsize=(20,8))
+    ax = fig.add_subplot(1, 1, 1)
+    plt.step(bins1, hist1, where='mid')
+    plt.plot([flux_forced,flux_forced],[0,np.max(hist1)],'r--')
+    plt.plot([perc_95,perc_95],[0,np.max(hist1)],'k--')
+    plt.xlabel('Number of counts')
+    plt.ylabel('Probability Density Function')
+    plt.title('95%% upperlimit: %.2f'%perc_95)
+    ax.set_yscale('log')
+    plt.tight_layout()
+    plt.savefig(plotName)
+    plt.close()
+
+

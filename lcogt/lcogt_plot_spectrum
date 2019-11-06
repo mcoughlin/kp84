@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed May 31 15:05:27 2017
+
+@author: kburdge
+"""
+
+import os, sys
+import time
+import optparse
+import pandas as pd
+import numpy as np
+import h5py
+import glob
+import json
+
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.rcParams.update({'font.size': 12})
+matplotlib.rcParams['contour.negative_linestyle'] = 'solid'
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from matplotlib.colors import LogNorm
+
+from astropy.io import fits
+
+from zvm import zvm
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("--infile",default="/Users/mcoughlin/Downloads/lcogtdata-20191018-1/nttZTFJ17155852_ftn_20190918_merge_1.6_58745_1_2df_ex.fits")
+    parser.add_option("-o","--outputDir",default="../output")
+
+    parser.add_option("--doMarshal",  action="store_true", default=False)
+    parser.add_option("-u","--user")
+    parser.add_option("-w","--pwd")
+
+    parser.add_option("-r","--ra",type=float)
+    parser.add_option("-d","--declination",type=float)
+
+    parser.add_option("-p","--program_name",default="Xray Sources")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+infile = opts.infile
+outputDir = opts.outputDir
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
+
+hudl = fits.open(infile)
+data = hudl[0].data
+header = hudl[0].header
+
+flux = data[0][0]
+optflux = data[1][0]
+sky = data[2][0]
+fluxerr = data[3][0]
+
+xmin = header["XMIN"]
+xmax = header["XMAX"]
+wavelengths = np.linspace(xmin,xmax,len(flux))
+
+outputFile = os.path.join(outputDir,'spectrum.pdf')
+plt.figure(figsize=(10,6))
+plt.errorbar(wavelengths, flux, yerr=fluxerr,fmt='k',label='Object')
+plt.plot(wavelengths, sky,'b--',label='Sky')
+plt.xlabel('Wavelength [A]')
+plt.ylabel('Flux [erg/cm2/s/A  10^20]')
+plt.legend()
+plt.savefig(outputFile)
+plt.close()
+
+outputFile = os.path.join(outputDir,'spectrum.json')
+fluxdat = []
+for wave, fl, flerr in zip(wavelengths, flux, fluxerr):
+    fluxdat.append({"wavelength": str(wave),
+                    "flux": str(fl),
+                    "fluxerr": str(flerr)})
+
+spec = {"telescope": "%s" % header['TELESCOP'],
+        "instrument": "LCO",
+        "filter": header['FILTER1'],
+        "mjd": str(header['MJD-OBS'] + header['EXPTIME']/2.0),
+        "wavelength_unit": "A",
+        "flux_unit": "erg/cm2/s/A  10^20",
+        "data": fluxdat 
+}
+
+with open(outputFile, 'w') as f:
+    json.dump(spec, f)
+
+if opts.doMarshal:
+    secrets = {
+        "zvm": {
+            "protocol": "http",
+            "host": "skipper.caltech.edu",
+            "port": "",
+            "username": opts.user,
+            "password": opts.pwd
+        }
+    }
+
+    z = zvm(**secrets['zvm'], verbose=False)
+    print(f'Connection OK: {z.check_connection()}')
+    r = z.api(endpoint='programs', method='get', data={'format': 'json'})
+    program_id = -1
+    for prog in r:
+        if prog["name"] == opts.program_name:
+            program_id = prog["_id"]
+    if program_id < 0:
+        print('Program ID not found...')
+        exit(0)  
+
+    ra, dec = opts.ra, opts.declination
+    r = z.api(endpoint='sources', method='put',
+              data={'ra': ra, 'dec': dec, 
+                    'zvm_program_id': program_id,
+                    'automerge': True})
+    
+    source_id = r["result"]["_id"]
+
+    r = z.api(endpoint=f'sources/{source_id}',
+              method='post', 
+              data={'source_id': source_id,
+                    'action': 'upload_spectrum',
+                    'data': spec})
+
+    print("ZTF Marshal Source ID: %s" % source_id)
+    print("Spectrum upload status: %s" % r["message"])

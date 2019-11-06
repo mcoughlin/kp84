@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+from astropy.io import fits
+from astropy.time import Time
+import datetime
+
+from skimage.feature import register_translation
+import image_registration
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-i","--inputfiles",default="/Data3/archive_kped/data/1815f/Chimera/20180806/1815f1_final.fits")
+    parser.add_option("-o","--outputfile",default="/home/roboao/stack.fits")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+def utcparser(utcstart):
+        """
+        Datetime parser for CHIMERA UTCSTART header keyword.
+
+        Parameters
+        ----------
+        utcstart : string
+            Datetime for start of frame (in UTC)
+
+        Returns
+        -------
+        dt : datetime struct
+            Datetime structure
+        """
+
+        MONTHS = {"Jan": 1, "Feb": 2, "March": 3, "April": 4, "May": 5, "June": 6, "July": 7, "Aug": 8, "Sept": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+
+        month, date, year, time = utcstart.split("-")
+        month = MONTHS[month]
+        date = int(date)
+        year = int(year)
+
+        hour, minu, sec = time.split(":")
+        hour = int(hour)
+        minu = int(minu)
+        sec, ms = sec.split(".")
+        sec = int(sec)
+        ms = int(ms) * 1000
+
+        dt = datetime.datetime(year, month, date, hour, minu, sec, ms)
+
+        return Time(dt)
+
+opts = parse_commandline()
+inputfiles = opts.inputfiles
+outputfile = opts.outputfile
+fitsfiles = sorted(glob.glob(inputfiles))
+
+hdulist2 = []
+cnt = 0
+for ii in range(len(fitsfiles)):
+    hdulist = fits.open(fitsfiles[ii])
+    header = hdulist[0].header
+    data_full = hdulist[0].data
+
+    if cnt == 0:
+        hdulist_hold = copy.copy(hdulist[ii])
+        reference = hdulist[0].data[0,:,:]
+        xshape, yshape = reference.shape
+        data = np.zeros((xshape,yshape))
+
+    nhdu, xshape, yshape = data_full.shape
+    dateobs = utcparser(hdulist[0].header["UTCSTART"])
+    mjd = dateobs.mjd
+    mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
+
+    for jj in range(nhdu):
+        if np.mod(jj,10) == 0:
+            print("%d/%d"%(jj,nhdu))
+
+        shift, error, diffphase = register_translation(reference, data_full[jj,:,:], upsample_factor=1)
+        shifted = image_registration.fft_tools.shiftnd(data_full[jj,:,:], (shift[0], shift[1]))
+        #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+        data = data + shifted
+        cnt = cnt + 1
+
+hdulist_hold.data = data
+#hdulist_hold.data = np.mean(data,axis=2)
+hdulist2 = fits.HDUList(hdus=hdulist_hold)
+hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
