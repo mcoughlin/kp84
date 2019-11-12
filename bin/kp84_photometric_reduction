@@ -2,6 +2,7 @@
 
 import os, sys, optparse, shutil, glob, copy
 import numpy as np
+import datetime
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
@@ -20,6 +21,8 @@ import ztfsub.utils, ztfsub.surveys
 import ztfsub.plotting
 
 from skimage.feature import register_translation
+from scipy.ndimage import median_filter
+from skimage.transform import rescale, resize, downscale_local_mean
 import image_registration
 
 from astroquery.vizier import Vizier
@@ -62,6 +65,9 @@ def parse_commandline():
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     parser.add_option("--doRegistration",  action="store_true", default=False)
     parser.add_option("--registration_size",default=-1,type=int)
+    parser.add_option("--doMedianFilter",  action="store_true", default=False)
+    parser.add_option("--median_size",default=30,type=int)
+    parser.add_option("--doCubeFlat",  action="store_true", default=False)
 
     parser.add_option("--doSubtraction",  action="store_true", default=False)
     parser.add_option("--subtractionDir",default="../subtraction")
@@ -77,6 +83,13 @@ def parse_commandline():
     opts, args = parser.parse_args()
 
     return opts
+
+def utc2date(utcheader):
+    timestr = utcheader.split("_")
+    yy, mm, dd = int(timestr[0][:4]), int(timestr[0][4:6]), int(timestr[0][6:8])
+    hh, mmm, ss, ums = int(timestr[1][:2]), int(timestr[1][2:4]), int(timestr[1][4:6]), int(timestr[1][7:])
+    d = datetime.datetime(yy, mm, dd, hh, mmm, ss, ums)
+    return Time(d, format="datetime")
 
 def dark_image(calibrationDir,camsetting):
 
@@ -152,7 +165,7 @@ def correct_image(calibrationDir,fitsfile,scienceimage,
 
     hdulist2.writeto(scienceimage,output_verify='fix',overwrite=True)
 
-def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
+def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None,doMedianFilter=False,median_size=30,doCubeFlat=False):
 
     nums = []
     for fitsfile in fitsfiles:
@@ -176,6 +189,11 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
 
         if os.path.isfile(scienceimage): continue
 
+        if doCubeFlat:
+            hduflat = fits.open('gflat_2_f_0000.fits')
+            data_flat = hduflat[0].data
+            data_flat = downscale_local_mean(data_flat, (2,2))
+
         hdulist2 = []
         for jj in range(len(hdulist)):
             if jj == 0:
@@ -183,8 +201,13 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
             else:
                 hdulist_hold = copy.copy(hdulist[jj])
 
+                imagedata = hdulist[jj].data
                 # shift by last images's shift
-                shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx, shifty))
+                shifted = image_registration.fft_tools.shiftnd(imagedata, (shiftx, shifty))
+
+                if doMedianFilter:
+                    blur = np.asfarray(median_filter(shifted, size=(median_size,median_size)))
+                    shifted = shifted/blur
 
                 if registration_size > 0:
                     image_shape = reference.shape
@@ -205,10 +228,15 @@ def register_images(registerDir,fitsfiles,registration_size=-1,x=None,y=None):
                     shiftx = shiftx + shift[0]
                     shifty = shifty + shift[1]
 
-                shifted = image_registration.fft_tools.shiftnd(hdulist[jj].data, (shiftx,shifty))
+                if doCubeFlat:
+                    imagedata = imagedata / data_flat
+
+                shifted = image_registration.fft_tools.shiftnd(imagedata, (shiftx,shifty))
                 #hdulist_hold.data = shifted
                 hdulist_hold = fits.ImageHDU(shifted)
                 hdulist_hold.header['DATE'] = hdulist[jj].header['DATE'] 
+                hdulist_hold.header['UTC'] = utc2date(hdulist[jj].header['UTC']).isot
+                hdulist_hold.header['DATE'] = hdulist_hold.header['UTC']
                 hdulist2.append(hdulist_hold)
 
             cnt = cnt + 1
@@ -606,7 +634,7 @@ if opts.doRegistration and not (opts.doPhase or opts.doStack):
     registerDir = os.path.join(path_out_dir,'register')
     if not os.path.isdir(registerDir):
         os.makedirs(registerDir)
-    register_images(registerDir,fitsfiles,registration_size=opts.registration_size,x=x0,y=y0)
+    register_images(registerDir,fitsfiles,registration_size=opts.registration_size,x=x0,y=y0,doMedianFilter=opts.doMedianFilter,median_size=opts.median_size,doCubeFlat=opts.doCubeFlat)
     fitsfiles = sorted(glob.glob(os.path.join(registerDir,'*.fits*')))
 
 if opts.doMakeMovie:
@@ -632,7 +660,8 @@ for ii,fitsfile in enumerate(fitsfiles):
     backfile = scienceimage.replace(".fits",".background.fits")
     subfile = scienceimage.replace(".fits",".sub.fits")
 
-    if not os.path.isfile(catfile):
+    #if not os.path.isfile(catfile):
+    if True:
 
         if opts.doCalibration:
             correct_image(calibrationDir,fitsfile,scienceimage,
