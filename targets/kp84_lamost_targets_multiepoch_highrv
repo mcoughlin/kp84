@@ -1,0 +1,132 @@
+
+import os, sys, optparse, shutil, time
+import glob
+import numpy as np
+import numpy_indexed as npi
+from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+import itertools
+
+import h5py
+
+import astropy.table
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.coordinates import EarthLocation
+from astropy.table import Table
+from astropy.time import Time
+from astropy.io import fits
+from astropy.io import ascii
+
+import ligo.segments as segments
+
+from astroquery.vizier import Vizier
+Vizier.ROW_LIMIT = -1
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+    parser.add_option("-o","--outputDir",default="../output_lamost")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+
+if not os.path.isdir(opts.outputDir):
+    os.makedirs(opts.outputDir)
+
+fitsfile = "../catalogs/dr5_v3.fits"
+hdul = fits.open(fitsfile)
+hdr = hdul[1].header
+fitsdata = hdul[1].data
+
+obsid = fitsdata["obsid"]
+ras = fitsdata["ra"]
+decs = fitsdata["dec"]
+snrg = fitsdata["snrg"]
+snrr = fitsdata["snrr"]
+z = fitsdata["z"]
+z_err = fitsdata["z_err"]
+rv = z*3e5
+rv_err = z_err*3e5
+
+snrthresh = 20.0
+idx = np.where( (snrg>snrthresh) | (snrr>snrthresh) )[0]
+obsid, ras, decs, rv, rv_err = obsid[idx], ras[idx], decs[idx], rv[idx], rv_err[idx]
+
+idx = np.where((decs >= -30.0) & (decs <= 80.0))[0]
+obsid, ras, decs, rv, rv_err = obsid[idx], ras[idx], decs[idx], rv[idx], rv_err[idx]
+
+data = np.vstack((ras, decs)).T
+count = npi.multiplicity(data)
+idx = np.where(count > 1)[0]
+data = data[idx,:]
+obsid = obsid[idx]
+rv = rv[idx]
+rv_err = rv_err[idx]
+
+vals, idx, inverse, count = np.unique(data,axis=0,return_index=True,return_inverse=True,return_counts=True)
+ras = vals[:,0]
+decs = vals[:,1]
+
+ra_new = np.empty((0,1))
+dec_new = np.empty((0,1))
+obsid_new = np.empty((0,1))
+rv_new = np.empty((0,1))
+rv_err_new = np.empty((0,1))
+
+for ii in range(len(ras)):
+    if np.mod(ii,10000) == 0:
+        print('%d/%d: %d' % (ii, len(ras), len(ra_new)))
+    idy = np.where(ii == inverse)[0]
+
+    if ~np.any(np.abs(rv[idy]) >= 200):
+        continue
+
+    overlap = False
+    sig = 5 
+    for subset in itertools.combinations(idy, 2):
+        seg1 = segments.segment(rv[subset[0]] - sig*rv_err[subset[0]], rv[subset[0]] + sig*rv_err[subset[0]])
+        seg2 = segments.segment(rv[subset[1]] - sig*rv_err[subset[1]], rv[subset[1]] + sig*rv_err[subset[1]])
+        segmentlistdic = segments.segmentlistdict()
+        segmentlistdic["seg1"] = seg1
+        segmentlistdic["seg2"] = seg2
+        try:
+            segmentlist = segmentlistdic.intersection(["seg1","seg2"])
+        except:
+            overlap=True
+            break
+    if overlap:
+        ra_new = np.append(ra_new, np.ones((len(idy),1))*ras[ii])
+        dec_new = np.append(dec_new, np.ones((len(idy),1))*decs[ii])
+        obsid_new = np.append(obsid_new, obsid[idy])
+        rv_new = np.append(rv_new, rv[idy])
+        rv_err_new = np.append(rv_err_new, rv_err[idy])
+        #print(ras[ii], decs[ii], rv[idy], rv_err[idy])
+    #print(stop)
+
+data = np.vstack((ra_new, dec_new)).T
+vals, idx, inverse, count = np.unique(data,axis=0,return_index=True,return_inverse=True,return_counts=True)
+ras = vals[:,0]
+decs = vals[:,1]
+
+filename_out = os.path.join(opts.outputDir,'lamost_multiepoch_highrv.hdf5')
+with h5py.File(filename_out, 'w') as f:
+    f.create_dataset('ra', data=ras)
+    f.create_dataset('dec', data=decs)
+
+filename_out = os.path.join(opts.outputDir,'lamost_indices_multiepoch_highrv.hdf5')
+with h5py.File(filename_out, 'w') as f:
+    f.create_dataset('obsid', data=obsid_new)
+    f.create_dataset('inverse', data=inverse)
+
+plotName = os.path.join(opts.outputDir,'radec.pdf')
+plt.figure()
+plt.hist2d(ras, decs, bins=(50, 50), cmap=plt.cm.jet)
+plt.savefig(plotName)
+plt.close()
