@@ -5,12 +5,14 @@ Created on Tue Nov 12 08:53:19 2019
 
 @author: yuhanyao
 """
+import os
 import time
 import optparse
 import numpy as np
 from scipy.ndimage import median_filter
 
 import astropy.io.fits as fits
+from astropy.time import Time
 from astropy.stats import sigma_clipped_stats
 from astropy.visualization import SqrtStretch, LogStretch, LinearStretch
 from astropy.visualization.mpl_normalize import ImageNormalize
@@ -30,20 +32,16 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--tubepath",default='/Users/yuhanyao/Desktop/ZTFJ05381953/ZTFJ05381953_9_g/registration/kped_20191112_074018_ZTFJ05381953_cl_o.fits.fz')
-    parser.add_option("--idstart",default=-1,type=int)
+    parser.add_option("--doUseLatest",  action="store_true", default=False)
+    parser.add_option("--doApplyRates",  action="store_true", default=False)
+
+    parser.add_option("-f", "--filename",default='/Users/yuhanyao/Desktop/ZTFJ05381953/ZTFJ05381953_9_g/registration/kped_20191112_074018_ZTFJ05381953_cl_o.fits.fz')
+    parser.add_option("--idstart",default=1,type=int)
     parser.add_option("--idend",default=-1,type=int)
 
     opts, args = parser.parse_args()
 
     return opts
-
-
-opts = parse_commandline()
-idstart = opts.idstart
-idend = opts.idend
-tubepath = opts.tubepath    
-
 
 def mylinear_fit(x, y, yerr, npar = 2):
     '''
@@ -88,13 +86,12 @@ class KPEDtube(object):
         self.filter = allhdu[0].header["FILTER"]
         self.filename = allhdu[0].header["FILENAME"]
         self.figdir = figdir
-        if idstart==-1 or idend==-1:
-            idstart = len(allhdu)-1-100
-            idend = len(allhdu)-1  
+        #if idstart==-1 or idend==-1:
+        #    idstart = len(allhdu)-1-100
+        #    idend = len(allhdu)-1  
         self.idstart = idstart
         self.idend = idend
-        
-        self.hdus = allhdu[idstart:idend+1]
+        self.hdus = allhdu[idstart:idend]
         self.nimg = len(self.hdus)
         
         
@@ -112,7 +109,7 @@ class KPEDtube(object):
         for i in range(nimg):
             hdu = hdus[i]
             header = hdu.header
-            utc = header["UTC"]
+            utc = header["GPS_TIME"]
             data = hdu.data
             # only calculate global median once
             if i==0:
@@ -181,10 +178,9 @@ class KPEDtube(object):
         keys = np.array(list(utcs.keys()))
         times = np.zeros(len(keys))
         for (i,key) in enumerate(keys):
-            timestr = utcs[key].split("_")[-1]
-            times[i] = int(timestr[:2])*60*60 +int(timestr[2:4])*60 + float(timestr[4:])
+            times[i] = Time(utcs[key], format="isot").mjd
         times -= times[0]
-        self.times = times
+        self.times = times * 86400.0
         # get position
         # choose the image with the greatest number of stars identified
         nstars = np.array([len(starpositions[key]) for key in keys])
@@ -267,7 +263,6 @@ class KPEDtube(object):
             mytime = mytime[ind]
             xs = xs[ind]
             ys = ys[ind]
-            mylinear_fit(mytime, xs, np.ones(len(xs)), npar = 2)
             dxdt, tmp1x, tmp2x = mylinear_fit(mytime, xs, np.ones(len(xs)), npar = 2)
             dydt, tmp1y, tmp2y = mylinear_fit(mytime, ys, np.ones(len(xs)), npar = 2)
             
@@ -288,9 +283,27 @@ class KPEDtube(object):
             
         self.xdot = xdot
         self.ydot = ydot
-        
-        
-kptube = KPEDtube(tubelocalpath = tubepath, idstart = idstart, idend = idend)
+
+def all_files_under(path):
+    """Iterates through all files that are under the given path."""
+    for cur_path, dirnames, filenames in os.walk(path):
+        if not "20" in cur_path:
+            continue 
+        for filename in filenames:
+            if not "fits.fz" in filename:
+                continue
+            yield os.path.join(cur_path, filename)
+
+opts = parse_commandline()
+idstart = opts.idstart
+idend = opts.idend
+
+if opts.doUseLatest:
+    filename = max(all_files_under('/Data/'), key=os.path.getmtime)
+else:
+    filename = opts.filename 
+ 
+kptube = KPEDtube(tubelocalpath = filename, idstart = idstart, idend = idend)
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
 kptube.identify_bright_source()
 kptube.get_offset()
@@ -299,4 +312,8 @@ kptube.cal_offset()
 xdot = kptube.xdot
 ydot = kptube.ydot
 
-print (xdot, ydot)
+print ("dra/dt [arcsec/s] = %.5f, ddec/dt [arcsec/s] = %.5f"% (xdot, ydot))
+
+if opts.doApplyRates:
+    system_command = "ssh tcs@sells.kpno.noao.edu 'tx track ra=%.5f dec=%.5f'" % (xdot, ydot)
+    os.system(system_command)
