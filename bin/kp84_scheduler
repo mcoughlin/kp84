@@ -90,6 +90,88 @@ def convert_to_hex(val, delimiter=':', force_sign=False):
         deg_str = '{:02d}'.format(degree * s_factor)
     return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
 
+def load_jan_objects(filename):
+
+    observations = astropy.io.ascii.read(filename,format='csv')
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    cnt = 0
+
+    filt = 1
+    program_id = 7
+    program_pi = "vanRoestel"
+
+    for ii, observation in enumerate(observations):
+
+        ra, dec = observation["Ra"], observation["Dec"]
+        period = observation["Period (d)"]
+        exposure_time = int(1.1*period*86400)
+        Gmag = observation["G"]
+
+        # only want the bright stuff
+        if Gmag > 18: continue
+
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        if filt == 1:
+            filt = "FILTER_SLOAN_G"
+        elif filt == 2:
+            filt = "FILTER_SLOAN_R"
+        elif filt == "3":
+            filt = "FILTER_JOHNSON_I"
+
+        comment = "%.0f_0" % (1e15 - Gmag)
+        targets.append([observation['Shortname'],
+                        program_id,
+                        observation['Shortname'],
+                        ra_hex, dec_hex, 2000, 0, 0,
+                        1e5, exposure_time,
+                        filt, 9, program_pi,
+                        comment])
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["priority"] = sigs
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    return targets
+
 def load_observations(filename):
 
     lines = [line.rstrip('\n') for line in open(filename)]
@@ -507,7 +589,7 @@ global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
 targets_all = []
-programs = ["variables", "GW", "transients", "NEO", "time_sensitive", "periodic_time_sensitive"]
+programs = ["variables", "GW", "transients", "NEO", "time_sensitive", "jan_objects", "periodic_time_sensitive"]
 for program in programs:
     object_list_dir = os.path.join(object_lists, program)
     filenames = glob.glob(os.path.join(object_list_dir, '*'))
@@ -524,6 +606,8 @@ for program in programs:
             targets = load_time_sensitive(filename)
         elif program == "periodic_time_sensitive":
             targets = load_periodic_time_sensitive(filename)
+        elif program == "jan_objects":
+            targets = load_jan_objects(filename)
         else:
             print("How do I load objects from the %s program?" % program)
             exit(0)
@@ -532,7 +616,6 @@ for program in programs:
         targets_all.append(targets)
 
 targets = vstack(targets_all)
-
 observations = {}
 
 filenames = glob.glob(os.path.join(opts.requests, '*'))
@@ -604,8 +687,14 @@ prior_scheduler(blocks, priority_schedule)
 
 cnt = 0 
 
+try:
+    tab = priority_schedule.to_table()
+except:
+    print('There are probably no observable targets... please check.')
+    exit(0)
+
 fid = open(outfile,'w')
-for schedule in priority_schedule.to_table():
+for schedule in tab:
     tar = schedule["target"]
     if tar == "TransitionBlock": continue
     #print(targets["objectID"])
