@@ -292,7 +292,7 @@ def load_NEO(filename):
 
     return targets
 
-def load_time_sensitive(filename):
+def load_time_sensitive(filename,buffertime=15./60/24):
 
     filenameSplit = filename.split("_")
     priority = float(filenameSplit[-1].replace(".dat",""))
@@ -313,8 +313,9 @@ def load_time_sensitive(filename):
         sig, period = priority, 0
  
         dt = mjd_start - mjd_now
-        dt_hrs = dt*24.0
-        if (dt_hrs < 0) or (dt_hrs > 300.0):
+        #dt_hrs = dt*24.0
+        #if (dt_hrs < 0) or (dt_hrs > 300.0):
+        if dt < 0 or dt > buffertime:        
             continue
 
         sigs.append(sig)
@@ -352,6 +353,96 @@ def load_time_sensitive(filename):
     targets['dec_rate'].dtype= np.float64
 
     return targets
+
+def load_periodic_time_sensitive(filename,buffertime=15./60/24):
+
+    filenameSplit = filename.split("_")
+    priority = float(filenameSplit[-1].replace(".dat",""))
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = astropy.io.ascii.read(filename,names=names)
+
+    jd_now = Time.now().jd
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    exposures = []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        # units are in days, format is HJD
+        p,t0,window = float(commentSplit[0]), float(commentSplit[1]), float(commentSplit[2])
+
+        sig, period = priority, 0
+ 
+        # convert current time to heliocentre
+        ut_helio = JD2HJD(jd_now,ra,dec) 
+
+        # calculate the number of eclipses since t0
+        N = (ut_helio-t0).value//p
+
+        tn = t0+p*(N+1) - ut_helio # time until next window midpoint
+        dt = tn - 0.5*window # time to start of next window
+        if dt > buffertime or dt < 0:
+            # if next window is too far away or already ongoing, skip
+            continue
+
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+        exposures.append((window+dt)*3600*24) # set the exposuretime to windowsize + time untill window start
+
+    if len(sigs) == 0:
+        return []
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["exposure_time"] = exposures
+    targets["programID"] = 1
+    targets["priority"] = np.array(sigs) + priority
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    return targets
+
+def JD2HJD(JD,ra,dec):
+    # JD2HJD for Kittpeak!
+    location = EarthLocation.from_geodetic(-111.5967*u.deg, 31.9583*u.deg,
+                                           2096*u.m)
+    kp = Observer(location=location, name="Kitt Peak",timezone="US/Arizona")
+
+
+    # convert JD to HJD
+    target = coord.SkyCoord(ra*u.deg,dec*u.deg, frame='icrs')
+    #tsite = coord.EarthLocation.of_site(site)
+    times = Time(JD, format='jd',
+                      scale='utc', location=location)
+    ltt_helio = times.light_travel_time(target, 'heliocentric')
+
+    HJD = JD+ltt_helio
+
+    return HJD
 
 def load_variables(filename):
 
@@ -498,7 +589,7 @@ global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
     AtNightConstraint.twilight_civil()]
 
 targets_all = []
-programs = ["variables", "GW", "transients", "NEO", "time_sensitive", "jan_objects"]
+programs = ["variables", "GW", "transients", "NEO", "time_sensitive", "jan_objects", "periodic_time_sensitive"]
 for program in programs:
     object_list_dir = os.path.join(object_lists, program)
     filenames = glob.glob(os.path.join(object_list_dir, '*'))
@@ -513,6 +604,8 @@ for program in programs:
             targets = load_NEO(filename)
         elif program == "time_sensitive":
             targets = load_time_sensitive(filename)
+        elif program == "periodic_time_sensitive":
+            targets = load_periodic_time_sensitive(filename)
         elif program == "jan_objects":
             targets = load_jan_objects(filename)
         else:
