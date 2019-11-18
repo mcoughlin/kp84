@@ -231,8 +231,9 @@ def load_time_sensitive(filename,buffertime=15./60/24):
         sig, period = priority, 0
  
         dt = mjd_start - mjd_now
-        dt_hrs = dt*24.0
-        if (dt_hrs < 0) or (dt_hrs > 300.0):
+        #dt_hrs = dt*24.0
+        #if (dt_hrs < 0) or (dt_hrs > 300.0):
+        if dt < 0 or dt > buffertime:        
             continue
 
         sigs.append(sig)
