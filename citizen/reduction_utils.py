@@ -9,6 +9,7 @@ from astropy.io import fits
 from astropy.time import Time
 from astropy.wcs import WCS
 from astropy.stats import sigma_clipped_stats
+from astropy.coordinates import SkyCoord, EarthLocation
 from copy import deepcopy
 from scipy.ndimage import median_filter
 
@@ -17,6 +18,10 @@ from skimage.feature import register_translation
 from photutils import DAOStarFinder
 
 import PythonPhot as pp
+from astropy.visualization import SqrtStretch
+from astropy.visualization.mpl_normalize import ImageNormalize
+
+from citizen.photometry_utils import ps1_query
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -107,34 +112,142 @@ def get_predictioon_xy(ind, xobjs, cs):
     return xpredict
             
 
-def get_reference(scienceimage, cat):
+def get_reference_pos(scienceimage, cat, zp=0, passband='sg'):
     # plt.hist(cat[:,20])
-    cat = cat[cat[:,20]<20] # cut sources with too high fwhm
+    cat = cat[cat[:,20]<15] # cut sources with too high fwhm
     # plt.hist(cat[:,14])
-    cat = cat[cat[:,14]<4] # Profile RMS along major axis 
+    cat = cat[cat[:,14]/cat[:,15]<2.5] # Profile RMS along major axis 
     # plt.hist(cat[:,15])
-    cat = cat[cat[:,15]<3] # Profile RMS along minor axis   
-    
-    exts = np.unique(cat[:,22])
+    # cat = cat[cat[:,15]<3] # Profile RMS along minor axis   
+    magthreshold = zp - 8
+    cat = cat[cat[:,4]<magthreshold] # mag
     
     sciHDU = fits.open(scienceimage)
+    
+    xobjs = np.array([hdu.header["X_OBJ"] for hdu in sciHDU[1:]])
+    yobjs = np.array([hdu.header["Y_OBJ"] for hdu in sciHDU[1:]])
+    xtolerance = 10#max(xobjs) - min(xobjs)
+    ytolerance = 10#max(yobjs) - min(yobjs)
+    ndata = sciHDU[1].data.shape[0]
+    ind = (cat[:,0]>xtolerance)&(cat[:,0]<(ndata-xtolerance))&(cat[:,1]>ytolerance)&(cat[:,1]<(ndata-ytolerance))
+    cat = cat[ind]
+    
+    nrefs = np.array([np.sum(cat[:,22]==i) for i in range(len(sciHDU))])
+    framenum = np.where(nrefs == np.max(nrefs))[0][0]
+    xobj_frame = xobjs[framenum-1]
+    yobj_frame = yobjs[framenum-1]
+    xind = (cat[:,0]<(ndata-(max(xobjs)-xobj_frame)))&(cat[:,0]>(xobj_frame-min(xobjs)))
+    yind = (cat[:,1]<(ndata-(max(yobjs)-yobj_frame)))&(cat[:,1]>(yobj_frame-min(yobjs)))
+    ind = (cat[:,22]==framenum)&xind&yind
+    
+    catsub = cat[ind] # in pixel coordinate
+    hdu = sciHDU[framenum]
+    header = hdu.header
+    #xguess = header["X_GUESS"]
+    #yguess = header["Y_GUESS"]    
+    xobj = header["X_OBJ"]
+    yobj = header["Y_OBJ"]
+    data = hdu.data
+    dist = np.sqrt((catsub[:,0] - xobj)**2+(catsub[:,1] - yobj)**2)
+    catsub = np.vstack((catsub.T, dist.T)).T
+    catsub = catsub[catsub[:, -1]>30]
+    # If there is a star that is bright (and have good psf shape)
+    indbright = (catsub[:,4]<(zp-10))&(catsub[:,20]<5)
+    if np.sum(indbright)!=0:
+        index = np.arange(len(catsub))
+        catbright = catsub[indbright]
+        indexbright = index[indbright]
+        ind_field = indexbright[np.argsort(catbright[:, -1])][0]
+    else:
+        ind_field = np.argsort(catsub[:, -1])[0]
+    xfield = catsub[:,0][ind_field]
+    yfield = catsub[:,1][ind_field]
+    
+    xoff = xfield - xobj_frame
+    yoff = yfield - yobj_frame
+    print ("  Field reference star: xoff = %.2f, yoff = %.2f"%(xoff, yoff))
+    
+    # plot the figure
+    print ("  Plotting figures...")
+    path_out_dir = "/".join(scienceimage.split("/")[:-1])
+    # mag
+    figfile1 = os.path.join(path_out_dir, "image_mag.pdf")
+    plt.figure(figsize=(9,8))
+    cmap_name = "gray"
+    norm = ImageNormalize(stretch=SqrtStretch())
+    plt.imshow(data, origin = "lower", norm=norm, cmap = cmap_name,
+               vmax = np.percentile(data.ravel(), 99.9))
+    plt.scatter(catsub[:,0]-1, catsub[:,1]-1, c=catsub[:,4], s=10)
+    plt.colorbar()
+    plt.plot(xobj-1, yobj-1, 'rx')
+    plt.plot(xfield-1, yfield-1, 'mx')
+    plt.tight_layout()
+    plt.savefig(figfile1)
+    plt.close()
+    # FWHM
+    figfile2 = os.path.join(path_out_dir, "image_fwhm.pdf")
+    plt.figure(figsize=(9,8))
+    cmap_name = "gray"
+    norm = ImageNormalize(stretch=SqrtStretch())
+    plt.imshow(data, origin = "lower", norm=norm, cmap = cmap_name,
+               vmax = np.percentile(data.ravel(), 99.9))
+    plt.scatter(catsub[:,0]-1, catsub[:,1]-1, c=catsub[:,20], s=10)
+    plt.colorbar()
+    plt.plot(xobj-1, yobj-1, 'rx')
+    plt.plot(xfield-1, yfield-1, 'mx')
+    plt.tight_layout()
+    plt.savefig(figfile2)
+    plt.close()
+    # ELONGATION
+    figfile3 = os.path.join(path_out_dir, "image_AoverB.pdf")
+    plt.figure(figsize=(9,8))
+    cmap_name = "gray"
+    norm = ImageNormalize(stretch=SqrtStretch())
+    plt.imshow(data, origin = "lower", norm=norm, cmap = cmap_name,
+               vmax = np.percentile(data.ravel(), 99.9))
+    plt.scatter(catsub[:,0]-1, catsub[:,1]-1, c=catsub[:,14]/catsub[:,15], s=10)
+    plt.colorbar()
+    plt.plot(xobj-1, yobj-1, 'rx')
+    plt.plot(xfield-1, yfield-1, 'mx')
+    plt.tight_layout()
+    plt.savefig(figfile3)
+    plt.close()
+    
     for i in range(len(sciHDU)):
         if i==0:
             continue
         hdu = sciHDU[i]
         header = hdu.header
-        
-        catind = cat[:,22]==i
-            
-        plt.figure()
-        plt.imshow(subdata, origin = "lower")
-        plt.plot(xsub_guess-1, ysub_guess-1, 'rx')
-        plt.plot(xsub_tuned-1, ysub_tuned-1, 'r+')
-        plt.savefig('/Users/yuhanyao/Desktop/kped_tmp/20191117/ZTFJ01395245/figures/%d.png'%i)
-        plt.close()
+        header["X_FIELD"] = (header["X_OBJ"] + xoff, "Field reference x Pixel Coordinate")
+        header["Y_FIELD"] = (header["Y_OBJ"] + yoff, "Field reference y Pixel Coordinate")
+    
+    ra = sciHDU[0].header["RA_OBJ"]
+    dec = sciHDU[0].header["DEC_OBJ"]
+    framenum = sciHDU[0].header["WCSFRAME"]
+    # we use the original wcs, believing that it is not very off, 
+    # to estimate ra and dec of the reference star
+    w0 = WCS(sciHDU[framenum].header)
+    x0, y0 = w0.wcs_world2pix(ra, dec, 1)
+    x0field = x0 + xoff
+    y0field = y0 + yoff
+    rafield, decfield = w0.wcs_pix2world(x0field, y0field, 1)
+    sciHDU[0].header["RA_REF"] = float(rafield)
+    sciHDU[0].header["DEC_REF"] = float(decfield)
+    print ("    Find reference star: ra_ref = %.5f, dec_ref = %.5f"%(rafield, decfield))
+    radius_deg = 20/60/60. # 20 arcsec
+    result = ps1_query(rafield, decfield, radius_deg, maxmag=22,
+                       maxsources=10000)
+    if passband == "sg":
+        refmag = result["gmag"][0]
+    elif passband == "sr":
+        refmag = result["rmag"][0]
+    sciHDU[0].header["MAGREF"] = refmag
+    print ("      Reference star: %.2f mag in %s band"%(refmag, passband))
+    sciHDU.writeto(scienceimage, overwrite=True)
+    
 
-
-def register_images(fitsfile, shiftfile, xyframe, x, y, maxdist=10.):
+def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
+                    maxdist=10.,aper_size=10):
     tbshift = asci.read(shiftfile)
 
     x1 = x + tbshift["xshift"][xyframe] # get the (x, y) in extension 1
@@ -151,8 +264,8 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, maxdist=10.):
         else:
             x_frame = x1 - tbshift["xshift"][i]
             y_frame = y1 - tbshift["yshift"][i]
-            if x_frame<1 or x_frame>(ndata) or y_frame<1 or y_frame>(ndata):
-                print ("    Target outside of image! Remove extention %d!"%i)
+            if x_frame<aper_size or x_frame>(ndata-aper_size) or y_frame<aper_size or y_frame>(ndata-aper_size):
+                print ("    Target outside of image (aperture size=%.1f). Remove extention %d!"%(aper_size, i))
             else:
                 hdu.header["x_guess"] = (x_frame, "Initial guess of the object x Pixel Coordinate")
                 hdu.header["y_guess"] = (y_frame, "Initial guess of the object y Pixel Coordinate")
@@ -226,12 +339,12 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, maxdist=10.):
             """
             x_tuned = xsub_tuned + xstart
             y_tuned = ysub_tuned + ystart
-            hdu.header["DAOFINDFLAG"] = (findsourceflag, "DAOStarFinder flag")
+            hdu.header["DAOFLAG"] = (findsourceflag, "DAOStarFinder flag")
             hdu.header["X_DAOOBJ"] = (x_tuned, "object x Pixel Coordinate found by DAOStarFinder")
             hdu.header["Y_DAOOBJ"] = (y_tuned, "object y Pixel Coordinate found by DAOStarFinder")
             regis2HDU.append(hdu)
             
-    ind = np.array([hdu.header["DAOFINDFLAG"] for hdu in regis2HDU[1:]])
+    ind = np.array([hdu.header["DAOFLAG"] for hdu in regis2HDU[1:]])
     xobjs = np.array([hdu.header["X_DAOOBJ"] for hdu in regis2HDU[1:]])
     yobjs = np.array([hdu.header["Y_DAOOBJ"] for hdu in regis2HDU[1:]])
     xinits = np.array([hdu.header["X_GUESS"] for hdu in regis2HDU[1:]])
@@ -250,6 +363,7 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, maxdist=10.):
     xfinals = kk_x * xinits + bb_x
     yfinals = kk_y * yinits + bb_y
     
+    # drift_field
     plt.figure(figsize=(12, 12))
     ax1 = plt.subplot(211)
     ax1.plot(cs[ind==0], xobjs[ind==0], 'r.', alpha = 0.5)
@@ -269,8 +383,7 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, maxdist=10.):
     ax2.plot(cs[indy], yobjs[indy], label = "DAOFind")
     ax2.plot(cs, kk_y * yinits + bb_y, label = "Final")
     ax2.legend()
-    figfile = fitsfile.replace("/processing/", "/registration/")
-    figfile = figfile[:-5]+'_xypos.png'
+    figfile = os.path.join(path_out_dir, 'findxypos.png')
     ax1.set_ylabel("x")
     ax2.set_ylabel("y")
     plt.tight_layout()
@@ -285,11 +398,7 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, maxdist=10.):
         yfinal = yfinals[i-1]
         hdu.header["X_OBJ"] = (xfinal, "Final decision of the object's x Pixel Coordinate")
         hdu.header["Y_OBJ"] = (yfinal, "Final decision of the object's y Pixel Coordinate")
-    
-    regisfile = fitsfile.replace("/processing/", "/registration/")
-    regisfile = regisfile[:-5]+'_regis.fits'
-    print (" Writing to %s"%regisfile)
-    regis2HDU.writeto(regisfile, overwrite=True)
+    return regis2HDU
             
 
 def get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True):
@@ -303,61 +412,65 @@ def get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True):
         xyframe = int(wcsfileSplit.split("_")[-2])
     
     if get_distance == True:
-        wcs_sci_header = fits.open(fitsfile)[0].header
+        wcs_sci_header = fits.open(fitsfile)[1].header
         primary_header = fits.open(fitsfile)[0].header
         w_sci = WCS(wcs_sci_header)
         x_sci, y_sci = w_sci.wcs_world2pix(ra, dec, 1)
         distance = np.sqrt(((x - x_sci)*primary_header["PIXSCALX"])**2 +\
                     ((y - y_sci)*primary_header["PIXSCALY"])**2)
-        print ("original astrometry is off by %.2f arcmin"%(distance/60))
+        print ("  FYI: Original astrometry is off by %.2f arcmin"%(distance/60))
+    
+    hdus = fits.open(fitsfile)
+    hdus[0].header["WCSFRAME"] = (xyframe, "The frame extension used to find astrometry.")
+    header = hdus[xyframe].header
+    
+    keys = ["CTYPE1", "CTYPE2", "EQUINOX", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2",
+            "CUNIT1", "CUNIT2", "CD1_1", "CD1_2", "CD2_1", "CD2_2"]  
+    for key in keys:
+        header[key] = wcs_header[key]
+    print ("  Saving correct wcs to frame %d's header of %s"%(xyframe, fitsfile))
+    hdus.writeto(fitsfile, overwrite=True)
     return float(x), float(y), xyframe
     
 
-def forcedphotometry_kp(imagefile, x0, y0, fwhm=10., gain=1.0, zp=0.0):
+def forcedphotometry_kp(scienceimage, aper_size=10., gain=1.0, zp=0.0,
+                        xkey = "X_OBJ", ykey = "Y_OBJ"):
     """
+    https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py
     zp: zero point for converting flux (in ADU) to magnitudes
     fwhm: scalar or 1D array of photometry aperture radii in pixel units.
-    
     """
-    hdulist = fits.open(imagefile)
-    header = fits.getheader(imagefile)
-
-    forcedfile = imagefile.replace(".fits",".forced")
-    fid = open(forcedfile,'w')
+    hdulist = fits.open(scienceimage)
 
     mjds, mags, magerrs, fluxes, fluxerrs = [], [], [], [], []
+    
+    exptime = hdulist[0].header["FRAMETIM"] # in second
     for ii in range(len(hdulist)):
         if ii == 0: 
             continue
         header = hdulist[ii].header
         image = hdulist[ii].data
         if "GPS_TIME" in header:
-            timeobs = Time(header["GPS_TIME"])
+            timeobsend = Time(header["GPS_TIME"])
         elif "DATE" in header:
-            timeobs = Time(header["DATE"])
+            timeobsend = Time(header["DATE"])
         else:
-            print("Warning: 'both GPS_TIME and DATE are missing from %s hdu %d/%d"%(imagefile,ii,len(hdulist)))
+            print("Warning: 'both GPS_TIME and DATE are missing from %s hdu %d/%d"%(scienceimage,ii,len(hdulist)))
             continue
-        
-        
-        plt.imshow(image, origin = "lower")
+        x = header[xkey]
+        y = header[ykey]
         
         mag, magerr, flux, fluxerr, sky, skyerr, badflag, outstr = \
-            pp.aper.aper(image, x0, y0, phpadu=gain, apr=fwhm, zeropoint=zp, 
-                         skyrad=[3*fwhm,5*fwhm],exact=False)
+            pp.aper.aper(image, x, y, phpadu=gain, apr=aper_size, zeropoint=zp, 
+                         skyrad=[3*aper_size, 5*aper_size], exact=False)
 
-        mjds.append(timeobs.mjd)
+        mjds.append(timeobsend.mjd - exptime/2./86400)
         mags.append(mag)
         magerrs.append(magerr)
         fluxes.append(flux)
         fluxerrs.append(fluxerr)
-
-        fid.write('%.5f %.5f %.5f %.5f %.5f\n'%(dateobs.mjd,mag,magerr,flux,fluxerr))
-    fid.close()
-
+    #plt.errorbar(mjds, mags, magerrs, fmt='.k')
     return np.array(mjds), np.array(mags), np.array(magerrs), np.array(fluxes), np.array(fluxerrs)
-
-    
 
 
 def stack_shifted_frames(fitsfile):
@@ -533,4 +646,13 @@ def utc2date(utcheader):
     return Time(d, format="datetime")
     
 
+def BJDConvert(mjd, RA, Dec):
+    times=mjd
+    t = Time(times,format='mjd',scale='utc')
+    t2=t.tdb
+    c = SkyCoord(RA,Dec, unit="deg")
+    Palomar=EarthLocation.of_site('Palomar')
+    delta=t2.light_travel_time(c,kind='barycentric',location=Palomar)
+    BJD_TDB=t2+delta
+    return BJD_TDB
         

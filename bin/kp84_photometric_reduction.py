@@ -41,9 +41,12 @@ def parse_commandline():
     parser.add_option("--day",default="20191116", help="date of observation")
     parser.add_option("--objName",default="ZTFJ19015309", help="object name")
     
-    parser.add_option("-x","--xstar",default=-1,type=float, help="object's x pixel of frame 1, only give if astrometry.net solution failed")
-    parser.add_option("-y","--ystar",default=-1,type=float, help="object's y pixel of frame 1, only give if astrometry.net solution failed")
-    parser.add_option("--xyext",default=1,type=float, help="frame number of the Multi-extension Cube that xstar and ystar are specified")
+    # If do not specify type, then the assuption is string!
+    parser.add_option("-x","--xstar", default="", help="object's x pixel of frame 1, only give if astrometry.net solution failed")
+    parser.add_option("-y","--ystar", default="", help="object's y pixel of frame 1, only give if astrometry.net solution failed")
+    parser.add_option("--xyext", default="", help="frame number of the Multi-extension Cube that xstar and ystar are specified")
+    parser.add_option("--xyfile", default="", 
+                      help="Name of the Multi-extension Cube file, need to be specified if there are multiple files for a single object")
     
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False, help='If true, remove the previous object-output folder') 
@@ -69,9 +72,13 @@ def parse_commandline():
 
 
 """
-day = "20191117"
-objName = "ZTFJ01395245"
+day = "20191114"
+objName = "ZTFJ18103350"
 setupDir = "/Users/yuhanyao/Desktop/kped_tmp/"
+xstar = "177"
+ystar = "281"
+xyext = "140"
+xyfile = ""
 """
 # Parse command line
 opts = parse_commandline()
@@ -98,7 +105,14 @@ nimages = opts.nimages
 xstar = opts.xstar
 ystar = opts.ystar
 xyext = opts.xyext
+xyfile = opts.xyfile
 aper_size = opts.aper_size
+
+xyfiles_ = xyfile.split("*")
+xyexts_ = xyext.split("*")
+
+if not os.path.isdir(outputDir):
+    os.makedirs(outputDir)
 
 print ("")
 print ("=================================")
@@ -132,9 +146,6 @@ coofile = os.path.join(outputDir, "coo.reg")
 print ("Saving coordinate to %s"%coofile)
 np.savetxt(coofile, [ra, dec])
 
-if not os.path.isdir(outputDir):
-    os.makedirs(outputDir)
-
 fitsfiles = sorted(glob.glob(os.path.join(dataDir,'processing','*.fits'))) 
 tmpheader = fits.open(fitsfiles[0])[0].header
 tmpfilter = tmpheader["FILTER"]
@@ -159,9 +170,15 @@ for i in range(nfiles):
     if not os.path.isdir(path_out_dir):
         os.makedirs(path_out_dir)
     print("%d/%d: %s"%(i+1, nfiles, fitsfileSplit))
-    print ("  Finding it on the wcs file extension...")
     wcsfiles = glob.glob(os.path.join(dataDir,'wcs', '%s*wcs.fits'%fitsfileSplit))
-    wcsfile = wcsfiles[0]
+    if len(wcsfiles)!=0:
+        print ("  Finding it on the wcs file extension...")
+        # The astrometry is successfully found:
+        wcsfile = wcsfiles[0]
+    else:
+        # The astrometry failed:
+        print ("  Finding it using the specified location: x = %.2f, y=%.2f, xyext = %.d"%())
+        wcsfile = None
     shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s*shift.dat'%fitsfileSplit))
     shiftfile = shiftfiles[0]
     x, y, xyframe = get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True)
@@ -470,7 +487,7 @@ mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
 flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
 
 print ("Plotting mag photometry...")
-plotName = os.path.join(outputDir,'mag_relative_forced.pdf')
+plotName = os.path.join(outputDir,'mag_forced.pdf')
 fig = plt.figure(figsize=(20,8))
 plt.errorbar(mjd_forced-mjd_forced[0],mag_forced,magerr_forced,fmt='ko')
 plt.xlabel('Time from %.5f [days]'%mjd_forced[0])

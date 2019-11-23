@@ -345,13 +345,14 @@ for obj in objs:
             framenum = upfile.split("/")[-1].split("_")[-1].split(".")[0]
             print ("    best frame already exist!")
             wcsfile = "%s/%s_%s_wcs.fits"%(folderName_wcs, filename, framenum)
-            w = WCS(fitsfile[int(framenum)].header)
+            # w = WCS(fitsfile[int(framenum)].header)
+            w = WCS(fitsfile[0].header)
             ra, dec = w.wcs_pix2world(ndata//2, ndata//2, 0)
             if os.path.isfile(wcsfile):
                 print ("    wcs file exist for %s"%filename)
             else:
                 fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
-                          "--ra %.5f --dec %.5f --radius %.1f "%(ra, dec, 5)+\
+                          #"--ra %.5f --dec %.5f --radius %.1f "%(ra, dec, 5)+\
                           "--wcs %s/%s_%s_wcs.fits --private\n"%(folderName_wcs, filename, framenum))
             continue
         hdus = fits.open(fitsfile)
@@ -407,7 +408,7 @@ chmod_command = "chmod +x run_astrometry.sh"
 os.system(chmod_command)
 os.system("./run_astrometry.sh")
 
-#objs = ["ZTFJ01395245", "ZTFJ18494132", "ZTFJ19244707", "ZTFJ19454455"]
+#objs = ["1704k", "ZTFJ0251+0905", "ZTFJ0410-0834", "ZTFJ18103350", "ZTFJ18174120"]
 print ("")
 print ("================================")
 print ("Calculate Shifts Between Frames!")
@@ -443,15 +444,15 @@ for obj in objs:
             print ("  Found wcs in frame %d"%(framenum))
         else:
             print ("  Didn't find wcs -- save stacked img to be uploaded")
-            w = WCS(fitsfile[0].header)
-            ra, dec = w.wcs_pix2world(data_stacked.shape[0]//2, data_stacked.shape[0]//2, 0)
+            #w = WCS(fits.open(fitsfile)[1].header)
+            #ra, dec = w.wcs_pix2world(data_stacked.shape[0]//2, data_stacked.shape[0]//2, 0)
             hdu = fits.PrimaryHDU()
             hdul = fits.HDUList([hdu])
             hdul[0].data = data_stacked
             stackedfile = "%s/%s_stack.fits"%(folderName_upload, filename)
             hdul.writeto(stackedfile, overwrite=True)
-            fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%stackedfile +\
-                      "--ra %.5f --dec %.5f --radius %.1f "%(ra, dec, 10/60)+\
+            fid.write("timeout 300s python kp84_get_wcs.py --upload %s "%stackedfile +\
+                      #"--ra %.5f --dec %.5f --radius %.1f "%(ra, dec, 10/60)+\
                       "--wcs %s/%s_stack_wcs.fits --private\n"%(folderName_wcs, filename))
 fid.close()
     
