@@ -4,26 +4,17 @@
 # version July 28 2019
 
 import warnings
-import glob
-import matplotlib.pyplot as plt 
 # %matplotlib inline
 warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
-
 from astroML.crossmatch import crossmatch_angular
 from astropy.coordinates import SkyCoord
-
-from astropy.io import fits
-from astropy import wcs
-
 import urllib
 import urllib.request
-
 import astropy.units as u
-import astropy.coordinates as coord
-
 from astroquery.vizier import Vizier
+
 
 def get_ztf_cand(url_report_page, username, password):
 
@@ -60,7 +51,6 @@ def get_ztf_cand(url_report_page, username, password):
     with urllib.request.urlopen(url_report_page) as url:
         data = url.read().decode()
 
-
     print('Loaded :',len(data),'ZTF objects')
 
     df_list = pd.read_html(data,header=0)
@@ -86,6 +76,7 @@ def get_ztf_cand(url_report_page, username, password):
         dec_transient.append( c.dec.deg)
         
     return name_,ra_transient,dec_transient
+
 
 def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=25,
                maxsources=1):
@@ -119,6 +110,7 @@ def gaia_query(ra_deg, dec_deg, rad_deg, maxmag=25,
     except:
         return []
 
+
 def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=25,
                maxsources=1):
     """
@@ -148,6 +140,7 @@ def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=25,
         return source[0]
     except:
         return []
+    
 
 def panstarrs_query(ra_deg, dec_deg, rad_deg, ndet=4, 
                     maxsources=10000,minmag = 16.5,maxmag = 19.5,diffmag = 0.05,
@@ -193,7 +186,6 @@ def panstarrs_query(ra_deg, dec_deg, rad_deg, ndet=4,
     newtable["Imag"] = table["iMeanPSFMag"]-0.386*(table["iMeanPSFMag"]-table["zMeanPSFMag"])-0.397
     newtable["zmag"] = table["zMeanPSFMag"]
     return newtable
- 
 
 
 def sdss_query(ra,dec,radius=5*u.arcmin,minmag=16.5,maxmag=20):
@@ -258,8 +250,8 @@ def get_ztf_object(name,username,password):
     coord=np.array(ra_tran+dec_tran)
     name_=name
     print('Coordinates ',name, coord)
+    return name, np.array([ra_tran]), np.array([dec_tran])
 
-    return name,np.array([ra_tran]),np.array([dec_tran])
 
 def do_crossmatch(ra_im,dec_im,ra_std,dec_std):   
     '''
@@ -289,6 +281,7 @@ def do_crossmatch(ra_im,dec_im,ra_std,dec_std):
     match_im = ~np.isinf(dist)
     return ind_im,match_im
 
+
 def do_sextractor(files_entire,workdir_fits_red,workdir_sex_out,workdir_cat,sextractor_dir,control=False):
     import os
     # run sextractor in the images from KPED 
@@ -304,6 +297,7 @@ def do_sextractor(files_entire,workdir_fits_red,workdir_sex_out,workdir_cat,sext
     #os.system(sex_command_2)
     #if control:
     #    print (sex_command_2)        
+
 
 def do_sextractor_KPED(files_entire,workdir_fits_red,workdir_sex_out,workdir_cat,sextractor_dir,control=False):
     import os
