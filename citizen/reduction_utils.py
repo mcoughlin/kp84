@@ -223,31 +223,38 @@ def get_reference_pos(scienceimage, cat, zp=0, passband='sg'):
     
     ra = sciHDU[0].header["RA_OBJ"]
     dec = sciHDU[0].header["DEC_OBJ"]
+    wcsauto = sciHDU[0].header["WCSAUTO"]
     framenum = sciHDU[0].header["WCSFRAME"]
-    # we use the original wcs, believing that it is not very off, 
-    # to estimate ra and dec of the reference star
-    w0 = WCS(sciHDU[framenum].header)
-    x0, y0 = w0.wcs_world2pix(ra, dec, 1)
-    x0field = x0 + xoff
-    y0field = y0 + yoff
-    rafield, decfield = w0.wcs_pix2world(x0field, y0field, 1)
+    if wcsauto==1:
+        w0 = WCS(sciHDU[framenum].header)
+        x0, y0 = w0.wcs_world2pix(ra, dec, 1)
+        x0field = x0 + xoff
+        y0field = y0 + yoff
+        rafield, decfield = w0.wcs_pix2world(x0field, y0field, 1)
+    else:
+        rafield = ra - sciHDU[0].header["PIXSCALX"]*xoff/3600
+        decfield = dec + sciHDU[0].header["PIXSCALY"]*yoff/3600
     sciHDU[0].header["RA_REF"] = float(rafield)
     sciHDU[0].header["DEC_REF"] = float(decfield)
     print ("    Find reference star: ra_ref = %.5f, dec_ref = %.5f"%(rafield, decfield))
     radius_deg = 20/60/60. # 20 arcsec
     result = ps1_query(rafield, decfield, radius_deg, maxmag=22,
                        maxsources=10000)
-    if passband == "sg":
-        refmag = result["gmag"][0]
-    elif passband == "sr":
-        refmag = result["rmag"][0]
+    if len(result)==0:
+        refmag = 0
+        print ("      Reference ps1 query failed! Setting refmag = 0")
+    else:
+        if passband == "sg":
+            refmag = result["gmag"][0]
+        elif passband == "sr":
+            refmag = result["rmag"][0]
+        print ("      Reference star: %.2f mag in %s band"%(refmag, passband))
     sciHDU[0].header["MAGREF"] = refmag
-    print ("      Reference star: %.2f mag in %s band"%(refmag, passband))
     sciHDU.writeto(scienceimage, overwrite=True)
     
 
 def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
-                    maxdist=10.,aper_size=10):
+                    maxdist=10., aper_size=10, refit = True):
     tbshift = asci.read(shiftfile)
 
     x1 = x + tbshift["xshift"][xyframe] # get the (x, y) in extension 1
@@ -272,7 +279,6 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
                 regis1HDU.append(hdu)
     
     print ("  Tuning registration...")
-    
     regis2HDU = fits.HDUList()
     for i in range(len(regis1HDU)):
         hdu = regis1HDU[i]
@@ -334,7 +340,7 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
             plt.imshow(subdata, origin = "lower")
             plt.plot(xsub_guess-1, ysub_guess-1, 'rx')
             plt.plot(xsub_tuned-1, ysub_tuned-1, 'r+')
-            plt.savefig('/Users/yuhanyao/Desktop/kped_tmp/20191117/ZTFJ01395245/figures/%d.png'%i)
+            plt.savefig('/Users/yuhanyao/Desktop/kped_tmp/20191116/ZTFJ11514412/figures/%d.png'%i)
             plt.close()
             """
             x_tuned = xsub_tuned + xstart
@@ -344,48 +350,57 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
             hdu.header["Y_DAOOBJ"] = (y_tuned, "object y Pixel Coordinate found by DAOStarFinder")
             regis2HDU.append(hdu)
             
+    cs = np.arange(len(regis2HDU[1:]))
     ind = np.array([hdu.header["DAOFLAG"] for hdu in regis2HDU[1:]])
     xobjs = np.array([hdu.header["X_DAOOBJ"] for hdu in regis2HDU[1:]])
     yobjs = np.array([hdu.header["Y_DAOOBJ"] for hdu in regis2HDU[1:]])
     xinits = np.array([hdu.header["X_GUESS"] for hdu in regis2HDU[1:]])
     yinits = np.array([hdu.header["Y_GUESS"] for hdu in regis2HDU[1:]])
-    cs = np.arange(len(regis2HDU[1:]))
     
-    xpredict = get_predictioon_xy(ind, xobjs, cs)
-    ypredict = get_predictioon_xy(ind, yobjs, cs)
+    if refit==True:
+        xpredict = get_predictioon_xy(ind, xobjs, cs)
+        ypredict = get_predictioon_xy(ind, yobjs, cs)
     
-    # print (np.std(xpredict - xobjs), np.std(ypredict - yobjs))
+        # print (np.std(xpredict - xobjs), np.std(ypredict - yobjs))
     
-    indx = abs(xpredict - xobjs) < 1.5
-    indy = abs(ypredict - yobjs) < 1.5
-    kk_x, ekk, bb_x = mylinear_fit(xinits[indx], xobjs[indx], np.ones(np.sum(indx)), npar = 2)
-    kk_y, ekk, bb_y = mylinear_fit(yinits[indy], yobjs[indy], np.ones(np.sum(indy)), npar = 2)
-    xfinals = kk_x * xinits + bb_x
-    yfinals = kk_y * yinits + bb_y
+        indx = abs(xpredict - xobjs) < 1.5
+        indy = abs(ypredict - yobjs) < 1.5
+        if len(np.unique(xinits[indx])) < 2:
+            kk_x = 1
+            bb_x = 0
+        else:
+            kk_x, ekk, bb_x = mylinear_fit(xinits[indx], xobjs[indx], np.ones(np.sum(indx)), npar = 2)
+        if len(np.unique(yinits[indy])) < 2:
+            kk_y = 1
+            bb_y = 0
+        else:
+            kk_y, ekk, bb_y = mylinear_fit(yinits[indy], yobjs[indy], np.ones(np.sum(indy)), npar = 2)
+        xfinals = kk_x * xinits + bb_x
+        yfinals = kk_y * yinits + bb_y
     
-    # drift_field
     plt.figure(figsize=(12, 12))
     ax1 = plt.subplot(211)
     ax1.plot(cs[ind==0], xobjs[ind==0], 'r.', alpha = 0.5)
     ax1.plot(cs[ind==1], xobjs[ind==1], 'b.', alpha = 0.5)
-    ax1.plot(cs, xpredict, 'k--', alpha = 0.5)
     ax1.plot(cs, xinits, label="Initial")
     # plt.plot(cs[indx], xinits[indx])
-    ax1.plot(cs[indx], xobjs[indx], label = "DAOFind")
-    ax1.plot(cs, kk_x * xinits + bb_x, label = "Final")
-    ax1.legend()
     ax2 = plt.subplot(212)
     ax2.plot(cs[ind==1], yobjs[ind==1], 'b.', alpha = 0.5)
     ax2.plot(cs[ind==0], yobjs[ind==0], 'r.', alpha = 0.5)
-    ax2.plot(cs, ypredict, 'k--', alpha = 0.5)
     ax2.plot(cs, yinits, label="Initial")
     #plt.plot(cs[indy], yinits[indy])
-    ax2.plot(cs[indy], yobjs[indy], label = "DAOFind")
-    ax2.plot(cs, kk_y * yinits + bb_y, label = "Final")
-    ax2.legend()
+    if refit==True:
+        ax1.plot(cs[indx], xobjs[indx], label = "DAOFind")
+        ax1.plot(cs, xpredict, 'k--', alpha = 0.5)
+        ax1.plot(cs, kk_x * xinits + bb_x, label = "Final")
+        ax2.plot(cs[indy], yobjs[indy], label = "DAOFind")
+        ax2.plot(cs, ypredict, 'k--', alpha = 0.5)
+        ax2.plot(cs, kk_y * yinits + bb_y, label = "Final")
     figfile = os.path.join(path_out_dir, 'findxypos.png')
     ax1.set_ylabel("x")
     ax2.set_ylabel("y")
+    ax1.legend()
+    ax2.legend()
     plt.tight_layout()
     plt.savefig(figfile)
     plt.close()
@@ -394,8 +409,12 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
         if i==0:
             continue
         hdu = regis2HDU[i]
-        xfinal = xfinals[i-1]
-        yfinal = yfinals[i-1]
+        if refit==True:
+            xfinal = xfinals[i-1]
+            yfinal = yfinals[i-1]
+        else:
+            xfinal = hdu.header["X_DAOOBJ"]
+            yfinal = hdu.header["Y_DAOOBJ"]
         hdu.header["X_OBJ"] = (xfinal, "Final decision of the object's x Pixel Coordinate")
         hdu.header["Y_OBJ"] = (yfinal, "Final decision of the object's y Pixel Coordinate")
     return regis2HDU
@@ -422,6 +441,7 @@ def get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True):
     
     hdus = fits.open(fitsfile)
     hdus[0].header["WCSFRAME"] = (xyframe, "The frame extension used to find astrometry.")
+    hdus[0].header["WCSAUTO"] = (1, "Indicate whether wcs is automatically found by astrometry.net")
     header = hdus[xyframe].header
     
     keys = ["CTYPE1", "CTYPE2", "EQUINOX", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2",
@@ -431,6 +451,13 @@ def get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True):
     print ("  Saving correct wcs to frame %d's header of %s"%(xyframe, fitsfile))
     hdus.writeto(fitsfile, overwrite=True)
     return float(x), float(y), xyframe
+
+
+def update_wcsstatus(fitsfile, xyframe):
+    hdus = fits.open(fitsfile)
+    hdus[0].header["WCSFRAME"] = (xyframe, "The frame extension used to find astrometry.")
+    hdus[0].header["WCSAUTO"] = (0, "Indicate whether wcs is automatically found by astrometry.net")
+    hdus.writeto(fitsfile, overwrite=True)
     
 
 def forcedphotometry_kp(scienceimage, aper_size=10., gain=1.0, zp=0.0,

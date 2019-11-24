@@ -25,7 +25,7 @@ I took the median of un-shifted region, try 5 minutes this time.
 - When all wcs are successfully found:
 `python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245 --doDifferential --doSaveImages`
 - When there are files that astrometry fails:
-`python kp84_photometric_reduction.py --day 20191114 --objName 1704k --doDifferential --doSaveImages --xstar * --ystar --xyext --xyfile 062204_1704k_cl_o*090645_1704k_cl_o*114733_1704k_cl_o`
+`python kp84_photometric_reduction.py --day 20191116 --objName ZTFJ11514412 --doDifferential --doSaveImages --doMakeMovie --doOverwrite --xstar 382*360 --ystar 297*286 --xyext 174*1 --xyfile 110815_ZTFJ11514412_cl_o*121311_ZTFJ11514412_cl_o --maxdist 30 --doOffRefit`
 
 #### Steps
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
@@ -57,6 +57,23 @@ This script download the output product to your local computer
 `python kp84_marshal_photometry.py --day 20191117 --objName `
 This script upload the light ccurve to [ZTF Variable Marhsal](https://github.com/dmitryduev/ztf-variable-marshal)
 
+- `--program_name hot subdwarf`
+Current programs are: 
+1. skipper
+2. Short Periods
+3. Xray Sources
+4. hot subdwarf
+5. Young Stars
+6.  AM CVn
+7. RR Lyr
+8. Short Period Followed Up
+9. Cataclysmic Variables
+10. Fermi Gamma Ray Sources
+11. Infrared variables
 
-## Data Output
+## Data Product
 `lightcurve.forced`
+`movie.mpg`
+`mag_forced.pdf`
+`coo.reg`
+`filter.txt`

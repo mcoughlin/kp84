@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-
 import os, sys, optparse, shutil, glob, copy
+import operator
 import numpy as np
 import astropy.io.ascii as asci
 from astropy.io import fits
@@ -16,13 +16,9 @@ import ztfsub.plotting
 sys.path.append("/home/roboao/Michael/kp84/")
 from citizen.photometry_utils import ps1_query
 from citizen.reduction_utils import stack_images, register_images
-from citizen.reduction_utils import get_wcs_xy, forcedphotometry_kp
+from citizen.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
 from citizen.reduction_utils import get_reference_pos, filter2filtstr, BJDConvert
 from citizen.visualize_utils import makemovie
-
-from skimage.transform import rescale, resize, downscale_local_mean
-
-from astroquery.vizier import Vizier
 from astroML.crossmatch import crossmatch_angular
 
 import matplotlib
@@ -55,7 +51,9 @@ def parse_commandline():
     parser.add_option("-n","--nimages",default=1,type=int, help="see --doStack")
     parser.add_option("--doStack",  action="store_true", default=False, help="stack each --nimages together")
     
-    parser.add_option("--aper_size",default=10.0,type=float, help="aperture size in pixel numbers")
+    parser.add_option("--doOffRefit",  action="store_true", default=False, help='If true, do not refit after tuning') 
+    parser.add_option("--maxdist",default=10.0, type=float, help="during tuning, maximum distance in pixel numbers")
+    parser.add_option("--aper_size",default=10.0, type=float, help="aperture size in pixel numbers")
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     
     # Transient options
@@ -72,13 +70,13 @@ def parse_commandline():
 
 
 """
-day = "20191114"
-objName = "ZTFJ18103350"
+day = "20191116"
+objName = "ZTFJ11514412"
 setupDir = "/Users/yuhanyao/Desktop/kped_tmp/"
-xstar = "177"
-ystar = "281"
-xyext = "140"
-xyfile = ""
+xstar = "382*360"
+ystar = "297*286"
+xyext = "174*1"
+xyfile = "110815_ZTFJ11514412_cl_o*121311_ZTFJ11514412_cl_o"
 """
 # Parse command line
 opts = parse_commandline()
@@ -89,6 +87,7 @@ objName = opts.objName
 inputDir = "../input"
 dataDir = os.path.join(setupDir, day, objName) # the setup directory of this object
 outputDir = os.path.join("../output", day, objName) # the output directory of this object
+outputProDir = os.path.join(outputDir, "product") 
 defaultsDir = "../defaults" # where photometric defaults are stored
 
 doSubtraction = opts.doSubtraction
@@ -101,18 +100,22 @@ doSubtractBackground = opts.doSubtractBackground
 doSaveImages = opts.doSaveImages
 doStack = opts.doStack
 nimages = opts.nimages
-
+doOffRefit = opts.doOffRefit
+aper_size = opts.aper_size
+maxdist = opts.maxdist
 xstar = opts.xstar
 ystar = opts.ystar
 xyext = opts.xyext
 xyfile = opts.xyfile
-aper_size = opts.aper_size
-
-xyfiles_ = xyfile.split("*")
-xyexts_ = xyext.split("*")
+xyfiles_ = np.array(xyfile.split("*"))
+xyexts_ = np.array(xyext.split("*"))
+xs_ = np.array(xstar.split("*"))
+ys_ = np.array(ystar.split("*"))
 
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
+if not os.path.isdir(outputProDir):
+    os.makedirs(outputProDir)
 
 print ("")
 print ("=================================")
@@ -142,7 +145,7 @@ else:
     ra = ras[ind]
     dec = decs[ind]
 print ("%s, ra=%.5f, dec=%.5f"%(objName, ra, dec))
-coofile = os.path.join(outputDir, "coo.reg")
+coofile = os.path.join(outputProDir, "coo.reg")
 print ("Saving coordinate to %s"%coofile)
 np.savetxt(coofile, [ra, dec])
 
@@ -150,7 +153,7 @@ fitsfiles = sorted(glob.glob(os.path.join(dataDir,'processing','*.fits')))
 tmpheader = fits.open(fitsfiles[0])[0].header
 tmpfilter = tmpheader["FILTER"]
 passband = filter2filtstr(tmpfilter)
-bandfile = os.path.join(outputDir, "filter.txt")
+bandfile = os.path.join(outputProDir, "filter.txt")
 np.savetxt(bandfile, [passband], fmt="%s")
 
 print ("")
@@ -161,6 +164,7 @@ print ("")
 nfiles = len(fitsfiles)
 
 for i in range(nfiles):
+    flag = 1
     fitsfile = fitsfiles[i]
     fitsfileSplit = fitsfile.split("/")[-1].replace(".fits","").replace("_proc","")
     path_out_dir='%s/%s'%(outputDir,fitsfileSplit)
@@ -175,22 +179,36 @@ for i in range(nfiles):
         print ("  Finding it on the wcs file extension...")
         # The astrometry is successfully found:
         wcsfile = wcsfiles[0]
+        x, y, xyframe = get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True)
+        print ("  Found the location with wcs solution: x = %d, y=%d, xyext = %d"%(x, y, xyframe))
     else:
         # The astrometry failed:
-        print ("  Finding it using the specified location: x = %.2f, y=%.2f, xyext = %.d"%())
-        wcsfile = None
-    shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s*shift.dat'%fitsfileSplit))
-    shiftfile = shiftfiles[0]
-    x, y, xyframe = get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True)
-    regis2HDU = register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir, aper_size = aper_size)
-    regisfile = fitsfile.replace("/processing/", "/registration/")
-    regisfile = regisfile[:-5]+'_regis.fits'
-    regis2HDU[0].header["OBJNAME"] = objName
-    regis2HDU[0].header["RA_OBJ"] = ra
-    regis2HDU[0].header["DEC_OBJ"] = dec
-    print ("  Writing to %s"%regisfile)
-    regis2HDU.writeto(regisfile, overwrite=True)
-    print ("")
+        if fitsfileSplit[14:] not in xyfiles_:
+            flag = 0
+            print ("  Astrometry failed and no wcs specified -- discard %s!"%fitsfileSplit)
+        else:
+            index = np.where(xyfiles_ == fitsfileSplit[14:])[0][0]
+            xyframe = int(xyexts_[index])
+            x = int(xs_[index])
+            y = int(ys_[index])
+            update_wcsstatus(fitsfile, xyframe)
+            print ("  Using the specified location: x = %d, y = %d, xyext = %d"%(x, y, xyframe))
+            flag = 2
+    if flag in [1,2]:
+        shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s*shift.dat'%fitsfileSplit))
+        shiftfile = shiftfiles[0]
+        refit = operator.not_(doOffRefit)
+        regis2HDU = register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir, 
+                                    maxdist = maxdist, aper_size = aper_size, 
+                                    refit = refit)
+        regisfile = fitsfile.replace("/processing/", "/registration/")
+        regisfile = regisfile[:-5]+'_regis.fits'
+        regis2HDU[0].header["OBJNAME"] = objName
+        regis2HDU[0].header["RA_OBJ"] = ra
+        regis2HDU[0].header["DEC_OBJ"] = dec
+        print ("  Writing to %s"%regisfile)
+        regis2HDU.writeto(regisfile, overwrite=True)
+        print ("")
 
 fitsfiles = sorted(glob.glob(os.path.join(dataDir,'registration','*_regis.fits'))) 
 
@@ -272,7 +290,7 @@ for ii in range(nfiles):
     system_command = "cp %s %s"%(fitsfile,scienceimage)
     os.system(system_command)
                 
-    # yyao:This call is to be checked
+    # yyao: This call is to be checked
     if doSubtraction:
         tmpdir='%s/subtract'%(path_out_dir)
         if not os.path.isdir(tmpdir):
@@ -477,7 +495,7 @@ for ii in range(nfiles):
  
 hjd = BJDConvert(tblforced["MJD"].data, ra, dec)
 tblforced["HJD"] = hjd.value
-finalforcefile = os.path.join(outputDir,"lightcurve.forced")
+finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
 print ("Writing to %s"%finalforcefile)
 asci.write(tblforced, finalforcefile, overwrite=True)
 
@@ -487,7 +505,7 @@ mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
 flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
 
 print ("Plotting mag photometry...")
-plotName = os.path.join(outputDir,'mag_forced.pdf')
+plotName = os.path.join(outputProDir,'mag_forced.pdf')
 fig = plt.figure(figsize=(20,8))
 plt.errorbar(mjd_forced-mjd_forced[0],mag_forced,magerr_forced,fmt='ko')
 plt.xlabel('Time from %.5f [days]'%mjd_forced[0])
@@ -514,4 +532,5 @@ if doMakeMovie:
     if not os.path.isdir(movieDir):
         os.makedirs(movieDir)
     makemovie(movieDir, fitsfiles)
+    shutil.copy(movieDir+"/movie.mpg", outputProDir+"/movie.mpg")
 

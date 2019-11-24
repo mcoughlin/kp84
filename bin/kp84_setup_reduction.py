@@ -39,6 +39,7 @@ setupDir = "/Data3/archive_kped/data/reductions/"
 day = opts.day
 
 outputDir = os.path.join(setupDir,day)
+dataDir = os.path.join(KPED_data,day)
 
 print ("")
 print ("===============================")
@@ -46,7 +47,6 @@ print ("Setup Pre-processing Directory!")
 print ("===============================")
 print ("")
 
-dataDir = os.path.join(KPED_data,day)
 filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
 
 if len(filenames)==0:
@@ -56,7 +56,7 @@ if len(filenames)==0:
 print ("Making output directory...")
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
-    
+
 print ("Copy all files into output directory...")
 for filename in filenames:
     filenameSplit = filename.split('/')    
@@ -284,7 +284,6 @@ for obj in objs:
         # Write the reduced frame to disk
         procHDU.writeto(procfile, overwrite=True)
 
-
 print ("")
 print ("=====================================================")
 print ("Preparing for astrometry runs: select the best frame!")
@@ -314,6 +313,8 @@ def get_n_source(data, subtract_median = False, return_data = False):
         return n, data
 
 
+if os.path.isfile('run_astrometry.sh'):
+    os.system("rm run_astrometry.sh")
 fid = open('run_astrometry.sh','w')
 
 # get the best frame in each fits cubes -- to be used to solve the astrometry
@@ -398,7 +399,7 @@ for obj in objs:
         fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
                       "--wcs %s/%s_%d_wcs.fits --private\n"%(folderName_wcs, filename, iselect))
 fid.close()
-    
+
 print ("")
 print ("=========================================")
 print ("Running astrometry.net -- DEFAULT option!")
@@ -408,7 +409,9 @@ chmod_command = "chmod +x run_astrometry.sh"
 os.system(chmod_command)
 os.system("./run_astrometry.sh")
 
-#objs = ["1704k", "ZTFJ0251+0905", "ZTFJ0410-0834", "ZTFJ18103350", "ZTFJ18174120"]
+#objs = ["ASASSN-19yt",  "ZTFJ00063104",  "ZTFJ00264645",  
+#        "ZTFJ07076038",  "ZTFJ17354022", 
+#        "ZTFJ23331522"]
 print ("")
 print ("================================")
 print ("Calculate Shifts Between Frames!")
