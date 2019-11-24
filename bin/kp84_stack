@@ -101,5 +101,5 @@ else:
     print('Using existing %s... run --doOverwrite if unwanted.')
 
 if opts.doAstrometryNet:
-    ztfsub.utils.astrometrynet(outputfile,pixel_scale=0.26,ra=opts.ra,dec=opts.declination,radius=5.0,depth=100)    
+    ztfsub.utils.astrometrynet(outputfile,pixel_scale=0.26,ra=opts.ra,dec=opts.declination,radius=5.0,depth=100,ext=1)    
 
