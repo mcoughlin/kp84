@@ -4,6 +4,8 @@ import os, sys, optparse, shutil, glob, copy
 import numpy as np
 from astropy.io import fits
 
+import ztfsub.utils
+
 from skimage.feature import register_translation
 import image_registration
 
@@ -16,7 +18,12 @@ def parse_commandline():
     parser.add_option("-i","--inputfiles",default="/Data/20190612/*_o.fits.fz")
     parser.add_option("-o","--outputfile",default="/home/kped/stack.fits")
 
+    parser.add_option("-r","--ra",default=340.521441,type=float)
+    parser.add_option("-d","--declination",default=55.220244,type=float)
+
     parser.add_option("--doIndividual",  action="store_true", default=False)
+    parser.add_option("--doAstrometryNet",  action="store_true", default=False)
+    parser.add_option("--doOverwrite",  action="store_true", default=False)
 
     opts, args = parser.parse_args()
 
@@ -27,63 +34,72 @@ inputfiles = opts.inputfiles
 outputfile = opts.outputfile
 fitsfiles = sorted(glob.glob(inputfiles))
 
-if opts.doIndividual:
-    outputfileSplit = outputfile.split("/")
-    outputfolder = "/".join(outputfileSplit[:-1])
-    for jj in range(len(fitsfiles)):
+if opts.doOverwrite:
+    rm_command = "rm -rf %s"%outputfile
+    os.system(rm_command)
+
+if not os.path.isfile(outputfile):
+    if opts.doIndividual:
+        outputfileSplit = outputfile.split("/")
+        outputfolder = "/".join(outputfileSplit[:-1])
+        for jj in range(len(fitsfiles)):
+            hdulist2 = []
+            cnt = 1
+            fitsfile = fitsfiles[jj]
+            fitsfileSplit = fitsfile.split("/")
+            filename = fitsfileSplit[-1].replace(".fz","")
+            outputfile = os.path.join(outputfolder, filename)
+    
+            hdulist = fits.open(fitsfile)
+            for ii in range(len(hdulist)):
+                if ii == 0: continue
+                if np.mod(ii,10) == 0:
+                    print("%d/%d"%(ii,len(hdulist)))
+                if cnt == 1:
+                    hdulist_hold = copy.copy(hdulist[ii])
+                    xshape, yshape = hdulist_hold.data.shape
+                    data = np.zeros([xshape,yshape])
+                    reference = hdulist[ii].data
+                shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
+                shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
+                #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+                data = data + shifted
+                cnt = cnt + 1
+    
+            hdulist_hold.data = data
+            #hdulist_hold.data = np.mean(data,axis=2)
+            hdulist2 = fits.HDUList(hdus=hdulist_hold)
+            hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
+    
+    else: 
         hdulist2 = []
         cnt = 1
-        fitsfile = fitsfiles[jj]
-        fitsfileSplit = fitsfile.split("/")
-        filename = fitsfileSplit[-1].replace(".fz","")
-        outputfile = os.path.join(outputfolder, filename)
-
-        hdulist = fits.open(fitsfile)
-        for ii in range(len(hdulist)):
-            if ii == 0: continue
-            if np.mod(ii,10) == 0:
-                print("%d/%d"%(ii,len(hdulist)))
-            if cnt == 1:
-                hdulist_hold = copy.copy(hdulist[ii])
-                xshape, yshape = hdulist_hold.data.shape
-                data = np.zeros([xshape,yshape])
-                reference = hdulist[ii].data
-            shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
-            shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
-            #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
-            data = data + shifted
-            cnt = cnt + 1
-
+        for jj in range(len(fitsfiles)):
+            print(jj,fitsfiles[jj])
+            fitsfile = fitsfiles[jj]
+            hdulist = fits.open(fitsfile)
+            for ii in range(len(hdulist)):
+                if ii == 0: continue
+                if np.mod(ii,10) == 0:
+                    print("%d/%d"%(ii,len(hdulist)))
+                if cnt == 1:
+                    hdulist_hold = copy.copy(hdulist[ii])
+                    xshape, yshape = hdulist_hold.data.shape
+                    data = np.zeros([xshape,yshape])
+                    reference = hdulist[ii].data
+                shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
+                shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
+                #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
+                data = data + shifted
+                cnt = cnt + 1            
+        
         hdulist_hold.data = data
         #hdulist_hold.data = np.mean(data,axis=2)
         hdulist2 = fits.HDUList(hdus=hdulist_hold)
         hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
+else:
+    print('Using existing %s... run --doOverwrite if unwanted.')
 
-else: 
-    hdulist2 = []
-    cnt = 1
-    for jj in range(len(fitsfiles)):
-        print(jj,fitsfiles[jj])
-        fitsfile = fitsfiles[jj]
-        hdulist = fits.open(fitsfile)
-        for ii in range(len(hdulist)):
-            if ii == 0: continue
-            if np.mod(ii,10) == 0:
-                print("%d/%d"%(ii,len(hdulist)))
-            if cnt == 1:
-                hdulist_hold = copy.copy(hdulist[ii])
-                xshape, yshape = hdulist_hold.data.shape
-                data = np.zeros([xshape,yshape])
-                reference = hdulist[ii].data
-            shift, error, diffphase = register_translation(reference, hdulist[ii].data, upsample_factor=1)
-            shifted = image_registration.fft_tools.shiftnd(hdulist[ii].data, (shift[0], shift[1]))
-            #data = np.append(data,np.expand_dims(shifted,axis=2),axis=2)
-            data = data + shifted
-            cnt = cnt + 1            
-    
-    hdulist_hold.data = data
-    #hdulist_hold.data = np.mean(data,axis=2)
-    hdulist2 = fits.HDUList(hdus=hdulist_hold)
-    hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
-    
-    
+if opts.doAstrometryNet:
+    ztfsub.utils.astrometrynet(outputfile,pixel_scale=0.26,ra=opts.ra,dec=opts.declination,radius=5.0,depth=100)    
+

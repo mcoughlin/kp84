@@ -7,8 +7,11 @@ Created on Tue Nov 12 08:53:19 2019
 """
 import os
 import time
+import pytz
+import datetime
 import optparse
 import numpy as np
+from astral import Location
 from scipy.ndimage import median_filter
 
 import astropy.io.fits as fits
@@ -34,6 +37,7 @@ def parse_commandline():
 
     parser.add_option("--doUseLatest",  action="store_true", default=False)
     parser.add_option("--doApplyRates",  action="store_true", default=False)
+    parser.add_option("--doLoop",  action="store_true", default=False)
 
     parser.add_option("-f", "--filename",default='/Users/yuhanyao/Desktop/ZTFJ05381953/ZTFJ05381953_9_g/registration/kped_20191112_074018_ZTFJ05381953_cl_o.fits.fz')
     parser.add_option("--idstart",default=1,type=int)
@@ -81,7 +85,6 @@ class KPEDtube(object):
     def __init__(self, tubelocalpath, idstart = 1, idend = 100,
                  figdir = '/Users/yuhanyao/Desktop/ZTFJ05381953/ZTFJ05381953_9_g/figures/'):
         allhdu = fits.open(tubelocalpath)
-        
         self.tubelocalpath = tubelocalpath
         self.filter = allhdu[0].header["FILTER"]
         self.filename = allhdu[0].header["FILENAME"]
@@ -228,7 +231,7 @@ class KPEDtube(object):
                     if elem in yselect:
                         select = elem
                 if select == -99:
-                    # this bright star in not in the currect image
+                    # this bright star is not in the currect image
                     continue
                 xnow = posnow[select, 0]
                 ynow = posnow[select, 1]
@@ -293,27 +296,78 @@ def all_files_under(path):
             if not "fits.fz" in filename:
                 continue
             yield os.path.join(cur_path, filename)
+            
+
+def get_kp84_sunrise_time(tnow):
+    """give current time"""
+    l = Location()
+    l.name = 'KP84'
+    l.region = 'Kitt Peak Observatory'
+    l.latitude = 31.9599 # N
+    l.longitude = -111.5997 # in east  (111.5997 w)
+    l.timezone = "US/Arizona"
+    l.elevation = 2099 # in meters
+    if tnow.hour>12:
+        sun = l.sun(date = datetime.date(tnow.year, tnow.month, tnow.day)+ datetime.timedelta(days=1))
+    else:
+        sun = l.sun(date = datetime.date(tnow.year, tnow.month, tnow.day))
+    tsunrise = sun['sunrise']
+    return tsunrise
+
 
 opts = parse_commandline()
 idstart = opts.idstart
 idend = opts.idend
 
-if opts.doUseLatest:
-    filename = max(all_files_under('/Data/'), key=os.path.getmtime)
-else:
-    filename = opts.filename 
+if opts.doLoop is not True:
+
+    if opts.doUseLatest:
+        # filename convention: kped_yyyymmdd_hhmmss_objectname_cl_o.fits.fz
+        # hhmmss is ut time
+        filename = max(all_files_under('/Data/'), key=os.path.getmtime)
+    else:
+        filename = opts.filename 
  
-kptube = KPEDtube(tubelocalpath = filename, idstart = idstart, idend = idend)
-warnings.filterwarnings('ignore', category=UserWarning, append=True)
-kptube.identify_bright_source()
-kptube.get_offset()
-kptube.cal_offset()
+    kptube = KPEDtube(tubelocalpath = filename, idstart = idstart, idend = idend)
+    warnings.filterwarnings('ignore', category=UserWarning, append=True)
+    kptube.identify_bright_source()
+    kptube.get_offset()
+    kptube.cal_offset()
 
-xdot = kptube.xdot
-ydot = kptube.ydot
+    xdot = kptube.xdot
+    ydot = kptube.ydot
 
-print ("dra/dt [arcsec/s] = %.5f, ddec/dt [arcsec/s] = %.5f"% (xdot, ydot))
+    print ("dra/dt [arcsec/s] = %.5f, ddec/dt [arcsec/s] = %.5f"% (xdot, ydot))
 
-if opts.doApplyRates:
-    system_command = "ssh tcs@sells.kpno.noao.edu 'tx track ra=%.5f dec=%.5f'" % (xdot, ydot)
-    os.system(system_command)
+    if opts.doApplyRates:
+        system_command = "ssh tcs@sells.kpno.noao.edu 'tx track ra=%.5f dec=%.5f'" % (xdot, ydot)
+        os.system(system_command)
+
+else:
+    tz = pytz.timezone("US/Arizona")
+    tnow = datetime.datetime.now(tz)
+    tsunrise = get_kp84_sunrise_time(tnow)
+
+    while tnow < tsunrise:
+        
+        filename = max(all_files_under('/Data/'), key=os.path.getmtime)
+        
+        kptube = KPEDtube(tubelocalpath = filename, idstart = idstart, idend = idend)
+        warnings.filterwarnings('ignore', category=UserWarning, append=True)
+        kptube.identify_bright_source()
+        kptube.get_offset()
+        kptube.cal_offset()
+        
+        xdot = kptube.xdot
+        ydot = kptube.ydot
+
+        print ("dra/dt [arcsec/s] = %.5f, ddec/dt [arcsec/s] = %.5f"% (xdot, ydot))
+
+        if opts.doApplyRates:
+            system_command = "ssh tcs@sells.kpno.noao.edu 'tx track ra=%.5f dec=%.5f'" % (xdot, ydot)
+            os.system(system_command)
+            
+        #last_filename = filename
+        time.sleep(60)
+        tnow = datetime.datetime.now(tz)
+    
