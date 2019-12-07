@@ -4,7 +4,7 @@ The Kitt Peak Electron Multiplying CCD (EMCCD) demonstrator is a new instrument 
 
 ## If you want to submit an observation
 Email mcoughlin or yyao your object in the following comma separated format:<br>
-`llaria_object,1,WDJ0736-1451,07:36:06.9,-14:51:31.0,2000,0.00,0.00,20.0,3600,FILTER_SLOAN_G,9,Coughlin,5.0_0.06528,0`<br>
+`llaria_object,1,WDJ0736-1451,hh:mm:ss.s,dd:mm:ss.s,2000,0.00,0.00,20.0,3600,FILTER_SLOAN_G,9,Coughlin,5.0_0.06528,0`<br>
 1. The request ID for this entry, this is an alphanumeric identifier for the observation
 2. The program ID for the science program being executed
 3. The object ID for the target coordinates; this must be a single word, no spaces, /, _, or : characters
