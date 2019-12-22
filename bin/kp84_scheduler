@@ -448,13 +448,16 @@ def load_variables(filename):
 
     filenameSplit = filename.split("_")
     priority = float(filenameSplit[-1].replace(".dat",""))
+    targets = astropy.io.ascii.read(filename)
+    ncolumns = len(targets.columns)
 
-    try:
-        names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
-        targets = astropy.io.ascii.read(filename,names=names)
-    except:
+    if ncolumns == 16:
+        names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment","redo","delta_redo"]
+    elif ncolumns == 15:
         names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment","redo"]
-        targets = astropy.io.ascii.read(filename,names=names)    
+    elif ncolumns == 14:
+        names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = astropy.io.ascii.read(filename,names=names)
 
     sigs, periods = [], []
     coords, target = [], []
@@ -620,6 +623,9 @@ for program in programs:
         if not 'redo' in targets.columns:
             targets['redo'] = np.zeros(targets["ra"].shape)
 
+        if not 'delta_redo' in targets.columns:
+            targets['delta_redo'] = np.zeros(targets["ra"].shape)
+
         targets_all.append(targets)
 
 targets = vstack(targets_all)
@@ -666,6 +672,16 @@ for ii, target in enumerate(targets):
     #    print("%s already observed..." % target["target"].name)
     if not target["redo"]:
         if target["target"].name in observations: continue
+    else:
+        if target["target"].name in observations:
+            redo = True
+            obs = observations[target["target"].name]
+            for ob in obs:
+                dt = tstart.gps - Time(ob, format='iso').gps
+                if target["delta_redo"]*86400 > dt:
+                    redo = False
+                    break
+            if not redo: continue
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
