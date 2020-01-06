@@ -56,7 +56,7 @@ Note that this step is necessary for the purpose of (1) identify reference star,
 - When all wcs are successfully found:
 `python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245`
 - When there are files that astrometry fails (or if you don't want to use the wcs solution found by astrometry.net):
-`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --doMakeMovie --xstar 267*256*234*191*134 --ystar 341*341*343*351*353 --xyext 499*86*519*548*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 10 --sky_in 11 --sky_out 30 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33 --xoffref 7.23 --yoffref -48 --refmag 14.838 --doSubtractBackground`
+`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --moviemode 2 --xstar 267*256*234*191*134 --ystar 341*341*343*351*353 --xyext 499*86*519*548*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 10 --sky_in 11 --sky_out 30 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33 --xoffref 7.23 --yoffref -48 --refmag 14.838 --doSubtractBackground`
 
 #### Steps
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
@@ -72,10 +72,12 @@ The default aperture size is 10 pixels, and the default annulus radius is [30, 5
 **You may really want to adjust these parameters depending on how crowded the field is.** 
 This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters (all in the unit of pixels), as well as the `aper_size_ref`, `sky_inner_ref`, and `sky_outer_ref` parameters for the reference star (preferentially a brighter one).<br>
 We allow the aperture size for science and reference objects to vary since their FWHM can be quite different.
-4. Make a movie
-If turn on `doMakeMovie`, the script will make a movie of the indivisual frames (arranged by time of observation). 
-Similarly, turn on `doMakeMovieRef` if you also want to make a movie for the reference star.
+
+#### moviemode
+If turn on `moviemode!=0`, the script will make a movie of the indivisual frames (arranged by time of observation). 
 This can be very helpful if you'd like to examine if the choice of aperture size is appropriate. 
+- `moviemode==1`: plot all frames
+- `moviemode==2`: plot one frame every 10 frames
 
 Some notes:
 This can be hard sometimes due to the limited field of view (4x4 arcmin)
