@@ -49,21 +49,22 @@ I took the median of un-shifted region, try 5 minutes this time.
 #### Steps
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
 Then for each file (`kped_20191117_hhmmss_ZTFJ01395245_cl_o*`) that belong to the object, do the following steps:
-2. Use the wcs, find the (x, y) of object in each frame, save to the processing fits file's headers<br>
-Mask frames where the object shifted outside of the field.<br>
-**If the `xstar`, `ystar`, `xyext`, `xyfile` parameters are provided, the wcs solution will be disgarded.**
-*This is because sometimes the wcs solution can also be a bit off...*
+2. Use the wcs, find the (x, y) of science and reference objects in each frame, save to the processing fits file's headers<br>
+Disgard frames where the object shifted outside of the field.<br>
+- **If the `xstar`, `ystar`, `xyext`, `xyfile` parameters are provided, the wcs solution will be disgarded,**, this is because sometimes the wcs solution can also be a bit off...!
+- If the `refxoff`, `refyoff`, and `refmag` parameters are not provided, the reference star is selected based on proximity, brightness, FWHM, and roundness (given by SExtractor).
 3. Photometry
 - Copy the pre-processed image into output directory, name it as `science.fits`
 - Run [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources. <br>
 `sex science.fits -c default.sex -PARAMETERS_NAME daofind.param -FILTER_NAME default.conv -CHECKIMAGE_TYPE BACKGROUND -CHECKIMAGE_NAME science.background.fits -CATALOG_NAME science.cat -MAG_ZEROPOINT 0.0`</br>
 See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
 All default files are in the `/defualt` directory. 
-- Run forced photometry using [PythonPhot](https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py)<br>
+- Run forced photometry on sci and ref objects using [PythonPhot](https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py). Currently we only support differential photometry.<br>
 The default aperture size is 10 pixels, and the default annulus radius is [30, 50] pixels. <br>
 **You may really want to adjust these parameters depending on how crowded the field is.** 
 This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters (all in the unit of pixels), as well as the `aper_size_ref`, `sky_inner_ref`, and `sky_outer_ref` parameters for the reference star (preferentially a brighter one).<br>
 We allow the aperture size for science and reference objects to vary since their FWHM can be quite different.
+
 
 Some notes:
 - If transients, turn on `--doSubtraction --subtractionSource ps1`, then `SExtractor` will also run on `science.sub.fits`.
