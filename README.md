@@ -69,8 +69,9 @@ Some notes:
 This can be hard sometimes due to the limited field of view (4x4 arcmin)
 - If too faint, then turn on `--doStack --nimages 5`
 - If do not turn on `--doSaveImages`, then the `science.fits` file will be deleted after photometric reduction.
-- If turn on `--doMakeMovie`, the script will make a movie of the indivisual frames (arranged by time of observation). 
-This can be very helpful if you'd like to examine if the choice of aperture size is appropriate.
+- If turn on `doMakeMovie`, the script will make a movie of the indivisual frames (arranged by time of observation). 
+Similarly, turn on `doMakeMovieRef` if you also want to make a movie for the reference star.
+This can be very helpful if you'd like to examine if the choice of aperture size is appropriate. 
 
 ### `kp84_download.py`
 `python kp84_download.py`
