@@ -69,24 +69,21 @@ The default aperture size is 10 pixels, and the default annulus radius is [30, 5
 **You may really want to adjust these parameters depending on how crowded the field is.** 
 This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters (all in the unit of pixels), as well as the `aper_size_ref`, `sky_inner_ref`, and `sky_outer_ref` parameters for the reference star (preferentially a brighter one).<br>
 We allow the aperture size for science and reference objects to vary since their FWHM can be quite different.
-
-
-Some notes:
-- If transients, turn on `--doSubtraction --subtractionSource ps1`, then `SExtractor` will also run on `science.sub.fits`.
-- If there are enough objects to solve for zero point, turn on `doZP`<br>
-This can be hard sometimes due to the limited field of view (4x4 arcmin)
-- If too faint, then turn on `--doStack --nimages 5`
-- If do not turn on `--doSaveImages`, then the `science.fits` file will be deleted after photometric reduction.
-- If turn on `doMakeMovie`, the script will make a movie of the indivisual frames (arranged by time of observation). 
+4. Make a movie
+If turn on `doMakeMovie`, the script will make a movie of the indivisual frames (arranged by time of observation). 
 Similarly, turn on `doMakeMovieRef` if you also want to make a movie for the reference star.
 This can be very helpful if you'd like to examine if the choice of aperture size is appropriate. 
 
+Some notes:
+This can be hard sometimes due to the limited field of view (4x4 arcmin)
+- If too faint, then turn on `--doStack --nimages 5`
+
 ### `kp84_download.py`
-`python kp84_download.py`
+`python kp84_download.py --day 20200105 --objName ZTFJ0538+1953`<br>
 This script download the output product to your local computer
 
 ### `kp84_marshal_photometry.py`
-`python kp84_marshal_photometry.py --day 20191117 --objName `
+`python kp84_marshal_photometry.py --day 20191117 --objName ZTFJ0538+1953`<br>
 This script upload the light ccurve to [ZTF Variable Marhsal](https://github.com/dmitryduev/ztf-variable-marshal)
 
 - `--program_name hot subdwarf`
