@@ -44,8 +44,8 @@ There are two options:
 - Run `solve-field` locally by downloading this software: see the instruction [here](http://astrometry.net/doc/readme.html).
 
 ### `kp84_sextraction.py`
-`python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953`<br>
-Run [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources. <br>
+`python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953` This runs [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources.<br>
+`python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953 --doOnlyPrintMags` This will print the mags of all objects found by SExtractor<br>
 `sex science.fits -c default.sex -PARAMETERS_NAME daofind.param -FILTER_NAME default.conv -CHECKIMAGE_TYPE BACKGROUND -CHECKIMAGE_NAME science.background.fits -CATALOG_NAME science.cat -MAG_ZEROPOINT 0.0`</br>
 See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
 All default files are in the `/defualt` directory. 
