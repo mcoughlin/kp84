@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table, vstack
+from astropy.io import ascii
+from astropy.time import Time
+from astropy.wcs import WCS
+
+import h5py    
+from astropy.io import fits
+
+import ztfsub.utils, ztfsub.surveys
+import ztfsub.plotting
+
+from skimage.feature import register_translation
+import image_registration
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-f","--filename1",default="/Data/20200106/bias_1x1_o_0000.fits")
+    parser.add_option("-g","--filename2",default="/Data/20200106/bias_1x1_o_0001.fits")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+# Parse command line
+opts = parse_commandline()
+filename1 = opts.filename1
+filename2 = opts.filename2
+
+hdulist1 = fits.open(filename1)
+header1 = hdulist1[0].header
+
+hdulist2 = fits.open(filename2)
+header2 = hdulist2[0].header
+
+image_diff = hdulist1[0].data - hdulist2[0].data
+npix = image_diff.size
+mean_diff = np.mean(image_diff)
+std_diff = np.std(image_diff)
+read_noise = std_diff / np.sqrt(2)
+
+print("Number of Pixels: %d, Average: %.5f, Standard Deviation: %.5f, Read Noise: %.5f" % (npix, mean_diff, std_diff,read_noise))
+
