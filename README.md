@@ -58,8 +58,11 @@ Mask frames where the object shifted outside of the field.
 See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
 All default files are in the `/defualt` directory. 
 - Run forced photometry using [PythonPhot](https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py)<br>
-The default aperture size is 10 pixels, and the default annulus radius is [3xaper_size, 5xaper_size]. <br>
-**You may really want to adjust these parameters depending on how crowded the field is** This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters.
+The default aperture size is 10 pixels, and the default annulus radius is [30, 50] pixels. <br>
+**You may really want to adjust these parameters depending on how crowded the field is.** 
+This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters (all in the unit of pixels).
+This can be changed by setting the `aper_size_ref`, `sky_inner_ref`, and `sky_outer_ref` parameters (all in the unit of pixels).<br>
+We allow the aperture size for science and reference objects to vary since their FWHM can be quite different.
 
 Some notes:
 - If transients, turn on `--doSubtraction --subtractionSource ps1`, then `SExtractor` will also run on `science.sub.fits`.
@@ -67,7 +70,8 @@ Some notes:
 This can be hard sometimes due to the limited field of view (4x4 arcmin)
 - If too faint, then turn on `--doStack --nimages 5`
 - If do not turn on `--doSaveImages`, then the `science.fits` file will be deleted after photometric reduction.
-- If turn on `--doMakeMovie`, the script will make a movie of the frames :)
+- If turn on `--doMakeMovie`, the script will make a movie of the indivisual frames (arranged by time of observation). 
+This can be very helpful if you'd like to examine if the choice of aperture size is appropriate.
 
 ### `kp84_download.py`
 `python kp84_download.py`
