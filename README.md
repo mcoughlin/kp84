@@ -40,6 +40,15 @@ Shifts between each frames in the multi-extension cubes are calculated in this s
 I took the median of un-shifted region, try 5 minutes this time.
 - If astrometry still fails using the stacked image, then the object's position (x, y) must be given to the following script.
 
+### `kp84_sextraction.py`
+`python kp84_sextraction.py --day 20200105 --objName ZTFJ01395245`
+Run [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources. <br>
+`sex science.fits -c default.sex -PARAMETERS_NAME daofind.param -FILTER_NAME default.conv -CHECKIMAGE_TYPE BACKGROUND -CHECKIMAGE_NAME science.background.fits -CATALOG_NAME science.cat -MAG_ZEROPOINT 0.0`</br>
+See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
+All default files are in the `/defualt` directory. 
+
+Note that this step is necessary for the purpose of (1) identify reference star, and (2) enable background subtraction before performing forced photometry. See below.
+
 ### `kp84_photometric_reduction.py`
 - When all wcs are successfully found:
 `python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245`
@@ -55,10 +64,6 @@ Disgard frames where the object shifted outside of the field.<br>
 - If the `xoffref`, `yoffref`, and `refmag` parameters are not provided, the reference star is selected based on proximity, brightness, FWHM, and roundness (given by SExtractor).
 3. Photometry
 - Copy the pre-processed image into output directory, name it as `science.fits`
-- Run [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources. <br>
-`sex science.fits -c default.sex -PARAMETERS_NAME daofind.param -FILTER_NAME default.conv -CHECKIMAGE_TYPE BACKGROUND -CHECKIMAGE_NAME science.background.fits -CATALOG_NAME science.cat -MAG_ZEROPOINT 0.0`</br>
-See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
-All default files are in the `/defualt` directory. 
 - Run forced photometry on sci and ref objects using [PythonPhot](https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py). Currently we only support differential photometry.<br>
 The default aperture size is 10 pixels, and the default annulus radius is [30, 50] pixels. <br>
 **You may really want to adjust these parameters depending on how crowded the field is.** 
