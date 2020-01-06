@@ -41,7 +41,7 @@ I took the median of un-shifted region, try 5 minutes this time.
 - If astrometry still fails using the stacked image, then the object's position (x, y) must be given to the following script.
 
 ### `kp84_sextraction.py`
-`python kp84_sextraction.py --day 20200105 --objName ZTFJ01395245`
+`python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953`<br>
 Run [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources. <br>
 `sex science.fits -c default.sex -PARAMETERS_NAME daofind.param -FILTER_NAME default.conv -CHECKIMAGE_TYPE BACKGROUND -CHECKIMAGE_NAME science.background.fits -CATALOG_NAME science.cat -MAG_ZEROPOINT 0.0`</br>
 See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
