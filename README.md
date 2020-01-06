@@ -32,13 +32,15 @@ Although master bias file is not used, as it is essentially the same as the mast
 Typically, flats are taken with filter sloan _gr_ and Johnson _(U)BVRI_.
 2. Processing science frames (subtract dark, divide flat).
 3. Make register folder; Solve astrometry and save the wcs, using [astrometry.net](http://astrometry.net/).<br>
-Call `kp84_get_wcs.py`.<br>
 The wcs in the original fits header is (in good case) off by 1--2 arcmin, and in bad case off by a hemisphere... So do not use it!<br>
 Shifts between each frames in the multi-extension cubes are calculated in this step and saved to the registration folder.
 - Default upload image is the best frame in each cube (the one with most point sources identified). <br>
 - If astrometry failed after trying 3 minutes, then stack all images, using the first extension as referencce.<br>
 I took the median of un-shifted region, try 5 minutes this time.
 - If astrometry still fails using the stacked image, then the object's position (x, y) must be given to the following script.
+There are two options:
+- Query API: Call `kp84_get_wcs.py`.<br>
+- Run `solve-field` locally by downloading this software: see the instruction [here](http://astrometry.net/doc/readme.html).
 
 ### `kp84_sextraction.py`
 `python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953`<br>
