@@ -42,9 +42,9 @@ I took the median of un-shifted region, try 5 minutes this time.
 
 ### `kp84_photometric_reduction.py`
 - When all wcs are successfully found:
-`python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245 --doDifferential --doSaveImages`
+`python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245`
 - When there are files that astrometry fails (or if you don't want to use the wcs solution found by astrometry.net):
-`python kp84_photometric_reduction.py --day 20191116 --objName ZTFJ11514412 --doDifferential --doSaveImages --doMakeMovie --doOverwrite --xstar 382*360 --ystar 297*286 --xyext 174*1 --xyfile 110815_ZTFJ11514412_cl_o*121311_ZTFJ11514412_cl_o --maxdist 30 --doOffRefit`
+`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --doMakeMovie --xstar 267*256*134 --ystar 341*341*353 --xyext 499*86*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 10 --sky_in 11 --sky_out 30 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33`
 
 #### Steps
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
