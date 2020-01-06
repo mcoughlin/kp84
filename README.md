@@ -38,6 +38,7 @@ Shifts between each frames in the multi-extension cubes are calculated in this s
 - If astrometry failed after trying 3 minutes, then stack all images, using the first extension as referencce.<br>
 I took the median of un-shifted region, try 5 minutes this time.
 - If astrometry still fails using the stacked image, then the object's position (x, y) must be given to the following script.
+
 There are two options:
 - Query API: Call `kp84_get_wcs.py`.<br>
 - Run `solve-field` locally by downloading this software: see the instruction [here](http://astrometry.net/doc/readme.html).
