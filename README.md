@@ -21,7 +21,7 @@ Email mcoughlin or yyao your object in the following comma separated format:<br>
 13. A comment about the observation
 14. A flag (redo observation or not)
 
-## Usage
+## Data Reduction
 The following list steps to reduce photometric data.
 
 ### `kp84_setup_reduction.py`
@@ -43,7 +43,7 @@ I took the median of un-shifted region, try 5 minutes this time.
 ### `kp84_photometric_reduction.py`
 - When all wcs are successfully found:
 `python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245 --doDifferential --doSaveImages`
-- When there are files that astrometry fails:
+- When there are files that astrometry fails (or if you don't want to use the wcs solution found by astrometry.net):
 `python kp84_photometric_reduction.py --day 20191116 --objName ZTFJ11514412 --doDifferential --doSaveImages --doMakeMovie --doOverwrite --xstar 382*360 --ystar 297*286 --xyext 174*1 --xyfile 110815_ZTFJ11514412_cl_o*121311_ZTFJ11514412_cl_o --maxdist 30 --doOffRefit`
 
 #### Steps
@@ -51,7 +51,7 @@ I took the median of un-shifted region, try 5 minutes this time.
 Then for each file (`kped_20191117_hhmmss_ZTFJ01395245_cl_o*`) that belong to the object, do the following steps:
 2. Use the wcs, find the (x, y) of object in each frame, save to the processing fits file's headers<br>
 Mask frames where the object shifted outside of the field.<br>
-**If the `xstar`, `ystar`, `xyext`, `xyfile` parameters are provided, the wcs solution will be disgarded. **
+**If the `xstar`, `ystar`, `xyext`, `xyfile` parameters are provided, the wcs solution will be disgarded.**
 *This is because sometimes the wcs solution can also be a bit off...*
 3. Photometry
 - Copy the pre-processed image into output directory, name it as `science.fits`
