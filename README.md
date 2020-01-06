@@ -58,7 +58,8 @@ Mask frames where the object shifted outside of the field.
 See [this page](https://sextractor.readthedocs.io/en/latest/Param.html) for columns in the `.cat` file.<br>
 All default files are in the `/defualt` directory. 
 - Run forced photometry using [PythonPhot](https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py)<br>
-The default aperture size is 10 pixels. This can be changed by setting `--aper_size`
+The default aperture size is 10 pixels, and the default annulus radius is [3xaper_size, 5xaper_size]. <br>
+**You may really want to adjust these parameters depending on how crowded the field is** This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters.
 
 Some notes:
 - If transients, turn on `--doSubtraction --subtractionSource ps1`, then `SExtractor` will also run on `science.sub.fits`.
