@@ -60,8 +60,7 @@ All default files are in the `/defualt` directory.
 - Run forced photometry using [PythonPhot](https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py)<br>
 The default aperture size is 10 pixels, and the default annulus radius is [30, 50] pixels. <br>
 **You may really want to adjust these parameters depending on how crowded the field is.** 
-This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters (all in the unit of pixels).
-This can be changed by setting the `aper_size_ref`, `sky_inner_ref`, and `sky_outer_ref` parameters (all in the unit of pixels).<br>
+This can be changed by setting the `aper_size`, `sky_inner`, and `sky_outer` parameters (all in the unit of pixels), as well as the `aper_size_ref`, `sky_inner_ref`, and `sky_outer_ref` parameters for the reference star (preferentially a brighter one).<br>
 We allow the aperture size for science and reference objects to vary since their FWHM can be quite different.
 
 Some notes:
