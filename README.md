@@ -50,7 +50,8 @@ I took the median of un-shifted region, try 5 minutes this time.
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
 Then for each file (`kped_20191117_hhmmss_ZTFJ01395245_cl_o*`) that belong to the object, do the following steps:
 2. Use the wcs, find the (x, y) of object in each frame, save to the processing fits file's headers<br>
-Mask frames where the object shifted outside of the field.
+Mask frames where the object shifted outside of the field.<br>
+If the `xstar`, `ystar`, `xyext`, `xyfile` parameters are provided, the wcs solution will be disgarded. *This is because sometimes the wcs solution can also be a bit off...*
 3. Photometry
 - Copy the pre-processed image into output directory, name it as `science.fits`
 - Run [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources. <br>
