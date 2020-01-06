@@ -77,7 +77,7 @@ We allow the aperture size for science and reference objects to vary since their
 If turn on `moviemode!=0`, the script will make a movie of the indivisual frames (arranged by time of observation). 
 This can be very helpful if you'd like to examine if the choice of aperture size is appropriate. 
 - `moviemode==1`: plot all frames
-- `moviemode==2`: plot one frame every 10 frames
+- `moviemode==10`: plot one frame every 10 frames
 
 Some notes:
 This can be hard sometimes due to the limited field of view (4x4 arcmin)
