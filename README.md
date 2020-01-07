@@ -24,26 +24,30 @@ Email mcoughlin or yyao your object in the following comma separated format:<br>
 ## Data Reduction
 The following list steps to reduce photometric data.
 
-### `kp84_setup_reduction.py`
+### (i) `kp84_setup_reduction.py`
 `python kp84_setup_reduction.py --day 20191117`
 1. Basic calibration steps: create master bias, dark, and flat frames.<br>
 For calibration files done in mode 0, they need to be downsampled by 2x2.<br>
-Although master bias file is not used, as it is essentially the same as the master dark in mode 0.<br>
-Typically, flats are taken with filter sloan _gr_ and Johnson _(U)BVRI_.
+Master bias file is not used, as it is essentially the same as the master dark in mode 0.<br>
+Typically, flats are taken with filter sloan _gr_ (or very seldom Johnson _(U)BVRI_).
 2. Processing science frames (subtract dark, divide flat).
 3. Make register folder; Solve astrometry and save the wcs, using [astrometry.net](http://astrometry.net/).<br>
-The wcs in the original fits header is (in good case) off by 1--2 arcmin, and in bad case off by a hemisphere... So do not use it!<br>
-Shifts between each frames in the multi-extension cubes are calculated in this step and saved to the registration folder.
+The wcs in the original fits header is (in good case) off by 1--2 arcmin, and in bad case off by a hemisphere... Is this fixed?!<br>
 - Default upload image is the best frame in each cube (the one with most point sources identified). <br>
 - If astrometry failed after trying 3 minutes, then stack all images, using the first extension as referencce.<br>
-I took the median of un-shifted region, try 5 minutes this time.
-- If astrometry still fails using the stacked image, then the object's position (x, y) must be given to the following script.
+I took the median of un-shifted region, try 5 minutes this time. Shifts between each frames in the multi-extension cubes are also calculated in this step and saved to the registration folder.
+- If astrometry still fails using the stacked image, then the object's position (x, y) must be given to the following script, see below.
 
-There are two options:
-- Query API: Call `kp84_get_wcs.py`.<br>
-- Run `solve-field` locally by downloading this software: see the instruction [here](http://astrometry.net/doc/readme.html).
+#### Note
+a. There are two ways to call astrometry.net:
+- DEFAULT OPTION: Run `solve-field` locally by downloading this software: see the instruction [here](http://astrometry.net/doc/readme.html).
+- PREVIOUS VERSION: Query API: Call `kp84_get_wcs.py`.<br>
 
-### `kp84_sextraction.py`
+b. To eliminate the time spent on this step, we should guess the `ra` and `dec` on thee center of the image, and provide the uncertainty of the guess (`radius`). There are two ways to do this:
+- DEFAULT `--wcsmode 1`: for each objecct, search for the objName in the `input/observed.dat` file and use the ra and dec there. `radius=0.5 deg`, so please be sure to add this info!
+- `--wcsmode 0`: Do not specify the rough coordinate
+
+### (ii) `kp84_sextraction.py`
 `python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953` This runs [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources.<br>
 `python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953 --doOnlyPrintPars` This will print the mags and fwhms of all objects found by SExtractor<br>
 `sex science.fits -c default.sex -PARAMETERS_NAME daofind.param -FILTER_NAME default.conv -CHECKIMAGE_TYPE BACKGROUND -CHECKIMAGE_NAME science.background.fits -CATALOG_NAME science.cat -MAG_ZEROPOINT 0.0`</br>
