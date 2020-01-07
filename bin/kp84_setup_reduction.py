@@ -15,6 +15,7 @@ from photutils import DAOStarFinder
 
 sys.path.append("/home/roboao/Michael/kp84/")
 from citizen.reduction_utils import filter2filtstr, stack_shifted_frames
+from citizen.visualize_utils import get_ra_dec_radius
 
 #import matplotlib
 #import matplotlib.pyplot as plt
@@ -29,6 +30,17 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
     parser.add_option("--day",default="20180923")
+    
+    parser.add_option("--ncut", default=5, type=int)
+    parser.add_option("--wcsmode", default=1, type=int)
+    
+    parser.add_option("--ncut", default=5, type=int)
+    parser.add_option("--npool", default=30, type=int)
+    parser.add_option("--fwhm", default=3.0, type=float)
+    parser.add_option("--nstd", default=5.0, type=float)
+    
+    parser.add_option("--doFixRef",  action="store_true", default=False, help="if ture, fix the first extension as reference frame")
+    
     opts, args = parser.parse_args()
     return opts
 
@@ -37,6 +49,12 @@ opts = parse_commandline()
 KPED_data = "/Data3/data"
 setupDir = "/Data3/archive_kped/data/reductions/"
 day = opts.day
+wcsmode = opts.wcsmode
+ncut = opts.ncut
+npool = opts.npool
+fwhm = opts.fwhm
+nstd = opts.nstd
+doFixRef = opts.doFixRef
 
 outputDir = os.path.join(setupDir,day)
 dataDir = os.path.join(KPED_data,day)
@@ -49,16 +67,22 @@ print ("")
 
 filenames = glob.glob('%s/*.fits'%dataDir) + glob.glob('%s/*.fits.fz'%dataDir)
 
-if len(filenames)==0:
+nfile = len(filenames)
+if nfile==0:
     print ("Oops! No raw data exist at %s"%dataDir)
     exit(0)
+else:
+    print ("%d files to be copy"%(nfile))
     
 print ("Making output directory...")
 if not os.path.isdir(outputDir):
     os.makedirs(outputDir)
 
-print ("Copy all files into output directory...")
-for filename in filenames:
+print ("Copying all files into output directory...")
+for i in range(nfile):
+    filename = filenames[i]
+    if i%10 ==0:
+        print ("  %d/%d"%(i+1, nfile))
     filenameSplit = filename.split('/')    
     outfile = "%s/%s"%(outputDir,filenameSplit[-1])
     if not os.path.isfile(outfile):
@@ -86,10 +110,9 @@ for filename in filenames:
     if obj not in objs:
         objs.append(obj)
 
-# fid = open('run_analysis.sh','w')
+
 print ("Setting pre-processing directory...")
 for obj in objs:
-    #notTransient = "fits.fz" in fitsfiles[0]
     objsplit = obj.split("_")
     if objsplit[0] in ["flat", "bias", "dark"]:
         folderName = "%s/%s/%s"%(outputDir,objsplit[0],obj)
@@ -106,23 +129,24 @@ for obj in objs:
         mv_command = "mv %s/%s_*.fit* %s"%(outputDir,obj,folderName_raw)
     else:
         mv_command = "mv %s/*%s*.fit* %s"%(outputDir,obj,folderName_raw)
-        #fid.write("python kp84_photometric_reduction --dataDir %s --outputDir ../output/%s/%s"%(folderName,day,obj)+\
-        #          " --doPlots --doForcedPhotometry --doDifferential\n")
     os.system(mv_command) 
-#fid.close()
 
 print ("Unpacking object files...")
 for obj in objs:
     #notTransient = "fits.fz" in fitsfiles[0]
     objsplit = obj.split("_")
     if objsplit[0] not in ["flat", "bias", "dark"]:
+        print ("%s"%obj)
         folderName = "%s/%s"%(outputDir,objsplit[0])
         folderName_raw = "%s/raw"%(folderName)
         fzfiles = glob.glob('%s/*.fits.fz'%folderName_raw)
-        for fzfile in fzfiles:
+        nfzfile = len(fzfiles)
+        for j in range(nfzfile):
+            fzfile = fzfiles[j]
+            if j%10==0:
+                print ("  %d/%d"%(j+1, nfzfile))
             system_command = 'funpack %s'%fzfile
             os.system(system_command)
-        for fzfile in fzfiles:
             system_command = 'rm %s'%fzfile
             os.system(system_command)
 
@@ -200,31 +224,43 @@ print ("=====================================")
 print ("Creating Master Bias, Dark, and Flat!")
 print ("=====================================")
 print ("")
-print ("Creating Master Bias file...")
+calibflag = 1
 obj = "bias_0"
-biasFolder = "%s/bias/%s/raw"%(outputDir, obj) # bias frames subdirectory
-hdul = get_median_frame_from_files(biasFolder)
-hdul.writeto("%s/bias/%s/bias.fits"%(outputDir, obj), overwrite=True)
-print ("  bias.fits")
-# bias0frame = fits.open("%s/bias/%s/bias.fits"%(outputDir, "bias_0"))[0].data
-print ("Creating Master Dark file...")
-for obj in objs:
-    if obj[:4]=="dark":
-        darkFolder = "%s/dark/%s/raw"%(outputDir, obj) # dark frames subdirectory
-        if obj=="dark_0":
-            hdul = get_median_frame_from_files(darkFolder)
-        else:
-            hdul = get_median_frame_from_cubes(darkFolder)
-        hdul.writeto("%s/dark/%s/%s.fits"%(outputDir, obj, obj), overwrite=True)
-        print ("  %s.fits"%obj)
-dark0frame = fits.open("%s/dark/%s/%s.fits"%(outputDir, "dark_0", "dark_0"))[0].data
-print ("Creating Master Flat file...")
-for obj in objs:
-    if obj[:4]=="flat":
-        flatFolder = "%s/flat/%s/raw"%(outputDir, obj) # flat frames subdirectory
-        hdul = get_master_flat(flatFolder, dark0frame)
-        hdul.writeto("%s/flat/%s/%s.fits"%(outputDir, obj, obj), overwrite=True)
-        print ("  %s.fits"%obj)
+if obj in objs:
+    print ("Creating Master Bias file...")
+    biasFolder = "%s/bias/%s/raw"%(outputDir, obj) # bias frames subdirectory
+    hdul = get_median_frame_from_files(biasFolder)
+    hdul.writeto("%s/bias/%s/bias.fits"%(outputDir, obj), overwrite=True)
+    print ("  bias.fits")
+    # bias0frame = fits.open("%s/bias/%s/bias.fits"%(outputDir, "bias_0"))[0].data
+else:
+    print ("No calibration files are taken -- fix this! Using darks from 20191117")
+    print ("@yyao: I think we cannot use flat from another day, so no flat correction")
+    calibflag = 0
+
+if calibflag==1:
+    print ("Creating Master Dark file...")
+    for obj in objs:
+        if obj[:4]=="dark":
+            darkFolder = "%s/dark/%s/raw"%(outputDir, obj) # dark frames subdirectory
+            if obj=="dark_0":
+                hdul = get_median_frame_from_files(darkFolder)
+            else:
+                hdul = get_median_frame_from_cubes(darkFolder)
+            hdul.writeto("%s/dark/%s/%s.fits"%(outputDir, obj, obj), overwrite=True)
+            print ("  %s.fits"%obj)
+    dark0frame = fits.open("%s/dark/%s/%s.fits"%(outputDir, "dark_0", "dark_0"))[0].data
+else:
+    dark0frame = fits.open("./calibfiles/20191117/dark_0.fits")[0].data
+
+if calibflag==1:
+    print ("Creating Master Flat file...")
+    for obj in objs:
+        if obj[:4]=="flat":
+            flatFolder = "%s/flat/%s/raw"%(outputDir, obj) # flat frames subdirectory
+            hdul = get_master_flat(flatFolder, dark0frame)
+            hdul.writeto("%s/flat/%s/%s.fits"%(outputDir, obj, obj), overwrite=True)
+            print ("  %s.fits"%obj)
 
 print ("")
 print ("===========================")
@@ -247,9 +283,16 @@ for obj in objs:
         fitsfile = fitsfiles[i]
         filename = fitsfile.split("/")[-1].split(".fit")[0]
         procfile = "%s/%s_proc.fits"%(folderName_processing,filename)
-        print ("    %s"%filename)
+        if os.path.isfile(procfile):
+            continue
+        print ("    %d/%d: %s"%(i+1, len(fitsfiles), filename))
         # Read in the FITS data.
         HDUList = fits.open(fitsfile)
+        if len(HDUList)==1:
+            print ("    Remove file %s since only 1 hdu"%fitsfile)
+            rm_command = "rm %s"%(fitsfile)
+            os.system(rm_command)
+            continue
         primaryHeader = HDUList[0].header
         myfilter = primaryHeader["FILTER"]
         filtstr = filter2filtstr(myfilter)
@@ -261,10 +304,16 @@ for obj in objs:
                 print ("    Do not apply flat field")
                 modenum = 9
                 flatflag = 0
-        darkfile = "%s/dark/dark_%d/dark_%d.fits"%(outputDir, modenum, modenum)
-        masterDark = fits.open(darkfile)[0].data
-        flatfile = "%s/flat/flat_%s/flat_%s.fits"%(outputDir, filtstr, filtstr)
+        if calibflag==1:
+            darkfile = "%s/dark/dark_%d/dark_%d.fits"%(outputDir, modenum, modenum)
+            flatfile = "%s/flat/flat_%s/flat_%s.fits"%(outputDir, filtstr, filtstr)
+        else:
+            darkfile = "./calibfiles/20191117/dark_%d.fits"%(modenum)
+            flatfile = "./calibfiles/20191117/flat_%s.fits"%(filtstr)
         masterFlat = fits.open(flatfile)[0].data
+        masterDark = fits.open(darkfile)[0].data
+        if calibflag==0: 
+            masterFlat = np.ones_like(masterFlat)
         nframes = len(HDUList)-1
         procHDU = deepcopy(HDUList)
         if nxdata < masterFlat.shape[0]:
@@ -277,12 +326,13 @@ for obj in objs:
                 procHDU[jj].data = (data - masterDark) / masterFlat
             else:
                 procHDU[jj].data = (data - masterDark)
-        if flatflag == 1:
+        if flatflag==1 and calibflag==1:
             procHDU[0].header.add_history('Dark corrected and flat-fielded') # Add a note to the header
         else:
             procHDU[0].header.add_history('Dark corrected')
         # Write the reduced frame to disk
         procHDU.writeto(procfile, overwrite=True)
+
 
 print ("")
 print ("=====================================================")
@@ -290,15 +340,15 @@ print ("Preparing for astrometry runs: select the best frame!")
 print ("=====================================================")
 print ("")
 
-
-def get_n_source(data, subtract_median = False, return_data = False):
+def get_n_source(data, subtract_median = False, return_data = False, 
+                 fwhm = 3.0, nstd = 5.0):
     nx = data.shape[0]
     if subtract_median ==True:
         median_size = 40
         data_median = np.asfarray(median_filter(data, size=(median_size, median_size)))
         data -= data_median
     mean, median, std = sigma_clipped_stats(data, sigma=3.0)  
-    daofind = DAOStarFinder(fwhm=3.0, threshold=5.*std)  
+    daofind = DAOStarFinder(fwhm=fwhm, threshold=nstd*std)  
     try:
         warnings.filterwarnings('ignore', category=UserWarning, append=True)
         sources = daofind(data - median)  
@@ -318,7 +368,6 @@ if os.path.isfile('run_astrometry.sh'):
 fid = open('run_astrometry.sh','w')
 
 # get the best frame in each fits cubes -- to be used to solve the astrometry
-npool = 30
 subtract_median = False
 
 for obj in objs:
@@ -326,6 +375,8 @@ for obj in objs:
     if objsplit[0] in ["flat", "bias", "dark"]:
         continue
     print ("Getting finding chart for %s..."%obj)
+    if wcsmode!=2:
+        ra, dec, radius = get_ra_dec_radius(obj, wcsmode=wcsmode)
     folderName = "%s/%s"%(outputDir,obj)
     folderName_processing = "%s/processing"%(folderName)
     folderName_wcs = "%s/wcs"%(folderName)
@@ -346,15 +397,36 @@ for obj in objs:
             framenum = upfile.split("/")[-1].split("_")[-1].split(".")[0]
             print ("    best frame already exist!")
             wcsfile = "%s/%s_%s_wcs.fits"%(folderName_wcs, filename, framenum)
-            # w = WCS(fitsfile[int(framenum)].header)
-            w = WCS(fitsfile[0].header)
-            ra, dec = w.wcs_pix2world(ndata//2, ndata//2, 0)
+            if wcsmode==2:
+                header = fits.open(fitsfile)[int(framenum)].header
+                w = WCS(header)
+                coocenter = w.wcs_pix2world(np.array([[ndata//2,ndata//2]]), 0)
+                ra = coocenter[0]
+                dec = coocenter[1]
+                radius = 0.5
             if os.path.isfile(wcsfile):
                 print ("    wcs file exist for %s"%filename)
             else:
-                fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
-                          #"--ra %.5f --dec %.5f --radius %.1f "%(ra, dec, 5)+\
-                          "--wcs %s/%s_%s_wcs.fits --private\n"%(folderName_wcs, filename, framenum))
+                """
+                if ra==None:
+                    fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
+                              "--wcs %s/%s_%s_wcs.fits --private\n"%(folderName_wcs, filename, framenum))
+                else:
+                    fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
+                              "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                              "--wcs %s/%s_%s_wcs.fits --private\n"%(folderName_wcs, filename, framenum))
+                """
+                if ra==None:
+                    fid.write("solve-field %s "%upfile+\
+                              "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                              "--wcs %s/%s_%s_wcs.fits "%(folderName_wcs, filename, framenum)+\
+                              "--overwrite --no-plots --temp-axy\n")
+                else:
+                    fid.write("solve-field %s "%upfile+\
+                              "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                              "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                              "--wcs %s/%s_%s_wcs.fits "%(folderName_wcs, filename, framenum)+\
+                              "--overwrite --no-plots --temp-axy\n")
             continue
         hdus = fits.open(fitsfile)
         if len(hdus)<=(npool+1):
@@ -368,9 +440,9 @@ for obj in objs:
         ns = np.zeros(len(ipools))
         for j in range(len(ipools)):
             ii = ipools[j]
-            ns[j] = get_n_source(hdus[ii].data, subtract_median = subtract_median)
+            ns[j] = get_n_source(hdus[ii].data, subtract_median = subtract_median, fwhm=fwhm, nstd=nstd)
         
-        if max(ns)<5:
+        if max(ns)<ncut:
             subtract_median = True
             print ("        max n = %d, redo by subtracting median"%(max(ns)))
             
@@ -389,15 +461,40 @@ for obj in objs:
         
         iselect = ipools[np.where(ns == max(ns))[0][0]]
         nmax, data = get_n_source(hdus[iselect].data, subtract_median = subtract_median, return_data = True)
-        
+        if wcsmode==2:
+            header = fits.open(fitsfile)[int(iselect)].header
+            w = WCS(header)
+            coocenter = w.wcs_pix2world(np.array([[ndata//2,ndata//2]]), 0)
+            ra = coocenter[0]
+            dec = coocenter[1]
+            radius = 0.5
         print ("      saving frame %d: %d point source identified"%(iselect, nmax))
         hdu = fits.PrimaryHDU()
         hdul = fits.HDUList([hdu])
         hdul[0].data = data
         upfile = "%s/%s_%d.fits"%(folderName_upload, filename, iselect)
         hdul.writeto(upfile, overwrite=True)
-        fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
+        """
+        if ra==None:
+            fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
                       "--wcs %s/%s_%d_wcs.fits --private\n"%(folderName_wcs, filename, iselect))
+        else:
+            fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
+                      "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                      "--wcs %s/%s_%d_wcs.fits --private\n"%(folderName_wcs, filename, iselect))
+        """
+        if ra==None:
+            fid.write("solve-field %s "%upfile+\
+                     "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                      "--wcs %s/%s_%d_wcs.fits "%(folderName_wcs, filename, iselect)+\
+                      "--overwrite --no-plots --temp-axy\n")
+        else:
+            fid.write("solve-field %s "%upfile+\
+                     "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                     "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                      "--wcs %s/%s_%d_wcs.fits "%(folderName_wcs, filename, iselect)+\
+                      "--overwrite --no-plots --temp-axy\n")
+        
 fid.close()
 
 print ("")
@@ -409,9 +506,7 @@ chmod_command = "chmod +x run_astrometry.sh"
 os.system(chmod_command)
 os.system("./run_astrometry.sh")
 
-#objs = ["ASASSN-19yt",  "ZTFJ00063104",  "ZTFJ00264645",  
-#        "ZTFJ07076038",  "ZTFJ17354022", 
-#        "ZTFJ23331522"]
+
 print ("")
 print ("================================")
 print ("Calculate Shifts Between Frames!")
@@ -424,6 +519,7 @@ for obj in objs:
     objsplit = obj.split("_")
     if objsplit[0] in ["flat", "bias", "dark"]:
         continue
+    ra, dec, radius = get_ra_dec_radius(obj)
     folderName = "%s/%s"%(outputDir,obj)
     folderName_processing = "%s/processing"%(folderName)
     folderName_registration = "%s/registration"%(folderName)
@@ -432,12 +528,14 @@ for obj in objs:
     fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_processing)))
     if not os.path.isdir(folderName_registration):
         os.makedirs(folderName_registration)
+    if wcsmode!=2:
+        ra, dec, radius = get_ra_dec_radius(obj, wcsmode=wcsmode)
     for i in range(len(fitsfiles)):
         fitsfile = fitsfiles[i]
         filename = fitsfile.split("/")[-1].split(".fit")[0]
         print ("%s"%filename)
         print ("  Calculating shift w.r.t extension 1...")
-        tb_shift, data_stacked = stack_shifted_frames(fitsfile)
+        tb_shift, data_stacked = stack_shifted_frames(fitsfile, fix_ref = doFixRef)
         shiftedtbfile= "%s/%s_shift.dat"%(folderName_registration, filename)
         tb_shift.write(shiftedtbfile, format="ascii", overwrite=True)
         wcsfiles = glob.glob("%s/%s_*.fits"%(folderName_wcs, filename))
@@ -445,18 +543,47 @@ for obj in objs:
             wcsfile = wcsfiles[0]
             framenum = int(wcsfile.split("/")[-1].split("_")[-2].split(".")[0])
             print ("  Found wcs in frame %d"%(framenum))
-        else:
-            print ("  Didn't find wcs -- save stacked img to be uploaded")
-            #w = WCS(fits.open(fitsfile)[1].header)
-            #ra, dec = w.wcs_pix2world(data_stacked.shape[0]//2, data_stacked.shape[0]//2, 0)
+            print ("  Still want to save the stacked image!")
             hdu = fits.PrimaryHDU()
             hdul = fits.HDUList([hdu])
             hdul[0].data = data_stacked
             stackedfile = "%s/%s_stack.fits"%(folderName_upload, filename)
             hdul.writeto(stackedfile, overwrite=True)
-            fid.write("timeout 300s python kp84_get_wcs.py --upload %s "%stackedfile +\
-                      #"--ra %.5f --dec %.5f --radius %.1f "%(ra, dec, 10/60)+\
-                      "--wcs %s/%s_stack_wcs.fits --private\n"%(folderName_wcs, filename))
+        else:
+            print ("  Didn't find wcs -- save stacked img to be uploaded")
+            hdu = fits.PrimaryHDU()
+            hdul = fits.HDUList([hdu])
+            hdul[0].data = data_stacked
+            stackedfile = "%s/%s_stack.fits"%(folderName_upload, filename)
+            hdul.writeto(stackedfile, overwrite=True)
+            if wcsmode==2:
+                ndata = fits.open(fitsfile)[1].data.shape[0]
+                header = fits.open(fitsfile)[1].header
+                w = WCS(header)
+                coocenter = w.wcs_pix2world(np.array([[ndata//2,ndata//2]]), 0)
+                ra = coocenter[0]
+                dec = coocenter[1]
+                radius = 0.5
+            """
+            if ra==None:
+                fid.write("timeout 300s python kp84_get_wcs.py --upload %s "%stackedfile+\
+                          "--wcs %s/%s_stack_wcs.fits --private\n"%(folderName_wcs, filename))
+            else:
+                fid.write("timeout 300s python kp84_get_wcs.py --upload %s "%stackedfile+\
+                          "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                          "--wcs %s/%s_stack_wcs.fits --private\n"%(folderName_wcs, filename))
+            """
+            if ra==None:
+                fid.write("solve-field %s "%stackedfile+\
+                          "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                          "--wcs %s/%s_%d_wcs.fits "%(folderName_wcs, filename, iselect)+\
+                          "--overwrite --no-plots --temp-axy\n")
+            else:
+                fid.write("solve-field %s "%stackedfile+\
+                          "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                          "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                          "--wcs %s/%s_stack_wcs.fits "%(folderName_wcs, filename)+\
+                          "--overwrite --no-plots --temp-axy\n")
 fid.close()
     
 print ("")
@@ -464,7 +591,50 @@ print ("=======================================")
 print ("Running astrometry.net -- STACK option!")
 print ("=======================================")
 print ("")
-    
+
 chmod_command = "chmod +x run_astrometry.sh"
 os.system(chmod_command)
 os.system("./run_astrometry.sh")
+
+print ("")
+print ("Wrinting to run_analysis.sh ...")
+if os.path.isfile('run_analysis.sh'):
+    os.system("rm run_analysis.sh")
+fid = open('run_analysis.sh','w')
+
+for obj in objs:
+    objsplit = obj.split("_")
+    if objsplit[0] in ["flat", "bias", "dark"]:
+        continue
+    ra, dec, radius = get_ra_dec_radius(obj)
+    folderName = "%s/%s"%(outputDir,obj)
+    folderName_processing = "%s/processing"%(folderName)
+    folderName_registration = "%s/registration"%(folderName)
+    folderName_wcs = "%s/wcs"%(folderName)
+    folderName_upload = "%s/upload"%(folderName)
+    fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_processing)))
+    wcsfiles = sorted(glob.glob("%s/*.fits"%(folderName_wcs)))
+    print ("%s: %d wcs successful for %d files!"%(obj, len(wcsfiles), len(fitsfiles)))
+    if len(fitsfiles) == len(wcsfiles):
+        print ("  write to run_analysis.sh")
+        fid.write("python kp84_photometric_reduction.py --day %s --objNmae %s"%(day, obj)+\
+                  "--doMakeMovie\n")
+    else:
+        for i in range(len(fitsfiles)):
+            fitsfile = fitsfiles[i]
+            filename = fitsfile.split("/")[-1].split(".fit")[0]
+            wcsfile = glob.glob("%s/%s_*.fits"%(folderName_wcs, filename))
+            if len(wcsfile)==0:
+                print ("  %s: no wcs"%filename)
+                print ("    Consider: scp -P 22220 roboao@140.252.53.120:%s ."%(fitsfile))
+            else:
+                wcsname = wcsfile[0].split("/")[-1].split(".fit")[0]
+                print ("  %s: found %s"%(filename, wcsname))
+fid.close()
+    
+chmod_command = "chmod +x run_analysis.sh"
+os.system(chmod_command)
+# os.system("./run_analysis.sh")
+
+
+
