@@ -61,7 +61,7 @@ Note that this step is necessary for the purpose of (1) identify reference star,
 - When all wcs are successfully found:
 `python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245`
 - When there are files that astrometry fails (or if you don't want to use the wcs solution found by astrometry.net):
-`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --doMakeMovie --xstar 267*256*234*191*134 --ystar 341*341*343*351*353 --xyext 499*86*519*548*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 5 --sky_in 10 --sky_out 28 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33 --xoffref 7.23 --yoffref -48 --refmag 14.838 --doSubtractBackground --doSkipRegis --doSkipFindRef --moviemode 10`
+`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --xstar 267*256*234*191*134 --ystar 341*341*343*351*353 --xyext 499*86*519*548*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 5 --sky_in 10 --sky_out 28 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33 --xoffref 7.23 --yoffref -48 --refmag 14.838 --doSubtractBackground --doSkipRegis --doSkipFindRef --moviemode 10`
 
 #### Steps
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
