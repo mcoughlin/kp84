@@ -46,6 +46,7 @@ a. There are two ways to call astrometry.net:
 b. To eliminate the time spent on this step, we should guess the `ra` and `dec` on thee center of the image, and provide the uncertainty of the guess (`radius`). There are two ways to do this:
 - DEFAULT `--wcsmode 1`: for each objecct, search for the objName in the `input/observed.dat` file and use the ra and dec there. `radius=0.5 deg`, so please be sure to add this info!
 - `--wcsmode 0`: Do not specify the rough coordinate
+- `--wcsmode 2`: Trust the wcs in the raw fits file header, `radius=0.5 deg`.
 
 ### (ii) `kp84_sextraction.py`
 `python kp84_sextraction.py --day 20200105 --objName ZTFJ0538+1953` This runs [Source Extractor](https://www.astromatic.net/software/sextractor) to identify point sources.<br>
@@ -56,11 +57,11 @@ All default files are in the `/defualt` directory.
 
 Note that this step is necessary for the purpose of (1) identify reference star, and (2) enable background subtraction before performing forced photometry. See below.
 
-### `kp84_photometric_reduction.py`
+### (iii) `kp84_photometric_reduction.py`
 - When all wcs are successfully found:
 `python kp84_photometric_reduction.py --day 20191117 --objName ZTFJ01395245`
 - When there are files that astrometry fails (or if you don't want to use the wcs solution found by astrometry.net):
-`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --doMakeMovie --xstar 267*256*234*191*134 --ystar 341*341*343*351*353 --xyext 499*86*519*548*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 5 --sky_in 10 --sky_out 28 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33 --xoffref 7.23 --yoffref -48 --refmag 14.838 --doSubtractBackground --doSkipRegis --doSkipFindRef --moviemode 10`
+`python kp84_photometric_reduction.py --day 20200105 --objName ZTFJ0538+1953 --xstar 267*256*234*191*134 --ystar 341*341*343*351*353 --xyext 499*86*519*548*84 --xyfile 033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000 --doOffTune --aper_size 5 --sky_in 10 --sky_out 28 --aper_size_ref 14 --sky_in_ref 15 --sky_out_ref 33 --xoffref 7.23 --yoffref -48 --refmag 14.838 --doSubtractBackground --doSkipRegis --doSkipFindRef --moviemode 10`
 
 #### Steps
 1. Find the coordinate of object (from the file `input/observed.dat`). So make sure to add this beforehead.<br>
@@ -86,6 +87,8 @@ This can be very helpful if you'd like to examine if the choice of aperture size
 Some notes:
 This can be hard sometimes due to the limited field of view (4x4 arcmin)
 - If too faint, then turn on `--doStack --nimages 5`
+
+## Post-processing Examination
 
 ### `kp84_download.py`
 `python kp84_download.py --day 20200105 --objName ZTFJ0538+1953`<br>
