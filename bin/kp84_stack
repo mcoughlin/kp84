@@ -172,7 +172,7 @@ if opts.doAstrometryNet:
     #f1.set_tick_labels_font(size='xx-large')
     #f1.set_axis_labels_font(size='xx-large')
     f1.show_grayscale(invert=False)
-    #f1.show_circles(xs,ys,5,coords_frame='pixel',zorder=99,edgecolor='red')
+    f1.show_circles(xs,ys,5,coords_frame='pixel',zorder=99,edgecolor='red')
     #f1.axis_labels.set_xtext('Right Ascension')
     #f1.axis_labels.set_ytext('Declination')
 
