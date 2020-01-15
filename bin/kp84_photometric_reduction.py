@@ -15,7 +15,8 @@ from citizen.visualize_utils import makemovie
 #from astroML.crossmatch import crossmatch_angular
 
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('agg')
+matplotlib.pyplot.switch_backend('agg')
 fs = 14
 matplotlib.rcParams.update({'font.size': fs})
 from matplotlib import pyplot as plt
@@ -452,9 +453,10 @@ finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
 plotName = os.path.join(outputProDir,'mag_forced.pdf')
 save_forced_tb(tblforced, finalforcefile, plotName)
 
-finalsubforcefile = os.path.join(outputProDir,"lightcurve.subtracted.forced")
-plotsubName = os.path.join(outputProDir,'subtracted_mag_forced.pdf')
-save_forced_tb(tblsubforced, finalsubforcefile, plotsubName)
+if doSubtractBackground:
+    finalsubforcefile = os.path.join(outputProDir,"lightcurve.subtracted.forced")
+    plotsubName = os.path.join(outputProDir,'subtracted_mag_forced.pdf')
+    save_forced_tb(tblsubforced, finalsubforcefile, plotsubName)
 
 if moviemode!=0:
     print ("")
