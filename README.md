@@ -3,7 +3,7 @@ Kitt Peak 84 inch scripts</br>
 The Kitt Peak Electron Multiplying CCD (EMCCD) demonstrator is a new instrument that has been developed for use at the Kitt Peak National Observatory's 84-inch telescope. The immediate goal is to search for rotation period of merged white dwarfs, timing follow-up of short period binaries, as well as short duration transient and periodic sources identified by large field-of-view all-sky surveys such as the Zwicky Transient Facility. For more details please see the instrument paper: [Coughlin et al. 2019](https://arxiv.org/abs/1901.04625).
 
 ## If you want to submit an observation
-Email mcoughlin or yyao your object in the following comma separated format:<br>
+Email mcoughlin your object in the following comma separated format:<br>
 `llaria_object,1,WDJ0123-5678,hh:mm:ss.s,dd:mm:ss.s,2000,0.00,0.00,20.0,3600,FILTER_SLOAN_G,9,Coughlin,5.0_0.06528,0`<br>
 1. The request ID for this entry, this is an alphanumeric identifier for the observation
 2. The program ID for the science program being executed
