@@ -94,10 +94,10 @@ for name, ra, dec, err, f, f_down, f_up, h1, h2 in zip(names, ras, decs, ePos, F
     ra  = Angle(ra, unit=u.deg).deg
     dec = Angle(dec, unit=u.deg).deg
 
-    if (err>errlim):
-        continue
+    #if (err>errlim):
+    #    continue
 
-    if dec < -30: continue
+    #if dec < -30: continue
     fid.write('%s %.5f %.5f %.5f %.5e %.5e %.5e %.5f %.5f\n'%(name, ra, dec, err, f, f_down, f_up, h1, h2))
 fid.close()
 
