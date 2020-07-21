@@ -83,17 +83,37 @@ cat = crts_query(maxsources=1000000)
 if not os.path.isdir(opts.outputDir):
     os.makedirs(opts.outputDir)
 
+classification = {1: "intrinsic,binary star,W Uma",
+                  2: "intrinsic,binary star,detached eclipsing MS-MS",
+                  3: "intrinsic,binary star,Beta Lyr",
+                  4: "intrinsic,RR Lyrae,RR Lyrae ab",
+                  5: "intrinsic,RR Lyrae,RR Lyrae c",
+                  6: "intrinsic,RR Lyrae,RR Lyrae d",
+                  7: "intrinsic,RR Lyrae,RR Lyrae Blazhko",
+                  8: "intrinsic,RS CVn",
+                  9: "intrinsic,pulsator,Cepheid",
+                  10: "intrinsic,pulsator,Cepheid type-II",
+                  11: "intrinsic,pulsator,high amplitude Delta Scu",
+                  12: " ",
+                  13: "phenomenological,long periodic",
+                  14: "phenomenological,multi periodic",
+                  15: "phenomenological,stochastic",
+                  16: "intrinsic,binary star",
+                  17: "phenomenological,variable"}
+
 filename = os.path.join(opts.outputDir,'CRTS.dat')
 fid = open(filename,'w')
-print(cat['CRTS'])
-names, ras, decs, Per = cat['CRTS'], cat['RAJ2000'], cat['DEJ2000'], cat['Per']
-for name, ra, dec, period in zip(names, ras, decs, Per):
+print(cat['Cl'])
+names, ras, decs, Per, Cl = cat['CRTS'], cat['RAJ2000'], cat['DEJ2000'], cat['Per'], cat['Cl']
+for name, ra, dec, period, clnum in zip(names, ras, decs, Per, Cl):
+    clnames = classification[clnum].replace(" ","_")    
+
     ra  = Angle(ra, unit=u.hour).deg
     dec = Angle(dec, unit=u.deg).deg
 
     if dec < -30: continue
 
-    fid.write('%s %.5f %.5f %.5f\n'%(name, ra, dec, period))
+    fid.write('%s %.5f %.5f %.10f %s\n'%(name, ra, dec, period,  clnames))
 fid.close()
 
 

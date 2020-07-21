@@ -121,7 +121,7 @@ def ps1_query(ra_deg, dec_deg, rad_deg, maxmag=25,
                 maxsources: maximum number of sources
     returns: astropy.table object
     """
-    vquery = Vizier(columns=['Source', 'RAJ2000', 'DEJ2000',
+    vquery = Vizier(columns=['_r', 'RAJ2000', 'DEJ2000',
                              'gmag','rmag','imag','zmag','ymag'],
                     column_filters={"gmag":
                                     ("<%f" % maxmag),
