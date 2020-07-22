@@ -44,7 +44,6 @@ def parse_commandline():
     parser.add_option("-y","--ystar",default=-1,type=float)
     parser.add_option("--xstar_field",default=-1,type=float)
     parser.add_option("--ystar_field",default=-1,type=float)
-    parser.add_option("-f","--fwhm",default=10.0,type=float)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
@@ -56,9 +55,12 @@ def parse_commandline():
     parser.add_option("--doPhase",  action="store_true", default=False)
     parser.add_option("-p","--phase",default=0.004800835466385,type=float)
     parser.add_option("--nphase",default=128,type=int)
+    parser.add_option("--doPlotPhase",  action="store_true", default=False)
 
     parser.add_option("--doCalibration",  action="store_true", default=False)
     parser.add_option("--doForcedPhotometry",  action="store_true", default=False)
+    parser.add_option("--doDynamicAperture",  action="store_true", default=False)
+    parser.add_option("-f","--fwhm",default=10.0,type=float)
     parser.add_option("--doPSFPhotometry",  action="store_true", default=False)
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     parser.add_option("--doDifferential",  action="store_true", default=False)
@@ -257,7 +259,7 @@ def stack_images(stackDir,fitsfiles,nimages):
             reference = hdulist[0].data[0,:,:]
 
         nhdu, xshape, yshape = data.shape
-        dateobs = utcparser(hdulist[0].header["UTCSTART"])
+        dateobs = ztfsub.utils.utcparser(hdulist[0].header["UTCSTART"])
         mjd = dateobs.mjd
         mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
 
@@ -302,7 +304,7 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
         data = hdulist[0].data
 
         nhdu, xshape, yshape = data.shape
-        dateobs = utcparser(hdulist[0].header["UTCSTART"])
+        dateobs = ztfsub.utils.utcparser(hdulist[0].header["UTCSTART"])
         mjd = dateobs.mjd
         mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
 
@@ -329,7 +331,7 @@ def phase_images(phaseDir,fitsfiles,nimages,phase):
 
     hdulist = fits.open(fitsfiles[0])
     header = hdulist[0].header
-    dateobs = utcparser(hdulist[0].header["UTCSTART"])
+    dateobs = ztfsub.utils.utcparser(hdulist[0].header["UTCSTART"])
     mjd = dateobs.mjd
     mjd_phase = np.mod(mjd, phase)/phase
 
@@ -389,39 +391,6 @@ def makemovie(movieDir,fitsfiles,x=None,y=None):
     filename = os.path.join(movieDir,"movie.gif")
     ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
     os.system(ffmpeg_command)
-
-def utcparser(utcstart):
-        """
-        Datetime parser for CHIMERA UTCSTART header keyword.
-
-        Parameters
-        ----------
-        utcstart : string
-            Datetime for start of frame (in UTC)
-
-        Returns
-        -------
-        dt : datetime struct
-            Datetime structure
-        """
-
-        MONTHS = {"Jan": 1, "Feb": 2, "March": 3, "April": 4, "May": 5, "June": 6, "July": 7, "Aug": 8, "Sept": 9, "Oct": 10, "Nov": 11, "Dec": 12}
-
-        month, date, year, time = utcstart.split("-")
-        month = MONTHS[month]
-        date = int(date)
-        year = int(year)
-
-        hour, minu, sec = time.split(":")
-        hour = int(hour)
-        minu = int(minu)
-        sec, ms = sec.split(".")
-        sec = int(sec)
-        ms = int(ms) * 1000
-
-        dt = datetime.datetime(year, month, date, hour, minu, sec, ms)
-
-        return Time(dt)
 
 # Parse command line
 opts = parse_commandline()
@@ -485,7 +454,7 @@ if (opts.xstar<0) or (opts.ystar<0):
                 data = np.zeros((xshape,yshape))
 
             nhdu, xshape, yshape = data_full.shape
-            dateobs = utcparser(hdulist[0].header["UTCSTART"])
+            dateobs = ztfsub.utils.utcparser(hdulist[0].header["UTCSTART"])
             mjd = dateobs.mjd
             mjdall = mjd + np.arange(nhdu)*hdulist[0].header["EXPTIME"]/86400.0
 
@@ -723,7 +692,7 @@ for ii,fitsfile in enumerate(fitsfiles):
             if opts.doPhase:
                 dateobs = Time(hdulist[0].header["DATE"])
             else:
-                dateobs = utcparser(hdulist[0].header["UTCSTART"])
+                dateobs = ztfsub.utils.utcparser(hdulist[0].header["UTCSTART"])
             mjds = dateobs.mjd*np.ones(xs.shape)
         else:
             mjds = np.zeros(xs.shape)
@@ -731,7 +700,7 @@ for ii,fitsfile in enumerate(fitsfiles):
                 if opts.doPhase:
                     dateobs = Time(hdulist[jj+1].header["DATE"])
                 else:
-                    dateobs = utcparser(hdulist[jj+1].header["UTCSTART"])
+                    dateobs = ztfsub.utils.utcparser(hdulist[jj+1].header["UTCSTART"])
                 idx = np.where(extnumber==jj+1)[0]
                 mjds[idx] = dateobs.mjd
 
@@ -750,11 +719,16 @@ for ii,fitsfile in enumerate(fitsfiles):
         forcedfile = scienceimage.replace(".fits",".forced")
         if not os.path.isfile(forcedfile):
 
-            mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm)
+            if opts.doDynamicAperture:
+                mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=np.median(fwhms))
+            else:
+                mjd_forced, mag_forced, magerr_forced, flux_forced, fluxerr_forced = ztfsub.utils.forcedphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm)
 
             if opts.doDifferential:
-
-                mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=opts.fwhm)
+                if opts.doDynamicAperture:
+                    mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=np.median(fwhms))
+                else:
+                    mjd_forced, mag_forced_field, magerr_forced_field, flux_forced_field, fluxerr_forced_field = ztfsub.utils.forcedphotometry(scienceimage,x=xfield,y=yfield,fwhm=opts.fwhm)
 
                 mag = mag_forced - mag_forced_field
                 magerr = np.sqrt(magerr_forced**2 + magerr_forced_field**2)
@@ -999,6 +973,22 @@ if opts.doPlots:
         plt.tight_layout()
         plt.savefig(plotName)
         plt.close()
+
+        if opts.doPlotPhase:
+            plotName = os.path.join(path_out_dir,'mag_relative_psf_forced_phased.pdf')
+            fig = plt.figure(figsize=(20,8))
+            plt.errorbar(np.mod(mjd_forced-mjd_forced[0],opts.phase)/opts.phase,mag_forced-np.median(mag_forced),magerr_forced,fmt='ko')
+            plt.errorbar(np.mod(mjd_psf-mjd_psf[0],opts.phase)/opts.phase,mag_psf-np.median(mag_psf),magerr_psf,fmt='bx')
+            plt.xlabel('Phase')
+            plt.ylabel('Magnitude [arb]')
+            #ymin = np.percentile(mag_forced-np.median(mag_forced),1)
+            #ymax = np.percentile(mag_forced-np.median(mag_forced),99)
+            #plt.ylim([ymin,ymax])
+            plt.gca().invert_yaxis()
+            plt.tight_layout()
+            plt.savefig(plotName)
+        plt.close()
+
 
     plotName = os.path.join(path_out_dir,'star.pdf')
     fig = plt.figure(figsize=(20,8))
