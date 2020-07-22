@@ -62,6 +62,7 @@ def parse_commandline():
     parser.add_option("--doDynamicAperture",  action="store_true", default=False)
     parser.add_option("-f","--fwhm",default=10.0,type=float)
     parser.add_option("--doPSFPhotometry",  action="store_true", default=False)
+    parser.add_option("--doPSFex",  action="store_true", default=False)
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     parser.add_option("--doDifferential",  action="store_true", default=False)
 
@@ -593,6 +594,7 @@ for ii,fitsfile in enumerate(fitsfiles):
     backfile = scienceimage.replace(".fits",".background.fits")
     subfile = scienceimage.replace(".fits",".sub.fits")
 
+    #if True:
     if not os.path.isfile(catfile):
 
         if opts.doCalibration:
@@ -750,6 +752,10 @@ for ii,fitsfile in enumerate(fitsfiles):
                 fid = open(forcedfile,'w')
                 fid.write('%.10f %.10f %.10f %.10f %.10f\n'%(mjd_forced,mag,magerr,flux,fluxerr))
                 fid.close()
+
+    if opts.doPSFex:
+        psfexfile = scienceimage.replace(".fits",".psfex")
+        ztfsub.utils.psfex(scienceimage, defaultsDir)
 
     if opts.doPSFPhotometry:
         psffile = scienceimage.replace(".fits",".psf")
