@@ -44,6 +44,8 @@ def parse_commandline():
     parser.add_option("-y","--ystar",default=-1,type=float)
     parser.add_option("--xstar_field",default=-1,type=float)
     parser.add_option("--ystar_field",default=-1,type=float)
+    parser.add_option("--xstar_first",default=-1,type=float)
+    parser.add_option("--ystar_first",default=-1,type=float)
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doSubtractBackground",  action="store_true", default=False)
@@ -761,7 +763,12 @@ for ii,fitsfile in enumerate(fitsfiles):
         psffile = scienceimage.replace(".fits",".psf")
         if not os.path.isfile(psffile):
 
-            mjd_psf, mag, magerr, flux, fluxerr = ztfsub.utils.psfphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm,doDifferential=opts.doDifferential,xfield=xfield,yfield=yfield)
+            if (opts.xstar_first<0) or (opts.ystar_first<0):
+                xstar_first, ystar_first = None, None
+            else:
+                xstar_first, ystar_first = opts.xstar_first, opts.ystar_first
+
+            mjd_psf, mag, magerr, flux, fluxerr = ztfsub.utils.psfphotometry(scienceimage,x=x0,y=y0,fwhm=opts.fwhm,doDifferential=opts.doDifferential,xfield=xfield,yfield=yfield,xfirst=xstar_first,yfirst=ystar_first)
 
             if opts.doZP:
                 mag = mag + np.mean(ZP_mag)
@@ -953,14 +960,17 @@ if opts.doPlots:
         plt.close()
 
     if opts.doForcedPhotometry and opts.doPSFPhotometry:
+        print('PSF Median Error: %.5f' % (np.median(magerr_psf)))
+        print('Aperture Median Error: %.5f' % (np.median(magerr_forced))) 
+
         plotName = os.path.join(path_out_dir,'mag_relative_psf_forced.pdf')
         fig = plt.figure(figsize=(20,8))
         plt.errorbar(mjd_forced-mjd_forced[0],mag_forced-np.median(mag_forced),magerr_forced,fmt='ko')
         plt.errorbar(mjd_psf-mjd_psf[0],mag_psf-np.median(mag_psf),magerr_psf,fmt='bx')
         plt.xlabel('Time from %.5f [days]'%mjd[0])
         plt.ylabel('Magnitude [arb]')
-        ymin = np.percentile(mag_forced-np.median(mag_forced),1)
-        ymax = np.percentile(mag_forced-np.median(mag_forced),99)
+        ymin = np.nanpercentile(mag_forced-np.nanmedian(mag_forced),1)
+        ymax = np.nanpercentile(mag_forced-np.nanmedian(mag_forced),99)
         plt.ylim([ymin,ymax])
         plt.gca().invert_yaxis()
         plt.tight_layout()
@@ -971,8 +981,8 @@ if opts.doPlots:
         fig = plt.figure(figsize=(20,8))
         plt.errorbar(mjd_forced-mjd_forced[0],flux_forced-np.median(flux_forced),fluxerr_forced,fmt='ko')
         plt.errorbar(mjd_psf-mjd_psf[0],flux_psf-np.median(flux_psf),fluxerr_psf,fmt='bx')
-        ymin = np.percentile(flux_forced-np.median(flux_forced),1)
-        ymax = np.percentile(flux_forced-np.median(flux_forced),99)
+        ymin = np.nanpercentile(flux_forced-np.nanmedian(flux_forced),1)
+        ymax = np.nanpercentile(flux_forced-np.nanmedian(flux_forced),99)
         plt.ylim([ymin,ymax])
         plt.xlabel('Time from %.5f [days]'%mjd[0])
         plt.ylabel('Flux')
@@ -983,13 +993,13 @@ if opts.doPlots:
         if opts.doPlotPhase:
             plotName = os.path.join(path_out_dir,'mag_relative_psf_forced_phased.pdf')
             fig = plt.figure(figsize=(20,8))
-            plt.errorbar(np.mod(mjd_forced-mjd_forced[0],opts.phase)/opts.phase,mag_forced-np.median(mag_forced),magerr_forced,fmt='ko')
-            plt.errorbar(np.mod(mjd_psf-mjd_psf[0],opts.phase)/opts.phase,mag_psf-np.median(mag_psf),magerr_psf,fmt='bx')
+            plt.errorbar(np.mod(mjd_forced-mjd_forced[0],opts.phase)/opts.phase,mag_forced-np.nanmedian(mag_forced),magerr_forced,fmt='ko')
+            plt.errorbar(np.mod(mjd_psf-mjd_psf[0],opts.phase)/opts.phase,mag_psf-np.nanmedian(mag_psf),magerr_psf,fmt='bx')
             plt.xlabel('Phase')
             plt.ylabel('Magnitude [arb]')
-            #ymin = np.percentile(mag_forced-np.median(mag_forced),1)
-            #ymax = np.percentile(mag_forced-np.median(mag_forced),99)
-            #plt.ylim([ymin,ymax])
+            ymin = np.nanpercentile(mag_forced-np.nanmedian(mag_forced),1)
+            ymax = np.nanpercentile(mag_forced-np.nanmedian(mag_forced),99)
+            plt.ylim([ymin,ymax])
             plt.gca().invert_yaxis()
             plt.tight_layout()
             plt.savefig(plotName)
