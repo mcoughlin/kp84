@@ -40,7 +40,12 @@ header = hudl[1].header
 if not os.path.isdir(opts.outputDir):
     os.makedirs(opts.outputDir)
 
-indexes = []
+plotName = os.path.join(opts.outputDir,'fermi_4FGL_parameters.pdf')
+plt.figure()
+ax = plt.gca()
+
+labels = {"psr": False, "bcu": False, "fsrq": False,
+          "bll": False, "unknown": False, "other": False}
 
 filename = os.path.join(opts.outputDir,'fermi_4FGL.dat')
 fid = open(filename,'w')
@@ -51,26 +56,79 @@ for row in data:
     amaj = row[8]
     amin = row[9]
     phi = row[10]
-    f = row[17]
-    f_err = row[18]
-    index = row[22]
-    index_error = row[23]
+    expfactor = row[35]
+    expfactor_error = row[36]
+    index = row[33]
+    index_error = row[34]
+    beta = row[28]
+    beta_error = row[29]
     c = row[56]
+    cl = row[63]
+    flux = row[15]
 
-    if not c == "": continue
-    print(c)
+    if flux < 1e-9: continue
+    #if flux < 5e-10: continue
+
+    #print(cl, expfactor, expfactor_error, index, index_error, beta, beta_error)
+
+    cl = cl.lower()
+    if cl == "":
+        cl = "unknown"
+    if cl not in labels:
+        cl = "other"
+
+    if cl == "psr":
+        marker = '*'
+        color = 'g'
+    elif cl == "bcu":
+        marker = 's'
+        color = 'purple'
+    elif cl == "fsrq":
+        marker = 'D'
+        color = 'red'
+    elif cl == "bll":
+        marker = '^'
+        color = 'b'
+    elif cl == "unknown":
+        marker = '+'
+        color = 'k'
+    elif cl == "other":
+        marker = 'x'
+        color = 'pink'
+
+    if labels[cl] == False:
+        plt.errorbar(index, expfactor, xerr=index_error, yerr=expfactor_error, marker=marker, color=color,label=cl)
+    else:
+        plt.errorbar(index, expfactor, xerr=index_error, yerr=expfactor_error, marker=marker, color=color)
+    labels[cl] = True
+
+    if not cl == "unknown": continue
     if dec < -30: continue
-    fid.write('%s %.5f %.5f %.5f %.5f %.5f %.5e %.5e %.5f %.5f\n'%(name.replace(" ","_"), ra, dec, amaj, amin, phi, f, f_err, index, index_error))
 
-    indexes.append(index)
-  
+    if (index > 1.7): continue
+    if (expfactor < 4e-3): continue
+
+    area_of_ellipse = 3.142*amaj*amin
+    if np.isnan(area_of_ellipse): continue
+    if area_of_ellipse > 0.1: continue
+    print(area_of_ellipse)
+
+    fid.write('%s %.5f %.5f %.5f %.5f %.5f %.5e %.5e %.5f %.5f\n'%(name.replace(" ","_"), ra, dec, amaj, amin, phi, expfactor, expfactor_error, index, index_error))
 fid.close()
 
-plotName = os.path.join(opts.outputDir,'fermi_4FGL.pdf')
-plt.figure()
-hist, bin_edges = np.histogram(indexes, bins=20, density=True)
-bins = (bin_edges[1:] + bin_edges[:-1])/2.0
-plt.plot(bins, hist, linestyle='-', drawstyle='steps')
+plt.plot([-0.5,1.7],[4e-3,4e-3],'--',color='cornflowerblue',zorder=100)
+plt.plot([1.7,1.7],[4e-3,1e-1],'--',color='cornflowerblue',zorder=100)
+
+plt.xlim([-0.5, 3.0])
+plt.ylim([1e-4, 1e-1])
+#ax.set_xscale('log')
+ax.set_yscale('log')
+plt.grid()
+plt.xlabel('PLEC Index')
+plt.ylabel('PLEC Expfactor')
+plt.legend()
+#plt.ylabel('Beta')
+
 plt.savefig(plotName)
 plt.close()
 
