@@ -22,7 +22,7 @@ from astroplan import Observer
 from astroplan import FixedTarget
 from astroplan import ObservingBlock
 from astroplan.constraints import TimeConstraint
-from astroplan.constraints import AtNightConstraint, AirmassConstraint
+from astroplan.constraints import AtNightConstraint, AirmassConstraint, MoonSeparationConstraint
 from astroplan.scheduling import Transitioner
 from astroplan.scheduling import SequentialScheduler
 from astroplan.scheduling import PriorityScheduler
@@ -90,6 +90,101 @@ def convert_to_hex(val, delimiter=':', force_sign=False):
         deg_str = '{:02d}'.format(degree * s_factor)
     return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
 
+def load_kevin_objects(filename):
+
+    columns = ['type', 'name', 'ra', 'dec',
+               'period_days', 'period_minutes', 'new']
+
+    observations = astropy.io.ascii.read(filename,format='csv',
+                                         data_start=0,
+                                         names = columns)
+    observations['new'].fill_value = 0
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    cnt = 0
+
+    filt = 1
+    program_id = 8
+    program_pi = "burdge"
+
+    for ii, observation in enumerate(observations.filled()):
+
+        name = observation["name"].replace(" ","-")
+        ra, dec = observation["ra"], observation["dec"]
+        period = observation["period_days"]
+        new = observation["new"]
+ 
+        exposure_time = int(1.1*period*86400)
+
+        if exposure_time < 1800:
+            exposure_time = 1800
+
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        if filt == 1:
+            filt = "FILTER_SLOAN_G"
+        elif filt == 2:
+            filt = "FILTER_SLOAN_R"
+        elif filt == "3":
+            filt = "FILTER_JOHNSON_I"
+
+        if new == 0:
+            comment = "%.0f_%.5f" % (5, period)
+        else:
+            comment = "%.0f_%.5f" % (10, period)
+
+        targets.append([name,
+                        program_id,
+                        name,
+                        ra_hex, dec_hex, 2000, 0, 0,
+                        0, exposure_time,
+                        filt, 9, program_pi,
+                        comment])
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["priority"] = sigs
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    return targets
+
+
 def load_jan_objects(filename):
 
     observations = astropy.io.ascii.read(filename,format='csv')
@@ -121,12 +216,12 @@ def load_jan_objects(filename):
         elif filt == "3":
             filt = "FILTER_JOHNSON_I"
 
-        comment = "%.0f_0" % (1e15 - Gmag)
+        comment = "%.0f_0" % (0)
         targets.append([observation['Shortname'],
                         program_id,
                         observation['Shortname'],
                         ra_hex, dec_hex, 2000, 0, 0,
-                        1e5, exposure_time,
+                        0, exposure_time,
                         filt, 9, program_pi,
                         comment])
 
@@ -197,12 +292,12 @@ def load_transients(filename):
 
         filts = ["FILTER_SLOAN_G", "FILTER_SLOAN_R"]
         for filt in filts:
-            comment = "10000000000000000000_0"
+            comment = "10000000000000000000000_0"
             targets.append(["%s-%s"%(observation["objectID"],filt[-1].lower()),
                             3,
                             "%s-%s"%(observation["objectID"],filt[-1].lower()),
                             ra_hex, dec_hex, 2000, 0, 0,
-                            1e5, 180.0,
+                            0, 180.0,
                             filt, 9, "Coughlin",
                             comment])
             cnt = cnt + 1
@@ -216,7 +311,7 @@ def load_transients(filename):
         comment = row["comment"]
         commentSplit = comment.split("_")
         sig, period = float(commentSplit[0]), float(commentSplit[1])
-        sigs.append(sig)
+        sigs.append(0)
         periods.append(period)
 
         ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
@@ -254,7 +349,7 @@ def load_NEO(filename):
     filenameSplit = filename.split("_")
     names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
     targets = astropy.io.ascii.read(filename,names=names,format='csv')
-    targets['priority'] = 1e15
+    targets['priority'] = 0
     targets['ra_rate'].dtype= np.float64
     targets['dec_rate'].dtype= np.float64
     targets = targets.filled()
@@ -310,7 +405,7 @@ def load_time_sensitive(filename,buffertime=15./60/24):
         commentSplit = comment.split("_")
         mjd_start, mjd_end = float(commentSplit[0]), float(commentSplit[1])
 
-        sig, period = priority, 0
+        sig, period = 0, 0
  
         dt = mjd_start - mjd_now
         #dt_hrs = dt*24.0
@@ -466,7 +561,7 @@ def load_variables(filename):
         comment = row["comment"]
         commentSplit = comment.split("_")
         sig, period = float(commentSplit[0]), float(commentSplit[1])
-        sigs.append(sig)
+        sigs.append(0)
         periods.append(period)
     
         ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
@@ -488,7 +583,7 @@ def load_variables(filename):
     targets["ra"] = ras
     targets["dec"] = decs
     targets["programID"] = 1
-    targets["priority"] = np.array(sigs) + priority    
+    targets["priority"] = np.array(sigs) 
 
     targets.sort("sig")
     targets.reverse()
@@ -521,7 +616,7 @@ def load_GW(filename):
         elif filt == "3":
             filt = "FILTER_JOHNSON_I"
 
-        comment = "10000000000000000000_0"
+        comment = "0_0"
         targets.append([str(observation['request_id']),
                         observation['program_id'],
                         str(observation['request_id']),
@@ -593,11 +688,20 @@ else:
     tend = Time.now() + TimeDelta(12*u.hour)
 
 global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
-    AtNightConstraint.twilight_civil()]
+    AtNightConstraint.twilight_civil(), MoonSeparationConstraint(min = 25.0*u.deg)]
 
 targets_all = []
-programs = ["variables", "GW", "transients", "NEO", "time_sensitive", "jan_objects", "periodic_time_sensitive"]
-for program in programs:
+programs = {"variables": 1,
+            "GW": -100000000,
+            "transients": 2,
+            "NEO": 10,
+            "time_sensitive": 10000,
+            "jan_objects": 20,
+            "periodic_time_sensitive": 30,
+            "kevin_objects": 100000000000}
+
+for program in programs.keys():
+    priority = programs[program]
     object_list_dir = os.path.join(object_lists, program)
     filenames = glob.glob(os.path.join(object_list_dir, '*'))
     for filename in filenames:
@@ -615,10 +719,13 @@ for program in programs:
             targets = load_periodic_time_sensitive(filename)
         elif program == "jan_objects":
             targets = load_jan_objects(filename)
+        elif program == "kevin_objects":
+            targets = load_kevin_objects(filename)
         else:
             print("How do I load objects from the %s program?" % program)
             exit(0)
         if len(targets) == 0: continue
+        targets['priority'] = targets['priority'] + priority 
 
         if not 'redo' in targets.columns:
             targets['redo'] = np.zeros(targets["ra"].shape)
@@ -668,10 +775,13 @@ blocks = []
 read_out = 10.0 * u.s
 nexp = 1
 for ii, target in enumerate(targets):
+    print(target["target"].name)
     #if target["target"].name in observations:
     #    print("%s already observed..." % target["target"].name)
     if not target["redo"]:
-        if target["target"].name in observations: continue
+        if target["target"].name in observations:
+            print('Not redoing %s' % target["target"].name)
+            continue
     else:
         if target["target"].name in observations:
             redo = True
@@ -681,7 +791,11 @@ for ii, target in enumerate(targets):
                 if target["delta_redo"]*86400 > dt:
                     redo = False
                     break
-            if not redo: continue
+            if not redo:
+                print('Not redoing %s' % target["target"].name)
+                continue
+
+    print(target["target"].name, priorities[ii])
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
