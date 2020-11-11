@@ -126,6 +126,9 @@ def makemovie(movieDir, fitsfiles, halfwidth=50, moviemode=1, aper_size=10, sky_
     filename = os.path.join(movieDir,"movie.mpg")
     ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
     os.system(ffmpeg_command)
+
+    rm_command = "rm %s/*.png" % (movieDir)
+    os.system(rm_command)
     
     """
     print ("Genrating the gif file...")

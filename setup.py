@@ -67,6 +67,7 @@ install_requires = [
     'astropy',
     'astroquery',
     'astroplan',
+    'h5py',
     'image_registration',
     'matplotlib',
     'numpy',

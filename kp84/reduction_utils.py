@@ -75,7 +75,13 @@ def mylinear_fit(x, y, yerr, npar = 2):
 
 
 def get_predictioon_xy(ind, xobjs, cs):
+
+    print(len(cs))
+
     nchuck = int(np.ceil(len(cs)/150))
+
+    print(nchuck)
+
     neach = int(np.ceil(len(cs)/nchuck))
     xpredict = np.zeros(len(cs))
     for i in range(nchuck):
@@ -376,7 +382,11 @@ def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
         yobjs = np.array([hdu.header["Y_DAOOBJ"] for hdu in regis2HDU[1:]])
         xinits = np.array([hdu.header["X_GUESS"] for hdu in regis2HDU[1:]])
         yinits = np.array([hdu.header["Y_GUESS"] for hdu in regis2HDU[1:]])
-    
+   
+        if len(ind) == 0:
+            print('No data for %s... continuing.' % fitsfile)
+            return 
+ 
         if refit==True:
             xpredict = get_predictioon_xy(ind, xobjs, cs)
             ypredict = get_predictioon_xy(ind, yobjs, cs)
@@ -495,12 +505,22 @@ def update_wcsstatus(fitsfile, xyframe):
 
 def forcedphotometry_kp(scienceimage, aper_size=10., gain=1.0, zp=0.0,
                         sky_in = 11, sky_out = 30,
-                        xkey = "X_OBJ", ykey = "Y_OBJ"):
+                        xkey = "X_OBJ", ykey = "Y_OBJ",
+                        doDynamicAperture=False,
+                        catfile=None):
     """
     https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/aper.py
     zp: zero point for converting flux (in ADU) to magnitudes
     fwhm: scalar or 1D array of photometry aperture radii in pixel units.
     """
+    if doDynamicAperture:
+        cat = np.loadtxt(catfile)
+        if cat.size:
+            xs, ys, fluxes, fluxerrs, mags, magerrs, ras, decs, cxx, cyy, cxy, cxx_world, cyy_world, cxy_world, A, B, A_world, B_world, theta, theta_world, fwhms, fwhms_world, extnumber = cat[:,0], cat[:,1], cat[:,2], cat[:,3], cat[:,4], cat[:,5], cat[:,6], cat[:,7], cat[:,8], cat[:,9], cat[:,10], cat[:,11], cat[:,12], cat[:,13], cat[:,14], cat[:,15], cat[:,16], cat[:,17], cat[:,18], cat[:,19], cat[:,20], cat[:,21], cat[:,22]
+        else:
+            doDynamicAperture=False
+            print('No objects in catalog... cannot do dynamic aperture.')
+
     hdulist = fits.open(scienceimage)
 
     mjds, mags, magerrs, fluxes, fluxerrs = [], [], [], [], []
@@ -520,9 +540,18 @@ def forcedphotometry_kp(scienceimage, aper_size=10., gain=1.0, zp=0.0,
             continue
         x = header[xkey]
         y = header[ykey]
-        
-        mag, magerr, flux, fluxerr, sky, skyerr, badflag, outstr = \
+
+        if doDynamicAperture:
+            idx = np.where(extnumber == ii)[0]
+            aper_size = np.median(fwhms[idx])
+            sky_in, sky_out = 3*aper_size, 5*aper_size            
+
+            mag, magerr, flux, fluxerr, sky, skyerr, badflag, outstr = \
             pp.aper.aper(image, x, y, phpadu=gain, apr=aper_size, zeropoint=zp, 
+                         skyrad=[sky_in, sky_out], exact=False)
+        else:
+            mag, magerr, flux, fluxerr, sky, skyerr, badflag, outstr = \
+            pp.aper.aper(image, x, y, phpadu=gain, apr=aper_size, zeropoint=zp,
                          skyrad=[sky_in, sky_out], exact=False)
 
         mjds.append(timeobsend.mjd - exptime/2./86400)

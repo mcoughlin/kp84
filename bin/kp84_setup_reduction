@@ -102,7 +102,7 @@ for filename in filenames:
     filenameSplit = filenameSplit[-1].split('_')
     if filenameSplit[0] == "kped":
         #obj = "%s_%s_%s"%(filenameSplit[0],filenameSplit[1],filenameSplit[2])
-        obj = "%s"%(filenameSplit[3]) 
+        obj = "%s_%s"%(filenameSplit[2],filenameSplit[3]) 
     elif filenameSplit[0] == "bias":
         # bias is only taken under mode 0, bias_0_*.fits
         obj = "%s_%s"%(filenameSplit[0], filenameSplit[1])
@@ -124,7 +124,7 @@ for obj in objs:
         folderName_raw = "%s/raw"%(folderName)
         fitsfiles = sorted(glob.glob('%s/%s_*.fit*'%(outputDir,obj)))
     else:   
-        folderName = "%s/%s"%(outputDir,objsplit[0])
+        folderName = "%s/%s"%(outputDir,obj)
         folderName_raw = "%s/raw"%(folderName)
         fitsfiles = sorted(glob.glob('%s/*%s*.fit*'%(outputDir,obj)))
     print (folderName)
@@ -142,7 +142,7 @@ for obj in objs:
     objsplit = obj.split("_")
     if objsplit[0] not in ["flat", "bias", "dark"]:
         print ("%s"%obj)
-        folderName = "%s/%s"%(outputDir,objsplit[0])
+        folderName = "%s/%s"%(outputDir,obj)
         folderName_raw = "%s/raw"%(folderName)
         fzfiles = glob.glob('%s/*.fits.fz'%folderName_raw)
         nfzfile = len(fzfiles)
@@ -283,6 +283,7 @@ for obj in objs:
     if not os.path.isdir(folderName_processing):
         os.makedirs(folderName_processing)
     fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_raw)))
+
     for i in range(len(fitsfiles)):
         flatflag = 1
         fitsfile = fitsfiles[i]
@@ -381,7 +382,7 @@ for obj in objs:
         continue
     print ("Getting finding chart for %s..."%obj)
     if wcsmode!=2:
-        ra, dec, radius = get_ra_dec_radius(obj, opts.object_lists, wcsmode=wcsmode)
+        ra, dec, radius = get_ra_dec_radius(obj.split("_")[1], opts.object_lists, wcsmode=wcsmode)
     folderName = "%s/%s"%(outputDir,obj)
     folderName_processing = "%s/processing"%(folderName)
     folderName_wcs = "%s/wcs"%(folderName)
@@ -524,7 +525,7 @@ for obj in objs:
     objsplit = obj.split("_")
     if objsplit[0] in ["flat", "bias", "dark"]:
         continue
-    ra, dec, radius = get_ra_dec_radius(obj, opts.object_lists)
+    ra, dec, radius = get_ra_dec_radius(obj.split("_")[1], opts.object_lists)
     folderName = "%s/%s"%(outputDir,obj)
     folderName_processing = "%s/processing"%(folderName)
     folderName_registration = "%s/registration"%(folderName)
@@ -534,7 +535,7 @@ for obj in objs:
     if not os.path.isdir(folderName_registration):
         os.makedirs(folderName_registration)
     if wcsmode!=2:
-        ra, dec, radius = get_ra_dec_radius(obj, opts.object_lists, wcsmode=wcsmode)
+        ra, dec, radius = get_ra_dec_radius(obj.split("_")[1], opts.object_lists, wcsmode=wcsmode)
     for i in range(len(fitsfiles)):
         fitsfile = fitsfiles[i]
         filename = fitsfile.split("/")[-1].split(".fit")[0]
@@ -611,7 +612,7 @@ for obj in objs:
     objsplit = obj.split("_")
     if objsplit[0] in ["flat", "bias", "dark"]:
         continue
-    ra, dec, radius = get_ra_dec_radius(obj, opts.object_lists)
+    ra, dec, radius = get_ra_dec_radius(obj.split("_")[1], opts.object_lists)
     folderName = "%s/%s"%(outputDir,obj)
     folderName_processing = "%s/processing"%(folderName)
     folderName_registration = "%s/registration"%(folderName)
@@ -622,8 +623,8 @@ for obj in objs:
     print ("%s: %d wcs successful for %d files!"%(obj, len(wcsfiles), len(fitsfiles)))
     if len(fitsfiles) == len(wcsfiles):
         print ("  write to run_analysis.sh")
-        fid.write("python kp84_photometric_reduction.py --day %s --objNmae %s"%(day, obj)+\
-                  "--doMakeMovie\n")
+        fid.write("python kp84_photometric_reduction --day %s --objName %s "%(day, obj)+\
+                  "--doMakeMovie --doDynamicAperture\n")
     else:
         for i in range(len(fitsfiles)):
             fitsfile = fitsfiles[i]
