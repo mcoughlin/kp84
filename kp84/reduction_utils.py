@@ -21,7 +21,7 @@ import PythonPhot as pp
 from astropy.visualization import SqrtStretch
 from astropy.visualization.mpl_normalize import ImageNormalize
 
-from citizen.photometry_utils import ps1_query
+from .photometry_utils import ps1_query
 
 import matplotlib
 matplotlib.use('Agg')

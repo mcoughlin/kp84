@@ -4,14 +4,13 @@ import operator
 import numpy as np
 import astropy.io.ascii as asci
 from astropy.io import fits
-# sys.path.append("/Users/yuhanyao/Documents/GitHub/kp84/")
-# sys.path.append("/Users/yuhanyao/Documents/GitHub/PythonPhot/")
 from astropy.table import vstack
-sys.path.append("/home/roboao/Michael/kp84/")
-from citizen.reduction_utils import stack_images, register_images
-from citizen.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
-from citizen.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
-from citizen.visualize_utils import makemovie
+
+from kp84.reduction_utils import stack_images, register_images
+from kp84.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
+from kp84.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
+from kp84.visualize_utils import makemovie
+from kp84.scheduler import load_targets
 #from astroML.crossmatch import crossmatch_angular
 
 import matplotlib
@@ -62,6 +61,13 @@ def parse_commandline():
     
     parser.add_option("--moviemode", default=1,type=int, help="if not 0, then make a movie")
     
+    parser.add_option("--KPED_data", default="/Data3/data", type=str)
+    parser.add_option("--setupDir", default = "/Data3/archive_kped/data/reductions/")
+    parser.add_option("--inputDir", default = "../input")
+    parser.add_option("--outputDir", default = "../output")
+
+    parser.add_option("-l","--object_lists",default="/home/roboao/Michael/object_lists")
+
     # Transient options
     #parser.add_option("--doSubtraction",  action="store_true", default=False, help="subtract source extractor background from science image before force photometry")
     #parser.add_option("--subtractionSource", default="ps1", 
@@ -71,35 +77,17 @@ def parse_commandline():
     return opts
 
 
-"""
-day = "20191222"
-objName = "ZTFJ0538+1953"
-setupDir = "/Users/yuhanyao/Desktop/kped_tmp/"
-#xstar = "382*360"
-#ystar = "297*286"
-#xyext = "174*1"
-#xyfile = "110815_ZTFJ11514412_cl_o*121311_ZTFJ11514412_cl_o"
-
-day = "20200105"
-objName = "ZTFJ0538+1953"
-xstar = "267*256*234*191*134"
-ystar = "341*341*343*351*353"
-xyext = "499*86*519*548*84"
-xyfile = "033949_ZTFJ0538+1953_4_cl_o*033949_ZTFJ0538+1953_4_cl_o_0000*054524_ZTFJ0538+1953_5_cl_o*074541_ZTFJ0538+1953_5_cl_o*084543_ZTFJ0538+1953_5_cl_o_0000"
-xoffref = 7.23
-yoffref = -48
-refmag = 14.838	# SDSS DR12
-# ra and dec of ref star: 84.5102826845 19.8772905537
-"""
 # Parse command line
 opts = parse_commandline()
-setupDir = "/Data3/archive_kped/data/reductions/"
+KPED_data = opts.KPED_data
+setupDir = opts.setupDir
 day = opts.day
 objName = opts.objName
+inputDir = opts.inputDir
+outputDir = opts.outputDir
 
-inputDir = "../input"
 dataDir = os.path.join(setupDir, day, objName) # the setup directory of this object
-outputDir = os.path.join("../output", day, objName) # the output directory of this object
+outputDir = os.path.join(outputDir, day, objName) # the output directory of this object
 outputProDir = os.path.join(outputDir, "product") 
 
 doSubtractBackground = opts.doSubtractBackground
@@ -144,33 +132,20 @@ print ("Getting the Coordinate of Object!")
 print ("=================================")
 print ("")
 coofile = os.path.join(outputProDir, "coo.reg")
-observedFile = "%s/observed.dat"%inputDir
-lines = [line.rstrip('\n') for line in open(observedFile)]
-lines = np.array(lines)
-objs = []
-ras = []
-decs = []
-for ii,line in enumerate(lines):
-    lineSplit = list(filter(None,line.split(" ")))
-    objs.append(lineSplit[0])
-    ras.append(float(lineSplit[1]))
-    decs.append(float(lineSplit[2]))
-    
-objs = np.array(objs)
-ras = np.array(ras)
-decs = np.array(decs)
-if objName not in objs:
-    print("%s missing from observed list, please add."%objName)
+
+targets = load_targets(opts.object_lists)
+idx = np.where(objName == targets["objectID"])[0]
+if len(idx) == 0:
+    print("%s missing from observation folder, please add."%objName)
     exit(0)
-else:
-    ind = np.where(objs==objName)[0][0]
-    ra = ras[ind]
-    dec = decs[ind]
+row = targets[idx][0]
+ra, dec = row["ra"], row["dec"]
 print ("%s, ra=%.5f, dec=%.5f"%(objName, ra, dec))
 print ("Saving coordinate to %s"%coofile)
 np.savetxt(coofile, [ra, dec])
 
 fitsfiles = sorted(glob.glob(os.path.join(dataDir,'processing','*.fits'))) 
+print(os.path.join(dataDir,'processing','*.fits'))
 if day == "20191222" and objName == "ZTFJ0538+1953":
     fitsfiles = sorted(glob.glob(os.path.join(dataDir,'processing','*_073459_*0001_proc.fits'))) 
 tmpheader = fits.open(fitsfiles[0])[0].header
