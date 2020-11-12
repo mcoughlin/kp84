@@ -693,7 +693,7 @@ global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
 targets_all = []
 programs = {"variables": 1,
             "GW": -100000000,
-            "transients": 2,
+            "transients": 1e15,
             "NEO": 10,
             "time_sensitive": 10000,
             "jan_objects": 20,
