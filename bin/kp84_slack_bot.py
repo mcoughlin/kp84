@@ -93,7 +93,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     else:
         user, message_ts = 'test', thread_ts
         day = Time.now().isot.split("T")[0].replace("-","")
-        todo, objName = 'reduce', '051317_ZTF-J012747.63+525813.0'
+        todo, objName = 'stack', '055213_ZTF20acozryr-r'
 
     message = []
     message.append("Hi <@{0}>! You are interested in KPED reductions right? Let me get right on that for you.".format(user))
@@ -107,7 +107,14 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
 
     baseoutputDir = os.path.join(setupDir,day)
     if todo == "setup":
-        if not os.path.join(baseoutputDir):
+        if not os.path.isdir(baseoutputDir):
+            message = []
+            message.append("%s setup starting... please be patient." % baseoutputDir)
+            web_client.chat_postMessage(
+                channel=channel_id,
+                text="\n".join(message)
+            )           
+             
             setup_command = "python kp84_setup_reduction --day %s" % day
             os.system(setup_command)
             message = []
@@ -135,68 +142,105 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     )
 
     if todo == "reduce":
-        outputDir = os.path.join(outputDir, day, objName) # the output directory of this object
-        outputProDir = os.path.join(outputDir, "product")
-
-        if not os.path.join(outputProDir):
-            setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objName)
-            os.system(setup_command)
-            message = []
-            message.append("%s reduction complete." % objName)
+        if not objName == "all":
+            objsreduce = [objName]
         else:
-            message = []
-            message.append("%s already exists... please delete if you want it to be re-reduced." % outputDir)
-        web_client.chat_postMessage(
-            channel=channel_id,
-            text="\n".join(message)
-        )
-
-        finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
-        if not os.path.isfile(finalforcefile):
-            message = []
-            message.append("%s reduction failed... likely missed the target. Sorry!" % objName)        
+            objsreduce = objs
+            
+        for objName in objsreduce:
+            baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
+            outputProDir = os.path.join(baseoutputDir, "product")
+    
+            if not os.path.isdir(outputProDir):
+                setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objName)
+                os.system(setup_command)
+                message = []
+                message.append("%s reduction complete." % objName)
+            else:
+                message = []
+                message.append("%s already exists... please delete if you want it to be re-reduced." % baseoutputDir)
             web_client.chat_postMessage(
                 channel=channel_id,
                 text="\n".join(message)
             )
-            return
+    
+            finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
+            if not os.path.isfile(finalforcefile):
+                message = []
+                message.append("%s reduction failed... likely missed the target. Sorry!" % objName)        
+                web_client.chat_postMessage(
+                    channel=channel_id,
+                    text="\n".join(message)
+                )
+                continue
+    
+            web_client.files_upload(
+                file=finalforcefile,
+                filename=finalforcefile.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, finalforcefile.split("/")[-1])
+            )
+    
+            moviefile = os.path.join(outputProDir,"movie.mpg")
+            web_client.files_upload(
+                file=moviefile,
+                filename=moviefile.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
+            )
+    
+            tblforced = ascii.read(finalforcefile)
+            mjd_forced = tblforced['MJD'].data
+            mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
+            flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
+    
+            timetmp = (mjd_forced-mjd_forced[0])*24
+            fig, ax1 = plt.subplots(1, 1, figsize=(9,6))
+            ax1.errorbar(timetmp,mag_forced,magerr_forced,fmt='ko')
+            ax1.set_xlabel('Time [hrs]')
+            ax1.set_ylabel('Magnitude [ab]')
+            idx = np.where(np.isfinite(mag_forced))[0]
+            ymed = np.nanmedian(mag_forced)
+            y10, y90 = np.nanpercentile(mag_forced[idx],10), np.nanpercentile(mag_forced[idx],90)
+            ystd = np.nanmedian(magerr_forced[idx])
+            ymin = y10 - 3*ystd
+            ymax = y90 + 3*ystd
+            ax1.set_ylim([ymin,ymax])
+            ax1.set_xlim(min(timetmp), max(timetmp))
+            ax1.invert_yaxis()
+            upload_fig(fig, user, "flux.png", channel_id)
+            plt.close(fig)
 
-        web_client.files_upload(
-            file=finalforcefile,
-            filename=finalforcefile.split("/")[-1],
-            channels=channel_id,
-            text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, finalforcefile.split("/")[-1])
-        )
+    if todo == "stack":
+        if not objName == "all":
+            objsreduce = [objName]
+        else:
+            objsreduce = objs
 
-        moviefile = os.path.join(outputProDir,"movie.mpg")
-        web_client.files_upload(
-            file=moviefile,
-            filename=moviefile.split("/")[-1],
-            channels=channel_id,
-            text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
-        )
+        for objName in objsreduce:
+            
+            dataDir = os.path.join(setupDir, day, objName)
+            baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
+            outputStackDir = os.path.join(baseoutputDir, "stack")
 
-        tblforced = ascii.read(finalforcefile)
-        mjd_forced = tblforced['MJD'].data
-        mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
-        flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
+            fitsfiles = os.path.join(dataDir,'processing','*.fits')
+            fitsstack = os.path.join(baseoutputDir,"stack.fits")
+            if not os.path.isdir(fitsstack):
+                setup_command = "python kp84_stack --inputfiles %s --outputfile %s" % (fitsfiles, fitsstack)
+                os.system(setup_command)
+                message = []
+                message.append("%s stack complete." % objName)
+                web_client.chat_postMessage(
+                    channel=channel_id,
+                    text="\n".join(message)
+                )
 
-        timetmp = (mjd_forced-mjd_forced[0])*24
-        fig, ax1 = plt.subplots(1, 1, figsize=(9,6))
-        ax1.errorbar(timetmp,mag_forced,magerr_forced,fmt='ko')
-        ax1.set_xlabel('Time [hrs]')
-        ax1.set_ylabel('Magnitude [ab]')
-        idx = np.where(np.isfinite(mag_forced))[0]
-        ymed = np.nanmedian(mag_forced)
-        y10, y90 = np.nanpercentile(mag_forced[idx],10), np.nanpercentile(mag_forced[idx],90)
-        ystd = np.nanmedian(magerr_forced[idx])
-        ymin = y10 - 3*ystd
-        ymax = y90 + 3*ystd
-        ax1.set_ylim([ymin,ymax])
-        ax1.set_xlim(min(timetmp), max(timetmp))
-        ax1.invert_yaxis()
-        upload_fig(fig, user, "flux.png", channel_id)
-        plt.close(fig)
+            web_client.files_upload(
+                file=fitsstack,
+                filename=fitsstack.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, fitsstack.split("/")[-1])
+            )
 
 if __name__ == "__main__":
     import argparse
