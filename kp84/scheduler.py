@@ -559,6 +559,7 @@ def load_variables(filename):
     targets["dec"] = decs
     targets["programID"] = 1
     targets["priority"] = np.array(sigs) + priority    
+    targets["redo"] = 1
 
     targets.sort("sig")
     targets.reverse()
@@ -566,6 +567,50 @@ def load_variables(filename):
 
     targets['ra_rate'].dtype= np.float64
     targets['dec_rate'].dtype= np.float64
+
+    return targets
+
+def load_rgd_objects(filename):
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "ra_rate", "dec_rate", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = astropy.io.ascii.read(filename,format='no_header', delimiter=',',names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        sigs.append(0)
+        periods.append(0)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["epoch"] = 2000
+    targets["priority"] = np.array(sigs)
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+    #targets['requestID'].dtype = np.float64
 
     return targets
 
