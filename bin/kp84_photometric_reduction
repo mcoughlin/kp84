@@ -9,11 +9,11 @@ from astropy.table import vstack
 from kp84.reduction_utils import stack_images, register_images
 from kp84.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
 from kp84.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
-from kp84.visualize_utils import makemovie
+from kp84.visualize_utils import makemovie, make_triplet, plot_triplet
 from kp84.scheduler import load_targets
 #from astroML.crossmatch import crossmatch_angular
 
-import ztfsub.utils
+import ztfsub.utils, ztfsub.surveys
 
 import matplotlib
 matplotlib.use('agg')
@@ -73,10 +73,14 @@ def parse_commandline():
     parser.add_option("--doDynamicAperture",  action="store_true", default=False)
 
     # Transient options
-    #parser.add_option("--doSubtraction",  action="store_true", default=False, help="subtract source extractor background from science image before force photometry")
-    #parser.add_option("--subtractionSource", default="ps1", 
-    #                  choices=('sdss', 'ps1'), help="source of the reference image")
-    
+    parser.add_option("--doTransient",  action="store_true", default=False)
+    parser.add_option("--doSubtraction",  action="store_true", default=False, help="subtract source extractor background from science image before force photometry")
+    parser.add_option("--subtractionDir",default="../subtraction")
+    parser.add_option("--subtractionSource", default="ps1", 
+                      choices=('sdss', 'ps1'), help="source of the reference image")
+    parser.add_option("-t","--tmpDir",default="/tmp")
+    parser.add_option("--image_size",default=200,type=int)   
+ 
     opts, args = parser.parse_args()
     return opts
 
@@ -104,6 +108,9 @@ doSkipRegis = opts.doSkipRegis
 doSkipFindRef = opts.doSkipFindRef
 doStack = opts.doStack
 nimages = opts.nimages
+if opts.doTransient:
+    doStack = True
+    nimages = np.inf
 doOffTune = opts.doOffTune
 doOffRefit = opts.doOffRefit
 
@@ -228,15 +235,73 @@ if nfiles == 0:
 
 # yyao: This call is to be checked
 if doStack:
-    stackDir = os.path.join(path_out_dir,'stack')
+    stackDir = os.path.join(outputDir,'stack')
     if not os.path.isdir(stackDir):
         os.makedirs(stackDir)
     if nimages > 1:
-        stack_images(stackDir,fitsfiles,opts.nimages,doRegistration=doRegistration,
-                     registration_size=registration_size,x=x0,y=y0) 
+        stack_images(stackDir,fitsfiles,nimages,doRegistration=True)
         fitsfiles = sorted(glob.glob(os.path.join(stackDir,'*.fits*')))
     else:
         print("You asked to stack but with --nimages 1... passing.")
+
+    if opts.doSubtraction:
+
+        refDir = os.path.join(outputDir,'refs')
+        if not os.path.isdir(refDir):
+            os.makedirs(refDir)
+
+        refimage = os.path.join(refDir,'ref.fits')
+        if passband == "U":
+            refband = "u"
+        elif passband == "B":
+            refband = "g"
+        elif passband == "V":
+            refband = "r"
+        elif passband == "R":
+            refband = "i"
+        elif passband == "I":
+            refband = "z"
+        elif passband == "g" or passband == "sg":
+            refband = "g"
+        elif passband == "r" or passband == "sr":
+            refband = "r"
+    
+        if not os.path.isfile(refimage):
+            if opts.subtractionSource == "sdss":
+                refgood = ztfsub.surveys.get_sdss(opts,refimage,ra,dec,refband)
+            elif opts.subtractionSource == "ps1":
+                refgood = ztfsub.surveys.get_ps1(opts,refimage,ra,dec,refband)
+            else:
+                print("Only PS1 and SDSS supported.")
+                exit(0)
+        else:
+            refgood = True
+
+        subtractDir='%s/subtract'%(outputDir)
+        if not os.path.isdir(subtractDir):
+            os.makedirs(subtractDir)
+
+        scienceimage = fitsfiles[0]
+        ztfsub.utils.p60sdsssub(opts, scienceimage, refimage, [ra,dec],
+                                distortdeg=1, scthresh1=3.0,
+                                scthresh2=10.0, tu=60000, iu=60000,
+                                ig=2.3, tg=1.0,
+                                stamps=None, nsx=4, nsy=4,
+                                ko=0, bgo=0, radius=10,
+                                tlow=-5000.0, ilow=-5000.0,
+                                sthresh=5.0, ng=None,
+                                aperture=10.0,
+                                defaultsDir=defaultsDir)
+        
+
+        orig = glob.glob(os.path.join(stackDir, '*shift*'))[0]
+        sub = glob.glob(os.path.join(stackDir, '*sub*'))[0]
+        triplet = make_triplet([orig, refimage, sub], ra, dec)
+
+        fig = plot_triplet(triplet, show_fig=False)
+        plotName = '%s/triplet.png'%(outputProDir)
+        plt.savefig(plotName)
+        plt.close(fig)
 
 print ("========================")
 print ("Source Extraction!")

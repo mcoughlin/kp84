@@ -679,7 +679,6 @@ def stack_images(stackDir, fitsfiles, nimages,
         if os.path.isfile(scienceimage): 
             continue
         hdulist = fits.open(fitsfiles[ii])
-
         if cnt == 0:
             if doRegistration:
                 reference = hdulist[1].data
@@ -687,7 +686,7 @@ def stack_images(stackDir, fitsfiles, nimages,
         hdulist2 = []
         cnt = 1
         for jj in range(len(hdulist)):
-            if jj == 0:
+            if jj == 0: 
                 hdulist2.append(hdulist[jj])
             else:
                 if cnt == 1:
@@ -724,7 +723,7 @@ def stack_images(stackDir, fitsfiles, nimages,
                     data = np.append(data,np.expand_dims(hdulist[jj].data,axis=2),axis=2)
                 cnt = cnt + 1
 
-                if cnt == nimages+1:
+                if (cnt == nimages+1) or ((ii == len(fitsfiles)-1) and (jj == len(hdulist)-1)):
                     hdulist_hold.data = np.mean(data,axis=2)
                     hdulist2.append(hdulist_hold)
                     cnt = 1 

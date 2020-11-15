@@ -9,14 +9,71 @@ import os
 import numpy as np
 from astropy.io import fits
 from astropy.time import Time
+from astropy.stats import sigma_clipped_stats, mad_std
 
 import matplotlib
 fs = 14
 matplotlib.rcParams.update({'font.size': fs})
 from matplotlib import pyplot as plt
 matplotlib.use('Agg')
+from matplotlib.colors import LogNorm
 
 from kp84.scheduler import load_targets
+
+
+def make_triplet(fitsfiles, ra, dec):
+    """
+        Feed in alert packet
+    """
+
+    cutout_dict = dict()
+    normalize = True
+    registration_size = 64
+    triplet = np.zeros((registration_size, registration_size, 3))
+
+    for ii, fitsfile in enumerate(fitsfiles):
+        hdul = fits.open(fitsfile)
+        data = hdul[0].data
+
+        if normalize:
+            data /= np.linalg.norm(data)
+
+        shape = data.shape
+        x, y = shape[0]/2, shape[1]/2
+
+        xlow = int(x - registration_size/2)
+        xhigh = int(x + registration_size/2)
+        ylow = int(y - registration_size/2)
+        yhigh = int(y + registration_size/2)        
+
+        triplet[:, :, ii] = data[xlow:xhigh,ylow:yhigh]
+
+    return triplet
+
+def plot_triplet(tr, show_fig=True):
+    fig = plt.figure(figsize=(8, 2), dpi=120)
+    ax1 = fig.add_subplot(131)
+    ax1.axis('off')
+    mean, median, std = sigma_clipped_stats(tr[:, :, 0])
+    ax1.imshow(tr[:, :, 0], vmin = median - 2*std, vmax = median + 3*std)
+    #ax1.imshow(tr[:, :, 0], origin='upper', cmap=plt.cm.bone, norm=LogNorm())
+    ax1.title.set_text('Science')
+    ax2 = fig.add_subplot(132)
+    ax2.axis('off')
+    mean, median, std = sigma_clipped_stats(tr[:, :, 1])
+    ax2.imshow(tr[:, :, 1], vmin = median - 2*std, vmax = median + 3*std)
+    #ax2.imshow(tr[:, :, 1], origin='upper', cmap=plt.cm.bone, norm=LogNorm())
+    ax2.title.set_text('Reference')
+    ax3 = fig.add_subplot(133)
+    ax3.axis('off')
+    mean, median, std = sigma_clipped_stats(tr[:, :, 2])
+    ax3.imshow(tr[:, :, 2], vmin = median - 2*std, vmax = median + 3*std)
+    #ax3.imshow(tr[:, :, 2], origin='upper', cmap=plt.cm.bone)
+    ax3.title.set_text('Difference')
+
+    if show_fig:
+        plt.show()
+    return fig
 
 def get_ra_dec_radius(objName, object_lists, wcsmode=1):
     if wcsmode == 1:

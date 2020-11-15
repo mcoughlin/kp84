@@ -21,6 +21,8 @@ from astropy.time import Time
 import traceback
 import time
 
+import kp84.visualize_utils
+
 slack_token = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".slack_access_token.txt")
 with open(slack_token, "r") as f:
     access_token = f.read()
@@ -72,6 +74,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             return
    
         doReduce, day = False, Time.now().isot.split("T")[0].replace("-","")
+        objType = 'variable'
         for mess in payload["messages"]:
             message_ts = float(mess["ts"])
             print(mess['text'])
@@ -87,13 +90,19 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 elif len(txtsplit) == 3:
                     todo = txtsplit[1]
                     objName = txtsplit[2]
+                elif len(txtsplit) == 4:
+                    todo = txtsplit[1]
+                    objName = txtsplit[2]
+                    objType = txtsplit[3]
             user = mess['user']
         if not doReduce:
             return
     else:
         user, message_ts = 'test', thread_ts
         day = Time.now().isot.split("T")[0].replace("-","")
-        todo, objName = 'stack', '055213_ZTF20acozryr-r'
+        day = "20201114"
+        todo, objName = 'reduce', '063528_ZTF20acozryr-r'
+        objType = 'transient'
 
     message = []
     message.append("Hi <@{0}>! You are interested in KPED reductions right? Let me get right on that for you.".format(user))
@@ -150,9 +159,21 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
         for objName in objsreduce:
             baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
             outputProDir = os.path.join(baseoutputDir, "product")
-    
+   
             if not os.path.isdir(outputProDir):
-                setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objName)
+                if objType == "variable":
+                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objName)
+                elif objType == "transient":
+                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --doTransient --doSubtraction" % (day, objName)
+                else:
+                    message = []
+                    message.append("Sorry, %s transient type unknown. Please try variable or transient." % objType)
+                    web_client.chat_postMessage(
+                        channel=channel_id,
+                        text="\n".join(message)
+                    )
+                    return
+
                 os.system(setup_command)
                 message = []
                 message.append("%s reduction complete." % objName)
@@ -163,7 +184,16 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 channel=channel_id,
                 text="\n".join(message)
             )
-    
+   
+            if objType == "transient":
+                filename = '%s/triplet.png'%(outputProDir)
+                web_client.files_upload(
+                    file=filename,
+                    filename=filename.split('/')[-1],
+                    channels=channel_id,
+                    text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, filename.split('/')[-1])
+                )
+
             finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
             if not os.path.isfile(finalforcefile):
                 message = []
@@ -206,7 +236,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             ymin = y10 - 3*ystd
             ymax = y90 + 3*ystd
             ax1.set_ylim([ymin,ymax])
-            ax1.set_xlim(min(timetmp), max(timetmp))
+            ax1.set_xlim([min(timetmp), max(timetmp)])
             ax1.invert_yaxis()
             upload_fig(fig, user, "flux.png", channel_id)
             plt.close(fig)
