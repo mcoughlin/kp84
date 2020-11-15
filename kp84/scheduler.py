@@ -150,6 +150,7 @@ def load_kevin_objects(filename):
     targets["dec"] = decs
     targets["programID"] = 1
     targets["priority"] = sigs
+    targets["redo"] = 1
 
     targets.sort("sig")
     targets.reverse()
@@ -692,14 +693,16 @@ def load_targets(object_lists):
     targets_all = []
     programs = {"variables": 1,
                 "GW": -100000000,
-                "transients": 2,
+                "transients": 1e15,
                 "NEO": 10,
                 "time_sensitive": 10000,
                 "jan_objects": 20,
+                "rgd_objects": 1e14,
                 "periodic_time_sensitive": 30,
-                "kevin_objects": 100000000000}
+                "kevin_objects": 1e15}
 
     for program in programs:
+        priority = programs[program]
         object_list_dir = os.path.join(object_lists, program)
         filenames = glob.glob(os.path.join(object_list_dir, '*'))
         for filename in filenames:
@@ -719,10 +722,13 @@ def load_targets(object_lists):
                 targets = load_jan_objects(filename)
             elif program == "kevin_objects":
                 targets = load_kevin_objects(filename)
+            elif program == "rgd_objects":
+                targets = load_rgd_objects(filename)
             else:
                 print("How do I load objects from the %s program?" % program)
                 exit(0)
             if len(targets) == 0: continue
+            targets['priority'] = targets['priority'] + priority 
     
             if not 'redo' in targets.columns:
                 targets['redo'] = np.zeros(targets["ra"].shape)

@@ -30,7 +30,7 @@ from astroplan.scheduling import Schedule
 from astroplan.plots import plot_schedule_airmass
 from astroplan import observability_table
 
-from kp84.scheduler import *
+from kp84.scheduler import load_targets, load_observations
 
 def parse_commandline():
     """
@@ -79,55 +79,8 @@ else:
 global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
     AtNightConstraint.twilight_civil(), MoonSeparationConstraint(min = 25.0*u.deg)]
 
-targets_all = []
-programs = {"variables": 1,
-            "GW": -100000000,
-            "transients": 1e15,
-            "NEO": 10,
-            "time_sensitive": 10000,
-            "jan_objects": 20,
-            "rgd_objects": 1000000000000,
-            "periodic_time_sensitive": 30,
-            "kevin_objects": 100000000000}
+targets = load_targets(opts.object_lists)
 
-for program in programs.keys():
-    priority = programs[program]
-    object_list_dir = os.path.join(object_lists, program)
-    filenames = glob.glob(os.path.join(object_list_dir, '*'))
-    for filename in filenames:
-        if program == "variables":
-            targets = load_variables(filename)
-        elif program == "GW":
-            targets = load_GW(filename) 
-        elif program == "transients":
-            targets = load_transients(filename)
-        elif program == "NEO":
-            targets = load_NEO(filename)
-        elif program == "time_sensitive":
-            targets = load_time_sensitive(filename)
-        elif program == "periodic_time_sensitive":
-            targets = load_periodic_time_sensitive(filename)
-        elif program == "jan_objects":
-            targets = load_jan_objects(filename)
-        elif program == "kevin_objects":
-            targets = load_kevin_objects(filename)
-        elif program == "rgd_objects":
-            targets = load_rgd_objects(filename)
-        else:
-            print("How do I load objects from the %s program?" % program)
-            exit(0)
-        if len(targets) == 0: continue
-        targets['priority'] = targets['priority'] + priority 
-
-        if not 'redo' in targets.columns:
-            targets['redo'] = np.zeros(targets["ra"].shape)
-
-        if not 'delta_redo' in targets.columns:
-            targets['delta_redo'] = np.zeros(targets["ra"].shape)
-
-        targets_all.append(targets)
-
-targets = vstack(targets_all)
 observations = {}
 
 filenames = glob.glob(os.path.join(opts.requests, '*'))
@@ -218,7 +171,7 @@ prior_scheduler(blocks, priority_schedule)
 cnt = 0 
 
 try:
-    tab = priority_schedule.to_table()
+    tab = priority_schedule.to_table(show_transitions=False, show_unused=False)
 except:
     print('There are probably no observable targets... please check.')
     exit(0)
