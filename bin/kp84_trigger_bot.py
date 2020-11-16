@@ -21,6 +21,8 @@ from astropy.time import Time
 import traceback
 import time
 
+from kp84.scheduler import convert_to_hex
+
 slack_token = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".slack_access_token.txt")
 with open(slack_token, "r") as f:
     access_token = f.read()
@@ -88,25 +90,36 @@ def run_triggering(channel_id, outfile="", object_lists="", requests="",
                     todo = txtsplit[1]
                 elif len(txtsplit) == 3:
                     todo = txtsplit[1]
-                    objName = txtsplit[2]
-                elif len(txtsplit) == 6:
+                    objType = txtsplit[2]
+                elif len(txtsplit) == 4:
                     todo = txtsplit[1]
-                    objName = txtsplit[2]
-                    ra = float(txtsplit[3])
-                    dec = float(txtsplit[4])
-                    priority = float(txtsplit[5])
+                    objType = txtsplit[2]
+                    objName = txtsplit[3]
+                elif len(txtsplit) > 4:
+                    todo = txtsplit[1]
+                    objType = txtsplit[2]
+                    if objType == "transient":
+                        objName = txtsplit[3]
+                        ra = float(txtsplit[4])
+                        dec = float(txtsplit[5])
+                        priority = float(txtsplit[6])
+                    elif objType == "variable":
+                        ra = float(txtsplit[3])
+                        dec = float(txtsplit[4])
+                        exposure_time = float(txtsplit[5])
+                        filt = txtsplit[6]
+                        priority = float(txtsplit[7])
             user = mess['user']
         if not doTrigger:
             return
     else:
         user, message_ts = 'test', thread_ts
-        todo, objName = 'trigger', 'ZTF20acozryr'
+        todo, objType, objName = 'trigger', 'transient', 'ZTF20acozryr'
         ra, dec, priority = 42.1846, 12.1372, 10
 
     message = []
     message.append("Hi <@{0}>! You are interested in KPED triggering right? Let me get right on that for you.".format(user))
     message.append('Received request %.1f seconds ago...' % (np.abs(message_ts - thread_ts)))
-    message.append("We are looking at analyzing %s for you" % objName)
 
     web_client.chat_postMessage(
         channel=channel_id,
@@ -114,18 +127,36 @@ def run_triggering(channel_id, outfile="", object_lists="", requests="",
     )
 
     if todo == "trigger":
+        if objType == "variable":
+            ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=''), convert_to_hex(dec,delimiter='')
+
+            if dec_hex[0] == "-":
+                objName = "ZTFJ%s%s"%(ra_hex[:4],dec_hex[:5])
+            else:
+                objName = "ZTFJ%s%s"%(ra_hex[:4],dec_hex[:4])             
+
         message = []
         message.append("We are looking at triggering %s for you" % objName)
 
-        filenames = glob.glob(os.path.join(object_lists,'transients','%s_*' % objName))
+        if objType == "transient":
+            filenames = glob.glob(os.path.join(object_lists,'transients','%s_*' % objName))
+        elif objType == "variable":
+            filenames = glob.glob(os.path.join(object_lists,'variables','%s_*' % objName))
+
         if len(filenames) > 0:
             message.append('Sorry... %s already has a pending observation.' % objName)
         else:
-            filename = os.path.join(object_lists,'transients','%s_%d.dat' % (objName, Time.now().gps))
-            fid = open(filename, 'w')
-            fid.write('%s %.5f %.5f %.5f\n' % (objName, ra, dec, priority))
-            fid.close()
-    
+            if objType == "transient":
+                filename = os.path.join(object_lists,'transients','%s_%d.dat' % (objName, Time.now().gps))
+                fid = open(filename, 'w')
+                fid.write('%s %.5f %.5f %.5f\n' % (objName, ra, dec, priority))
+                fid.close()
+            elif objType == "variable":
+                filename = os.path.join(object_lists,'variables','%s_%d.dat' % (objName, Time.now().gps))
+                fid = open(filename, 'w')
+                fid.write('%s %.5f %.5f %.5f %s %.5f\n' % (objName, ra, dec, exposure_time, filt, priority))
+                fid.close()    
+
             message.append("%s triggered..." % objName)
         web_client.chat_postMessage(
             channel=channel_id,
@@ -147,8 +178,17 @@ def run_triggering(channel_id, outfile="", object_lists="", requests="",
             text="\n".join(message)
         )
 
+    elif todo == "help":
+        message = []
+        message.append("For transients, example: kped trigger transient 2020zck 2.255491 -8.5985222 10")
+        message.append("For variables, example: kped trigger variable 136.7528733 -9.6722976 1800 g 10")
+        web_client.chat_postMessage(
+            channel=channel_id,
+            text="\n".join(message)
+        )
+
     # check current observation
-    scheduler_command = "python kp84_scheduler"
+    scheduler_command = "python kp84_scheduler --doPlots"
     os.system(scheduler_command)
 
     lines = [line.rstrip('\n') for line in open(outfile)]
@@ -159,6 +199,16 @@ def run_triggering(channel_id, outfile="", object_lists="", requests="",
     web_client.chat_postMessage(
         channel=channel_id,
         text="\n".join(message)
+    )
+
+
+    filename = '%s/output_observing/scheduler.png'%("/".join(outfile.split("/")[:-1]))
+    print(filename)
+    web_client.files_upload(
+        file=filename,
+        filename=filename.split('/')[-1],
+        channels=channel_id,
+        text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, filename.split('/')[-1])
     )
 
 if __name__ == "__main__":

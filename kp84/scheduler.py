@@ -151,6 +151,7 @@ def load_kevin_objects(filename):
     targets["programID"] = 1
     targets["priority"] = sigs
     targets["redo"] = 1
+    targets["delta_redo"] = 7
 
     targets.sort("sig")
     targets.reverse()
@@ -252,6 +253,76 @@ def load_observations(filename):
         data[lineSplit[0]] = lineSplit[1]
 
     return data
+
+def load_variables(filename):
+
+    names = ["objectID", "ra", "dec", "exposure_time", "filter", "priority"]
+    observations = astropy.io.ascii.read(filename,names=names)
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    cnt = 0
+    for ii, observation in enumerate(observations):
+
+        ra, dec = observation["ra"], observation["dec"]
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        if observation["filter"] == "g":
+            filts = ["FILTER_SLOAN_G"] 
+        elif observation["filter"] == "r":
+            filts = ["FILTER_SLOAN_R"]
+        for filt in filts:
+            comment = "10000000000000000000_0"
+            targets.append(["%s-%s"%(observation["objectID"],filt[-1].lower()),
+                            3,
+                            "%s-%s"%(observation["objectID"],filt[-1].lower()),
+                            ra_hex, dec_hex, 2000, 0, 0,
+                            1e5, observation["exposure_time"],
+                            filt, 9, "Coughlin",
+                            comment])
+            cnt = cnt + 1
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["priority"] = sigs
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    return targets
 
 def load_transients(filename):
 
@@ -515,7 +586,7 @@ def JD2HJD(JD,ra,dec):
 
     return HJD
 
-def load_variables(filename):
+def load_backup(filename):
 
     filenameSplit = filename.split("_")
     priority = float(filenameSplit[-1].replace(".dat",""))
@@ -691,7 +762,8 @@ def load_GW(filename):
 def load_targets(object_lists):
 
     targets_all = []
-    programs = {"variables": 1,
+    programs = {"variables": 1e14,
+                "backup": 1,
                 "GW": -100000000,
                 "transients": 1e15,
                 "NEO": 10,
@@ -708,6 +780,8 @@ def load_targets(object_lists):
         for filename in filenames:
             if program == "variables":
                 targets = load_variables(filename)
+            elif program == "backup":
+                targets = load_backup(filename)
             elif program == "GW":
                 targets = load_GW(filename) 
             elif program == "transients":

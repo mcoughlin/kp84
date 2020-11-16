@@ -253,6 +253,6 @@ if opts.doPlots:
     plot_schedule_airmass(priority_schedule,show_night=True)
     plt.legend(loc = "upper right")
     #plt.show()
-    plt.savefig(os.path.join(outputDir,'scheduler.pdf'))
+    plt.savefig(os.path.join(outputDir,'scheduler.png'))
     plt.close()
 
