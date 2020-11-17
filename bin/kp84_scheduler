@@ -174,7 +174,7 @@ try:
     tab = priority_schedule.to_table(show_transitions=False, show_unused=False)
 except:
     print('There are probably no observable targets... please check.')
-    exit(0)
+    exit(2)
 
 fid = open(outfile,'w')
 for schedule in tab:
