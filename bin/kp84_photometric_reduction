@@ -9,6 +9,7 @@ from astropy.table import vstack
 from kp84.reduction_utils import stack_images, register_images
 from kp84.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
 from kp84.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
+from kp84.visualize_utils import get_ra_dec_radius
 from kp84.visualize_utils import makemovie, make_triplet, plot_triplet
 from kp84.scheduler import load_targets
 #from astroML.crossmatch import crossmatch_angular
@@ -155,7 +156,7 @@ if len(idx) == 0:
     print("%s missing from observation folder, please add."%objName.split("_")[1])
     exit(0)
 row = targets[idx][0]
-ra, dec = row["ra"], row["dec"]
+ra, dec, filt = row["ra"], row["dec"], row["filter"]
 print ("%s, ra=%.5f, dec=%.5f"%(objName.split("_")[1], ra, dec))
 print ("Saving coordinate to %s"%coofile)
 np.savetxt(coofile, [ra, dec])
@@ -165,7 +166,17 @@ print(os.path.join(dataDir,'processing','*.fits'))
 if day == "20191222" and objName == "ZTFJ0538+1953":
     fitsfiles = sorted(glob.glob(os.path.join(dataDir,'processing','*_073459_*0001_proc.fits'))) 
 tmpheader = fits.open(fitsfiles[0])[0].header
-tmpfilter = tmpheader["FILTER"]
+try:
+    tmpfilter = tmpheader["FILTER"]
+except:
+    if ("-r" in objName) or (filt == "FILTER_SLOAN_R"):
+        tmpfilter = "SDSS r"
+    elif ("-g" in objName) or (filt == "FILTER_SLOAN_G"):
+        tmpfilter = "SDSS g"
+    else:
+        print('Sigh... missing filter data. Assuming SDSS r for now...')
+        tmpfilter = 'SDSS r'
+
 passband = filter2filtstr(tmpfilter)
 bandfile = os.path.join(outputProDir, "filter.txt")
 np.savetxt(bandfile, [passband], fmt="%s")
@@ -243,6 +254,16 @@ if doStack:
         fitsfiles = sorted(glob.glob(os.path.join(stackDir,'*.fits*')))
     else:
         print("You asked to stack but with --nimages 1... passing.")
+
+    ra, dec, radius = get_ra_dec_radius(objName.split("_")[1], opts.object_lists, wcsmode=1)
+    wcs_command = "solve-field %s "%fitsfiles[0]+\
+                  "--scale-units arcminwidth --scale-low 2 --scale-high 8 "+\
+                  "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
+                  "--overwrite --no-plots --temp-axy --ext %d" %(1)
+    os.system(wcs_command)
+    if os.path.isfile(fitsfiles[0].replace(".fits",".new")):
+        mv_command = "mv %s %s" % (fitsfiles[0].replace(".fits",".new"), fitsfiles[0])
+        os.system(mv_command)
 
     if opts.doSubtraction:
 
@@ -342,7 +363,8 @@ if not doSkipFindRef:
         cat = np.loadtxt(catfile)
         if not cat.size: 
             continue
-        
+       
+        print(fitsfile, cat, objName) 
         sciHDU = get_reference_pos(fitsfile, cat, objName, zp=0, passband=passband, 
                                    xoff=xoffref, yoff=yoffref, refmag=refmag)
         sciHDU.writeto(fitsfile, overwrite=True)
@@ -552,7 +574,7 @@ if doSubtractBackground:
     plotsubName = os.path.join(outputProDir,'subtracted_mag_forced.pdf')
     save_forced_tb(tblsubforced, finalsubforcefile, plotsubName)
 
-if doMakeMovie:
+if doMakeMovie and not doStack:
     print ("")
     print ("==================")
     print ("Making the Movie!")

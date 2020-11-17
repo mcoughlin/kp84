@@ -234,8 +234,11 @@ obj = "bias_0"
 if obj in objs:
     print ("Creating Master Bias file...")
     biasFolder = "%s/bias/%s/raw"%(outputDir, obj) # bias frames subdirectory
-    hdul = get_median_frame_from_files(biasFolder)
-    hdul.writeto("%s/bias/%s/bias.fits"%(outputDir, obj), overwrite=True)
+    biasFile = "%s/bias/%s/bias.fits"%(outputDir, obj)
+
+    if not os.path.isfile(biasFile):
+        hdul = get_median_frame_from_files(biasFolder)
+        hdul.writeto(biasFile, overwrite=True)
     print ("  bias.fits")
     # bias0frame = fits.open("%s/bias/%s/bias.fits"%(outputDir, "bias_0"))[0].data
 else:
@@ -248,11 +251,14 @@ if calibflag==1:
     for obj in objs:
         if obj[:4]=="dark":
             darkFolder = "%s/dark/%s/raw"%(outputDir, obj) # dark frames subdirectory
+            darkFile = "%s/dark/%s/%s.fits"%(outputDir, obj, obj)
+            if os.path.isfile(darkFile): continue
+
             if obj=="dark_0":
                 hdul = get_median_frame_from_files(darkFolder)
             else:
                 hdul = get_median_frame_from_cubes(darkFolder)
-            hdul.writeto("%s/dark/%s/%s.fits"%(outputDir, obj, obj), overwrite=True)
+            hdul.writeto(darkFile, overwrite=True)
             print ("  %s.fits"%obj)
     dark0frame = fits.open("%s/dark/%s/%s.fits"%(outputDir, "dark_0", "dark_0"))[0].data
 else:
@@ -263,9 +269,13 @@ if calibflag==1:
     for obj in objs:
         if obj[:4]=="flat":
             flatFolder = "%s/flat/%s/raw"%(outputDir, obj) # flat frames subdirectory
-            hdul = get_master_flat(flatFolder, dark0frame)
-            hdul.writeto("%s/flat/%s/%s.fits"%(outputDir, obj, obj), overwrite=True)
+            flatFile = "%s/flat/%s/%s.fits"%(outputDir, obj, obj)
+            if not os.path.isfile(flatFile):
+                hdul = get_master_flat(flatFolder, dark0frame)
+                hdul.writeto(flatFile, overwrite=True)
             print ("  %s.fits"%obj)
+
+targets = load_targets(opts.object_lists)
 
 print ("")
 print ("===========================")
@@ -277,6 +287,14 @@ for obj in objs:
     if objsplit[0] in ["flat", "bias", "dark"]:
         continue
     print ("%s"%obj)
+
+    idx = np.where(obj.split("_")[1] == targets["objectID"])[0]
+    if len(idx) == 0:
+        print("%s missing from observation folder, please add."%objName.split("_")[1])
+        exit(0)
+    row = targets[idx][0]
+    ra, dec, filt = row["ra"], row["dec"], row["filter"]
+
     folderName = "%s/%s"%(outputDir,obj)
     folderName_raw = "%s/raw"%(folderName)
     folderName_processing = "%s/processing"%(folderName)
@@ -300,7 +318,18 @@ for obj in objs:
             os.system(rm_command)
             continue
         primaryHeader = HDUList[0].header
-        myfilter = primaryHeader["FILTER"]
+
+        try:
+            myfilter = tmpheader["FILTER"]
+        except:
+            if ("-r" in obj) or (filt == "FILTER_SLOAN_R"):
+                myfilter = "SDSS r"
+            elif ("-g" in obj) or (filt == "FILTER_SLOAN_G"):
+                myfilter = "SDSS g"
+            else:
+                print('Sigh... missing filter data. Assuming SDSS r for now...')
+                myfilter = 'SDSS r'
+
         filtstr = filter2filtstr(myfilter)
         nxdata = HDUList[1].data.shape[0]
         modenum = primaryHeader["MODE_NUM"]
@@ -418,7 +447,7 @@ for obj in objs:
                     fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
                               "--wcs %s/%s_%s_wcs.fits --private\n"%(folderName_wcs, filename, framenum))
                 else:
-                    fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
+                   fid.write("timeout 180s python kp84_get_wcs.py --upload %s "%upfile+\
                               "--ra %.5f --dec %.5f --radius %.4f "%(ra, dec, radius)+\
                               "--wcs %s/%s_%s_wcs.fits --private\n"%(folderName_wcs, filename, framenum))
                 """

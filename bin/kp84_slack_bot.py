@@ -74,7 +74,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             return
    
         doReduce, day = False, Time.now().isot.split("T")[0].replace("-","")
-        objType = 'variable'
+        objType, objName = 'variable', 'tmp'
         for mess in payload["messages"]:
             message_ts = float(mess["ts"])
             print(mess['text'])
@@ -100,9 +100,14 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     else:
         user, message_ts = 'test', thread_ts
         day = Time.now().isot.split("T")[0].replace("-","")
-        day = "20201114"
+        day = "20201117"
         todo, objName = 'reduce', '063528_ZTF20acozryr-r'
         objType = 'transient'
+        day = "20201117"
+        todo, objName = 'reduce', 'all'
+        todo, objName = 'setup', 'redo'
+
+    
 
     message = []
     message.append("Hi <@{0}>! You are interested in KPED reductions right? Let me get right on that for you.".format(user))
@@ -116,6 +121,10 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
 
     baseoutputDir = os.path.join(setupDir,day)
     if todo == "setup":
+        if objName == "redo":
+            rm_command = "rm -rf %s" %baseoutputDir
+            os.system(rm_command)
+
         if not os.path.isdir(baseoutputDir):
             message = []
             message.append("%s setup starting... please be patient." % baseoutputDir)
@@ -155,16 +164,23 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             objsreduce = [objName]
         else:
             objsreduce = objs
-            
-        for objName in objsreduce:
-            baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
+                        
+
+        for objNameTmp in objsreduce:
+     
+            if ("rgd" in objNameTmp) or ("-r" in objNameTmp) or ("-g" in objNameTmp):
+                objType = "transient"
+            else:
+                objType = "variable"
+       
+            baseoutputDir = os.path.join(outputDir, day, objNameTmp) # the output directory of this object
             outputProDir = os.path.join(baseoutputDir, "product")
    
             if not os.path.isdir(outputProDir):
                 if objType == "variable":
-                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objName)
+                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objNameTmp)
                 elif objType == "transient":
-                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --doTransient --doSubtraction" % (day, objName)
+                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --doTransient --doSubtraction" % (day, objNameTmp)
                 else:
                     message = []
                     message.append("Sorry, %s transient type unknown. Please try variable or transient." % objType)
@@ -172,11 +188,11 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                         channel=channel_id,
                         text="\n".join(message)
                     )
-                    return
+                    continue
 
                 os.system(setup_command)
                 message = []
-                message.append("%s reduction complete." % objName)
+                message.append("%s reduction complete." % objNameTmp)
             else:
                 message = []
                 message.append("%s already exists... please delete if you want it to be re-reduced." % baseoutputDir)
@@ -185,19 +201,10 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 text="\n".join(message)
             )
    
-            if objType == "transient":
-                filename = '%s/triplet.png'%(outputProDir)
-                web_client.files_upload(
-                    file=filename,
-                    filename=filename.split('/')[-1],
-                    channels=channel_id,
-                    text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, filename.split('/')[-1])
-                )
-
             finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
             if not os.path.isfile(finalforcefile):
                 message = []
-                message.append("%s reduction failed... likely missed the target. Sorry!" % objName)        
+                message.append("%s reduction failed... likely missed the target. Sorry!" % objNameTmp)        
                 web_client.chat_postMessage(
                     channel=channel_id,
                     text="\n".join(message)
@@ -212,34 +219,45 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             )
     
             moviefile = os.path.join(outputProDir,"movie.mpg")
-            web_client.files_upload(
-                file=moviefile,
-                filename=moviefile.split("/")[-1],
-                channels=channel_id,
-                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
-            )
+            if os.path.isfile(moviefile):
+                web_client.files_upload(
+                    file=moviefile,
+                    filename=moviefile.split("/")[-1],
+                    channels=channel_id,
+                    text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
+                )
     
             tblforced = ascii.read(finalforcefile)
             mjd_forced = tblforced['MJD'].data
             mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
             flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
-    
-            timetmp = (mjd_forced-mjd_forced[0])*24
-            fig, ax1 = plt.subplots(1, 1, figsize=(9,6))
-            ax1.errorbar(timetmp,mag_forced,magerr_forced,fmt='ko')
-            ax1.set_xlabel('Time [hrs]')
-            ax1.set_ylabel('Magnitude [ab]')
             idx = np.where(np.isfinite(mag_forced))[0]
-            ymed = np.nanmedian(mag_forced)
-            y10, y90 = np.nanpercentile(mag_forced[idx],10), np.nanpercentile(mag_forced[idx],90)
-            ystd = np.nanmedian(magerr_forced[idx])
-            ymin = y10 - 3*ystd
-            ymax = y90 + 3*ystd
-            ax1.set_ylim([ymin,ymax])
-            ax1.set_xlim([min(timetmp), max(timetmp)])
-            ax1.invert_yaxis()
-            upload_fig(fig, user, "flux.png", channel_id)
-            plt.close(fig)
+            if not len(idx) == 0:    
+                timetmp = (mjd_forced-mjd_forced[0])*24
+                fig, ax1 = plt.subplots(1, 1, figsize=(9,6))
+                ax1.errorbar(timetmp,mag_forced,magerr_forced,fmt='ko')
+                ax1.set_xlabel('Time [hrs]')
+                ax1.set_ylabel('Magnitude [ab]')
+                idx = np.where(np.isfinite(mag_forced))[0]
+                ymed = np.nanmedian(mag_forced)
+                y10, y90 = np.nanpercentile(mag_forced[idx],10), np.nanpercentile(mag_forced[idx],90)
+                ystd = np.nanmedian(magerr_forced[idx])
+                ymin = y10 - 3*ystd
+                ymax = y90 + 3*ystd
+                ax1.set_ylim([ymin,ymax])
+                ax1.set_xlim([min(timetmp), max(timetmp)])
+                ax1.invert_yaxis()
+                upload_fig(fig, user, "flux.png", channel_id)
+                plt.close(fig)
+
+            if objType == "transient":
+                filename = '%s/triplet.png'%(outputProDir)
+                web_client.files_upload(
+                    file=filename,
+                    filename=filename.split('/')[-1],
+                    channels=channel_id,
+                    text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, filename.split('/')[-1])
+                )
 
     if todo == "stack":
         if not objName == "all":
@@ -298,12 +316,12 @@ if __name__ == "__main__":
         exit(0)
 
     while True:
-        try:
-            print('Looking for some reducing to do!')
-            run_reductions(channel, 
+        #try:
+        print('Looking for some reducing to do!')
+        run_reductions(channel, 
                            no_plots=cfg.noplots,
                            setupDir=cfg.setupDir,
                            outputDir=cfg.outputDir)
-        except:
-            pass
+        #except:
+        #    pass
         time.sleep(15)

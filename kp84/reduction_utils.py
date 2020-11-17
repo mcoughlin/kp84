@@ -31,9 +31,10 @@ matplotlib.rcParams.update({'font.size': fs})
 
 
 def filter2filtstr(myfilter):
-    if myfilter == "SDSS g'":
+    myfilter = myfilter.replace("'","")
+    if myfilter == "SDSS g":
         filtstr = "sg"
-    elif myfilter == "SDSS r'":
+    elif myfilter == "SDSS r":
         filtstr = "sr"
     else:
         print ("unknown filter! modify your code")
@@ -247,7 +248,12 @@ def get_reference_pos(scienceimage, cat, objName, zp=0, passband='sg', xoff=0, y
         ra = sciHDU[0].header["RA_OBJ"]
         dec = sciHDU[0].header["DEC_OBJ"]
         wcsauto = sciHDU[0].header["WCSAUTO"]
-        framenum = sciHDU[0].header["WCSFRAME"]
+
+        if "stack" in scienceimage:
+            framenum = 1
+        else:
+            framenum = sciHDU[0].header["WCSFRAME"]
+
         if wcsauto==1:
             w0 = WCS(sciHDU[framenum].header)
             x0, y0 = w0.wcs_world2pix(ra, dec, 1)
@@ -486,7 +492,7 @@ def get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True):
     hdus[0].header["WCSFRAME"] = (xyframe, "The frame extension used to find astrometry.")
     hdus[0].header["WCSAUTO"] = (1, "Indicate whether wcs is automatically found by astrometry.net")
     header = hdus[xyframe].header
-    
+   
     keys = ["CTYPE1", "CTYPE2", "EQUINOX", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2",
             "CUNIT1", "CUNIT2", "CD1_1", "CD1_2", "CD2_1", "CD2_2"]  
     for key in keys:
