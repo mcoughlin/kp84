@@ -9,9 +9,11 @@ import matplotlib.pyplot as plt
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.table import Table
+from astropy.table import Table, vstack
 
 from gatspy.periodic import LombScargle, LombScargleFast
+
+from ztfperiodic.periodsearch import find_periods
 
 def parse_commandline():
     """
@@ -19,13 +21,8 @@ def parse_commandline():
     """
     parser = optparse.OptionParser()
 
-    parser.add_option("--dataDir",default="../data")
+    parser.add_option("--filenames",default="../data/ZTFJ04355522/20201126-r.dat,../data/ZTFJ04355522/20201202-r.dat,../data/ZTFJ04355522/20201203-r.dat")
     parser.add_option("-o","--outputDir",default="../output")
-    #parser.add_option("--object",default="1815f_r")
-    #parser.add_option("--object",default="ZTF5")
-    #parser.add_option("--object",default="1817x")
-    #parser.add_option("--object",default="1622ca")
-    parser.add_option("--object",default="1520av")
 
     parser.add_option("--doPlots",  action="store_true", default=False)
     parser.add_option("--doOverwrite",  action="store_true", default=False)
@@ -37,20 +34,17 @@ def parse_commandline():
     #parser.add_option("-p","--phase",default=0.026507580652833,type=float)
     parser.add_option("-p","--phase",default=6.47129/2.0,type=float)
 
-    parser.add_option("--datasource",default="PTF")
-
     opts, args = parser.parse_args()
 
     return opts
 
 # Parse command line
 opts = parse_commandline()
-object = opts.object
-dataDir = opts.dataDir
 outputDir = opts.outputDir
 phase = opts.phase
+filenames = opts.filenames.split(",")
 
-path_out_dir='%s/%s'%(outputDir,opts.object)
+path_out_dir='%s/%s'%(outputDir,filenames[0].split("/")[-1].split(".")[0])
 
 if opts.doOverwrite:
     rm_command = "rm -rf %s"%path_out_dir
@@ -59,34 +53,50 @@ if opts.doOverwrite:
 if not os.path.isdir(path_out_dir):
     os.makedirs(path_out_dir)
 
-filename = os.path.join(dataDir,'%s.tbl'%object)
-if opts.datasource == "ZTF":
-    t = Table.read(filename,format='ipac')
-elif opts.datasource == "PTF":
-    t = Table.read(filename,comment="#",format="ascii",names=("lcType","filterID","fieldID","chipID","sourceID","mjd","mag","magerr","sextractorFlags","ipacFlags","relPhotFlags","limitMag"))
-else:
-    print("Filetype is unknown...")
-    exit(0)
+#t = Table.read(filename,format='ipac')
+#t = Table.read(filename,comment="#",format="ascii",names=("lcType","filterID","fieldID","chipID","sourceID","mjd","mag","magerr","sextractorFlags","ipacFlags","relPhotFlags","limitMag"))
+for ii, filename in enumerate(filenames):
+    if ii == 0:
+        t = Table.read(filename, format="ascii")
+    else:
+        t = vstack([t, Table.read(filename, format="ascii")])
 
-mjd, mag, magerr = t["mjd"], t["mag"], t["magerr"]
+mjd, mag, magerr = t["MJD"], t["mag"], t["magerr"]
 
-ls = LombScargleFast(silence_warnings=True)
+lc = [mjd, mag, magerr]
+
+baseline = np.max(mjd) - np.min(mjd)
+
+fmin, fmax = 18, 1440
+samples_per_peak = 3
+df = 1./(samples_per_peak * baseline)
+nf = int(np.ceil((fmax - fmin) / df))
+freqs = fmin + df * np.arange(nf)
+
+freqs_to_remove = None
+
+lightcurves = [lc]
+algorithms = ['EAOV']
+for algorithm in algorithms:
+    periods_best, significances, pdots = find_periods(algorithm, lightcurves, freqs, doGPU=True, doCPU=False, doRemoveTerrestrial=False, freqs_to_remove=freqs_to_remove)
+
+#ls = LombScargleFast(silence_warnings=True)
 #ls = LombScargle()
-#ls.optimizer.period_range = (0.001,0.1)
-ls.optimizer.period_range = (1,100)
-ls.fit(mjd,mag,magerr)
-period = ls.best_period
-#phase = period
-print("Best period: " + str(period) + " days")
+#ls.optimizer.period_range = (0.001,0.20)
+#ls.optimizer.period_range = (1,100)
+#ls.fit(mjd,mag,magerr)
+#period = ls.best_period
+phase = periods_best
+print("Best period: " + str(phase) + " days")
 
-harmonics = np.array([1,2,3,4])*phase
-filename = os.path.join(path_out_dir,'harmonics.dat')
-fid = open(filename,'w')
-for harmonic in harmonics:
-    periodogram = ls.periodogram(harmonic)
-    fid.write('%.5e %.5e\n'%(harmonic,periodogram))
-fid.close()
-harmonics = np.loadtxt(filename)
+#harmonics = np.array([1,2,3,4])*phase
+#filename = os.path.join(path_out_dir,'harmonics.dat')
+#fid = open(filename,'w')
+#for harmonic in harmonics:
+#    periodogram = ls.periodogram(harmonic)
+#    fid.write('%.5e %.5e\n'%(harmonic,periodogram))
+#fid.close()
+#harmonics = np.loadtxt(filename)
 
 if opts.doPlots:
     plotName = os.path.join(path_out_dir,'phot.pdf')
@@ -94,30 +104,39 @@ if opts.doPlots:
     plt.errorbar(mjd-mjd[0],mag,yerr=magerr,fmt='bo')
     plt.xlabel('Time from %.5f [days]'%mjd[0])
     plt.ylabel('Magnitude [ab]')
+
+    idx = np.where(np.isfinite(mag))[0]
+    ymed = np.nanmedian(mag)
+    y10, y90 = np.nanpercentile(mag[idx],10), np.nanpercentile(mag[idx],90)
+    ystd = np.nanmedian(magerr[idx])
+    ymin = y10 - 3*ystd
+    ymax = y90 + 3*ystd
+    plt.ylim([ymin,ymax])
+
     plt.gca().invert_yaxis()
     plt.savefig(plotName)
     plt.close() 
 
-    plotName = os.path.join(path_out_dir,'periodogram.pdf')
+    #plotName = os.path.join(path_out_dir,'periodogram.pdf')
     #periods = np.logspace(-3,-1,10000)
-    periods = np.logspace(0,2,10000)
-    periodogram = ls.periodogram(periods)
-    plt.figure(figsize=(12,8))
-    plt.loglog(periods,periodogram)
-    if opts.doPhase:
-        plt.plot([phase,phase],[0,np.max(periodogram)],'r--')
-    plt.xlabel("Period [days]")
-    plt.ylabel("Power")
-    plt.savefig(plotName)
-    plt.close()
+    #periods = np.logspace(0,2,10000)
+    #periodogram = ls.periodogram(periods)
+    #plt.figure(figsize=(12,8))
+    #plt.loglog(periods,periodogram)
+    #if opts.doPhase:
+    #    plt.plot([phase,phase],[0,np.max(periodogram)],'r--')
+    #plt.xlabel("Period [days]")
+    #plt.ylabel("Power")
+    #plt.savefig(plotName)
+    #plt.close()
 
-    plotName = os.path.join(path_out_dir,'harmonics.pdf')
-    plt.figure(figsize=(12,8))
-    plt.loglog(harmonics[:,0],harmonics[:,1],'bo')
-    plt.xlabel("Period [days]")
-    plt.ylabel("Power")
-    plt.savefig(plotName)
-    plt.close()
+    #plotName = os.path.join(path_out_dir,'harmonics.pdf')
+    #plt.figure(figsize=(12,8))
+    #plt.loglog(harmonics[:,0],harmonics[:,1],'bo')
+    #plt.xlabel("Period [days]")
+    #plt.ylabel("Power")
+    #plt.savefig(plotName)
+    #plt.close()
 
     if opts.doPhase:
         mjd_mod = np.mod(mjd, phase)/phase
@@ -126,6 +145,15 @@ if opts.doPlots:
         plt.errorbar(mjd_mod,mag,yerr=magerr,fmt='bo')
         plt.xlabel('Phase')
         plt.ylabel('Magnitude [ab]')
+ 
+        idx = np.where(np.isfinite(mag))[0]
+        ymed = np.nanmedian(mag)
+        y10, y90 = np.nanpercentile(mag[idx],10), np.nanpercentile(mag[idx],90)
+        ystd = np.nanmedian(magerr[idx])
+        ymin = y10 - 3*ystd
+        ymax = y90 + 3*ystd
+        plt.ylim([ymin,ymax])
+
         plt.gca().invert_yaxis()
         plt.savefig(plotName)
         plt.close()         
