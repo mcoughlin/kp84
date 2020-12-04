@@ -9,6 +9,7 @@ import os
 import numpy as np
 from astropy.io import fits
 from astropy.time import Time
+from astropy.wcs import WCS
 from astropy.stats import sigma_clipped_stats, mad_std
 
 import matplotlib
@@ -34,17 +35,24 @@ def make_triplet(fitsfiles, ra, dec):
     for ii, fitsfile in enumerate(fitsfiles):
         hdul = fits.open(fitsfile)
         data = hdul[0].data
+        header = hdul[0].header
+
+        if "X_OBJ" in header:
+            x0, y0 = header["X_OBJ"], header["Y_OBJ"]
+        else:
+            w0 = WCS(header)
+            x0, y0 = w0.wcs_world2pix(ra, dec, 1)
 
         if normalize:
             data /= np.linalg.norm(data)
 
-        shape = data.shape
-        x, y = shape[0]/2, shape[1]/2
+        #shape = data.shape
+        #x, y = shape[0]/2, shape[1]/2
 
-        xlow = int(x - registration_size/2)
-        xhigh = int(x + registration_size/2)
-        ylow = int(y - registration_size/2)
-        yhigh = int(y + registration_size/2)        
+        xlow = int(x0 - registration_size/2)
+        xhigh = int(x0 + registration_size/2)
+        ylow = int(y0 - registration_size/2)
+        yhigh = int(y0 + registration_size/2)        
 
         triplet[:, :, ii] = data[xlow:xhigh,ylow:yhigh]
 
