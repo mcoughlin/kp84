@@ -17,6 +17,8 @@ import ztfsub.utils
 from skimage.feature import register_translation
 import image_registration
 
+from kp84.reduction_utils import stack_images, register_images
+
 def parse_commandline():
     """
     Parse the options given on the command-line.
@@ -36,6 +38,8 @@ def parse_commandline():
     parser.add_option("--doOverwrite",  action="store_true", default=False)
     parser.add_option("--doMedian",  action="store_true", default=False)
     parser.add_option("--doSextractor",  action="store_true", default=False)
+    parser.add_option("--doIntermediate",  action="store_true", default=False)
+    parser.add_option("-n","--nimages",default=6,type=int, help="see --doStack")
 
     opts, args = parser.parse_args()
 
@@ -46,6 +50,7 @@ inputfiles = opts.inputfiles
 outputfile = opts.outputfile
 fitsfiles = sorted(glob.glob(inputfiles))
 defaultsDir = opts.defaultsDir
+nimages = opts.nimages
 
 if opts.doOverwrite:
     rm_command = "rm -rf %s"%outputfile
@@ -83,7 +88,9 @@ if not os.path.isfile(outputfile):
             #hdulist_hold.data = np.median(data,axis=2)
             hdulist2 = fits.HDUList(hdus=hdulist_hold)
             hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
-    
+    elif opts.doIntermediate:
+        stack_images("/".join(outputfile.split("/")[:-1]),fitsfiles,nimages,doRegistration=True)
+        print(stop)
     else: 
         hdulist2 = []
         cnt = 1
