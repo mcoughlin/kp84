@@ -146,7 +146,8 @@ def get_reference_pos(scienceimage, cat, objName, zp=0, passband='sg', xoff=0, y
         # cat = cat[cat[:,15]<3] # Profile RMS along minor axis   
         magthreshold = zp - 8
         cat = cat[cat[:,4]<magthreshold] # mag
-    
+   
+        print(scienceimage) 
         xobjs = np.array([hdu.header["X_OBJ"] for hdu in sciHDU[1:]])
         yobjs = np.array([hdu.header["Y_OBJ"] for hdu in sciHDU[1:]])
         xtolerance = 10#max(xobjs) - min(xobjs)
@@ -282,6 +283,85 @@ def get_reference_pos(scienceimage, cat, objName, zp=0, passband='sg', xoff=0, y
     print ("    Reference star: %.2f mag in %s band"%(refmag, passband))
     sciHDU[0].header["MAGREF"] = refmag
     return sciHDU
+
+def register_image_cubes(registerDir,fitsfiles,registration_size=-1,x=None,y=None,doMedianFilter=False,median_size=30,doCubeFlat=False):
+
+    nums = []
+    for fitsfile in fitsfiles:
+        fitsfileSplit = fitsfile.replace(".fits.fz","").replace(".fits","").split("_")
+        try:
+            num = int(fitsfileSplit[-1])
+        except:
+            num = -1
+        nums.append(num)
+
+    fitsfiles = [fitsfiles for _,fitsfiles in sorted(zip(nums,fitsfiles))]
+
+    shiftx, shifty = 0, 0
+
+    cnt = 0
+    for ii in range(len(fitsfiles)):
+        scienceimage = os.path.join(registerDir,fitsfiles[ii].split("/")[-1])
+        hdulist = fits.open(fitsfiles[ii])
+        if cnt == 0:
+            reference = hdulist[1].data
+
+        if os.path.isfile(scienceimage): continue
+
+        if doCubeFlat:
+            hduflat = fits.open('gflat_2_f_0000.fits')
+            data_flat = hduflat[0].data
+            data_flat = downscale_local_mean(data_flat, (2,2))
+
+        hdulist2 = []
+        for jj in range(len(hdulist)):
+            if jj == 0:
+                hdulist2.append(copy.copy(hdulist[jj]))
+            else:
+                hdulist_hold = copy.copy(hdulist[jj])
+
+                imagedata = hdulist[jj].data
+                # shift by last images's shift
+                shifted = image_registration.fft_tools.shiftnd(imagedata, (shiftx, shifty))
+
+                if doMedianFilter:
+                    blur = np.asfarray(median_filter(shifted, size=(median_size,median_size)))
+                    shifted = shifted/blur
+
+                if registration_size > 0:
+                    image_shape = reference.shape
+                    xlow = int(x - registration_size/2)
+                    xhigh = int(x + registration_size/2)
+                    ylow = int(y - registration_size/2)
+                    yhigh = int(y + registration_size/2)
+
+                    shift, error, diffphase = register_translation(reference[xlow:xhigh,ylow:yhigh], shifted[xlow:xhigh,ylow:yhigh], upsample_factor=1)
+                    shiftx, shifty = shift[0], shift[1]
+                else:
+                    shift, error, diffphase = register_translation(reference, shifted, upsample_factor=1)
+
+                shiftmax = 5
+                shifttot = np.sqrt(shift[0]**2 + shift[1]**2)
+
+                if shifttot <= shiftmax:
+                    shiftx = shiftx + shift[0]
+                    shifty = shifty + shift[1]
+
+                if doCubeFlat:
+                    imagedata = imagedata / data_flat
+
+                shifted = image_registration.fft_tools.shiftnd(imagedata, (shiftx,shifty))
+                #hdulist_hold.data = shifted
+                hdulist_hold = fits.ImageHDU(shifted)
+                hdulist_hold.header['DATE'] = hdulist[jj].header['DATE']
+                hdulist_hold.header['UTC'] = utc2date(hdulist[jj].header['UTC']).isot
+                hdulist_hold.header['DATE'] = hdulist_hold.header['UTC']
+                hdulist2.append(hdulist_hold)
+
+            cnt = cnt + 1
+
+        hdulist2 = fits.HDUList(hdus=hdulist2)
+        hdulist2.writeto(scienceimage,output_verify='warn',overwrite=True)
     
 
 def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
@@ -552,6 +632,7 @@ def forcedphotometry_kp(scienceimage, aper_size=10., gain=1.0, zp=0.0,
             aper_size = np.median(fwhms[idx])
             sky_in, sky_out = 3*aper_size, 5*aper_size            
 
+            if np.isnan(aper_size): continue
             mag, magerr, flux, fluxerr, sky, skyerr, badflag, outstr = \
             pp.aper.aper(image, x, y, phpadu=gain, apr=aper_size, zeropoint=zp, 
                          skyrad=[sky_in, sky_out], exact=False)
