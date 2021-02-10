@@ -85,7 +85,6 @@ def load_kevin_objects(filename):
     program_pi = "burdge"
 
     for ii, observation in enumerate(observations.filled()):
-
         name = observation["name"].replace(" ","-")
         ra, dec = observation["ra"], observation["dec"]
         period = observation["period_days"]
@@ -760,16 +759,15 @@ def load_GW(filename):
     return targets
 
 def load_targets(object_lists):
-
     targets_all = []
-    programs = {"variables": 1e14,
+    programs = {"variables": 1e18,
                 "backup": 1,
                 "GW": -100000000,
-                "transients": 1e15,
+                "transients": 1e21,
                 "NEO": 10,
                 "time_sensitive": 10000,
                 "jan_objects": 20,
-                "rgd_objects": 1e14,
+                "rgd_objects": 1e20,
                 "periodic_time_sensitive": 30,
                 "kevin_objects": 1e15}
 

@@ -756,9 +756,13 @@ def get_sortedfiles_from_fits(fitsfiles):
 
 def stack_images(stackDir, fitsfiles, nimages,
                  doRegistration=False, registration_size=-1, x=None, y=None): 
-    
+   
+    print(fitsfiles)
+ 
     fitsfiles = get_sortedfiles_from_fits(fitsfiles)
     shiftx, shifty = 0, 0
+ 
+    print(fitsfiles)
 
     cnt = 0
     for ii in range(len(fitsfiles)):

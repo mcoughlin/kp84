@@ -77,7 +77,7 @@ else:
     tend = Time.now() + TimeDelta(12*u.hour)
 
 global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
-    AtNightConstraint.twilight_civil(), MoonSeparationConstraint(min = 25.0*u.deg)]
+    AtNightConstraint.twilight_civil(), MoonSeparationConstraint(min = 10.0*u.deg)]
 
 targets = load_targets(opts.object_lists)
 
@@ -120,12 +120,11 @@ blocks = []
 read_out = 10.0 * u.s
 nexp = 1
 for ii, target in enumerate(targets):
-    print(target["target"].name)
     #if target["target"].name in observations:
     #    print("%s already observed..." % target["target"].name)
     if not target["redo"]:
         if target["target"].name in observations:
-            print('Not redoing %s' % target["target"].name)
+            #print('Not redoing %s' % target["target"].name)
             continue
     else:
         if target["target"].name in observations:
@@ -137,10 +136,11 @@ for ii, target in enumerate(targets):
                     redo = False
                     break
             if not redo:
-                print('Not redoing %s' % target["target"].name)
+                #print('Not redoing %s' % target["target"].name)
                 continue
 
-    print(target["target"].name, priorities[ii])
+    if ii < 50:
+        print(target["target"].name, priorities[ii])
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
