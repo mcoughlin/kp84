@@ -63,13 +63,13 @@ def parse_commandline():
     
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     
-    parser.add_option("--KPED_data", default="/Data1/data", type=str)
-    parser.add_option("--setupDir", default = "/Data1/archive_kped/data/reductions/")
+    parser.add_option("--KPED_data", default="/Backup/Data", type=str)
+    parser.add_option("--setupDir", default = "/Backup/Data/archive_kped/data/reductions/")
     parser.add_option("--inputDir", default = "../input")
-    parser.add_option("--outputDir", default = "/Data1/archive_kped/data/photometry")
+    parser.add_option("--outputDir", default = "/Backup/Data/archive_kped/data/photometry")
     parser.add_option("-d","--defaultsDir",default="../defaults")
 
-    parser.add_option("-l","--object_lists",default="/home/roboao/Michael/object_lists")
+    parser.add_option("-l","--object_lists",default="/home/kped/Michael/object_lists")
 
     parser.add_option("--doDynamicAperture",  action="store_true", default=False)
 
@@ -151,11 +151,15 @@ print ("")
 coofile = os.path.join(outputProDir, "coo.reg")
 
 targets = load_targets(opts.object_lists)
-idx = np.where(objName.split("_")[1] == targets["objectID"])[0]
-if len(idx) == 0:
+objectID_ = [x.split("_")[0] for x in targets["objectID"]]
+targets["objectID_"] = objectID_
+
+try:
+    idx = targets["objectID_"].tolist().index(objName.split("_")[1])
+except:
     print("%s missing from observation folder, please add."%objName.split("_")[1])
     exit(0)
-row = targets[idx][0]
+row = targets[idx]
 ra, dec, filt = row["ra"], row["dec"], row["filter"]
 print ("%s, ra=%.5f, dec=%.5f"%(objName.split("_")[1], ra, dec))
 print ("Saving coordinate to %s"%coofile)
