@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block head %}
+    <title>KPED Observing Portal</title>
+    <style>
+        #toggle-tags .custom-control {
+            display: inline-block;
+        }
+    </style>
+{% endblock %}
+
+{% block body %}
+    <h2>Images</h2>
+    <div class=list-group>
+        {% for im in ims %}
+	    {{ im.filename }}
+        </a>
+        {% endfor %}
+    </ul>
+{% endblock %}
+

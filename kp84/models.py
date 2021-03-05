@@ -29,6 +29,13 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import JSONB
 from arrow.arrow import Arrow
 
+from kp84.config import app
+
+from flask_login.mixins import UserMixin
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy(app)
+
 DBSession = scoped_session(sessionmaker())
 EXECUTEMANY_PAGESIZE = 50000
 utcnow = func.timezone('UTC', func.current_timestamp())
@@ -52,7 +59,7 @@ class Encoder(json.JSONEncoder):
         elif isinstance(o, bytes):
             return o.decode('utf-8')
 
-        elif hasattr(o, '__table__'):  # SQLAlchemy model
+        elif hadbttr(o, '__table__'):  # SQLAlchemy model
             return o.to_dict()
 
         elif o is int:
@@ -78,9 +85,9 @@ def to_json(obj):
 
 class BaseMixin(object):
     query = DBSession.query_property()
-    id = sa.Column(sa.Integer, primary_key=True)
-    created_at = sa.Column(sa.DateTime, nullable=False, default=utcnow)
-    modified = sa.Column(sa.DateTime, default=utcnow, onupdate=utcnow,
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    modified = db.Column(db.DateTime, default=utcnow, onupdate=utcnow,
                          nullable=False)
 
     @declared_attr
@@ -98,7 +105,7 @@ class BaseMixin(object):
         return f"<{type(self).__name__}({', '.join(attr_list)})>"
 
     def to_dict(self):
-        if sa.inspection.inspect(self).expired:
+        if db.inspection.inspect(self).expired:
             DBSession().refresh(self)
         return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
 
@@ -143,34 +150,34 @@ def init_db(user, database, password=None, host=None, port=None):
 class Image(Base):
     """Image information"""
 
-    filename = sa.Column(
-        sa.String,
+    filename = db.Column(
+        db.String,
         nullable=False,
         comment='Filename')
 
-    objname = sa.Column(
-        sa.String,
+    objname = db.Column(
+        db.String,
         nullable=False,
         comment='Filename')
 
-    exposure_time = sa.Column(
-        sa.Float,
+    exposure_time = db.Column(
+        db.Float,
         nullable=False,
         comment='Exposure Time')
 
-    date = sa.Column(
-        sa.DateTime,
+    date = db.Column(
+        db.DateTime,
         nullable=False,
         comment='UTC event timestamp',
         index=True)
 
-    RA = sa.Column(
-        sa.Float,
+    RA = db.Column(
+        db.Float,
         nullable=False,
         comment='Right Ascension of the object')
 
-    Dec = sa.Column(
-        sa.Float,
+    Dec = db.Column(
+        db.Float,
         nullable=False,
         comment='Declination of the object')
 
@@ -207,14 +214,14 @@ def ingest_images(config, lookback, repeat=False):
             Dec = hdul[0].header['DecD']
             exposure_time = (gpstime_end - gpstime_start).sec
 
-            DBSession().merge(Image(filename=filename,
-                                    RA=RA,
-                                    Dec=Dec,
-                                    objname=objname,
-                                    date=gpstime_start.datetime,
-                                    exposure_time=exposure_time))
+            db.session().merge(Image(filename=filename,
+                                     RA=RA,
+                                     Dec=Dec,
+                                     objname=objname,
+                                     date=gpstime_start.datetime,
+                                     exposure_time=exposure_time))
             print('Ingested filename: %s' % filename)
-            DBSession().commit()
+            db.session().commit()
 
 
 def run_kped(init_db=False):
