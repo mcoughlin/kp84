@@ -180,8 +180,16 @@ class Image(Base):
         db.Float,
         nullable=False,
         comment='Declination of the object')
+    
+    test1 = db.Column(
+        db.String,
+        nullable=False,
+        comment='test column')
 
-
+    test2 =  db.Column(
+        db.String,
+        nullable=False,
+        comment='test column')
 def ingest_images(config, lookback, repeat=False):
 
     lookbackTD = TimeDelta(lookback,format='jd')
@@ -204,7 +212,7 @@ def ingest_images(config, lookback, repeat=False):
             filenameSplit = filename.split("/")[-1].split("_")
             if not filenameSplit[0] == "kped": continue
             objid = "%s_%s"%(filenameSplit[0], filenameSplit[1])
-            objname = filenameSplit[1]
+            objname = filenameSplit[3]
            
             gpstime_start = Time(hdul[1].header['GPS_TIME'],
                                  format='isot', scale='utc')
@@ -213,13 +221,17 @@ def ingest_images(config, lookback, repeat=False):
             RA = hdul[0].header['RAD']
             Dec = hdul[0].header['DecD']
             exposure_time = (gpstime_end - gpstime_start).sec
+            test1 = 'test'
+            test2 = 'also test'
 
             db.session().merge(Image(filename=filename,
                                      RA=RA,
                                      Dec=Dec,
                                      objname=objname,
                                      date=gpstime_start.datetime,
-                                     exposure_time=exposure_time))
+                                     exposure_time=exposure_time,
+                                     test1=test1,
+                                     test2=test2))
             print('Ingested filename: %s' % filename)
             db.session().commit()
 

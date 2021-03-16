@@ -91,7 +91,36 @@ def index():
 
     for im in ims:
         print(im.filename)
+        print(im.objname)
+        print(im.exposure_time)
+        print(im.date)
+        print(im.RA)
+        print(im.Dec)
+        print(im.test1)
+        print(im.test2)
     
     return render_template(
         'index.html',
         ims=ims)
+
+
+@app.route('/obj/<objname>/')
+def object(objname):
+
+    query = models.db.session.query(models.Image.objname == objname)
+
+    try:
+        idxs = query.all()
+    except NoResultFound:
+        abort(404)
+    
+    imsall = models.db.session.query(models.Image).all()
+    ims = []
+    for im, idx in zip(imsall, idxs):
+        if idx[0] == False: continue
+        ims.append(im)
+
+    return render_template(
+            'obj.html',
+            ims=ims)
+
