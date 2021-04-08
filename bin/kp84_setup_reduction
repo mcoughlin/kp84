@@ -337,11 +337,13 @@ for obj in objs:
         nxdata = HDUList[1].data.shape[0]
         modenum = primaryHeader["MODE_NUM"]
         if nxdata == 512:
-            if modenum <=5 :
+            if modenum >=5 :
                 print ("    Old files MODE_NUM = %d is wrong -- manually change modenum to 9"%modenum)
                 print ("    Do not apply flat field")
                 modenum = 9
                 flatflag = 0
+        if modenum >=13:
+            modenum = 9
         if calibflag==1:
             darkfile = "%s/dark/dark_%d/dark_%d.fits"%(outputDir, modenum, modenum)
             flatfile = "%s/flat/flat_%s/flat_%s.fits"%(outputDir, filtstr, filtstr)

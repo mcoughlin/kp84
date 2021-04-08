@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+
+import os, sys, optparse, shutil, glob, copy
+import numpy as np
+from astropy.io import fits
+from astropy.table import Table, vstack
+from scipy.ndimage import median_filter
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+from skimage.feature import register_translation
+import image_registration
+
+from kp84.visualize_utils import makemovie
+
+def parse_commandline():
+    """
+    Parse the options given on the command-line.
+    """
+    parser = optparse.OptionParser()
+
+    parser.add_option("-i","--inputfiles",default="/Data/20190612/*_o.fits.fz")
+    parser.add_option("-o","--outputfile",default="/home/kped/stack.fits")
+
+    parser.add_option("--aper_size",default=10.0, type=float, help="aperture size in pixel numbers for sci object")
+    parser.add_option("--sky_in",default=30.0, type=float, help="inner sky annulus radius in pixel numbers for sci object")
+    parser.add_option("--sky_out",default=50.0, type=float, help="outer sky annulus radius in pixel numbers for sci object")
+
+    opts, args = parser.parse_args()
+
+    return opts
+
+opts = parse_commandline()
+inputfiles = opts.inputfiles
+outputfile = opts.outputfile
+fitsfiles = sorted(glob.glob(inputfiles))
+
+aper_size = opts.aper_size
+sky_in = opts.sky_in
+sky_out = opts.sky_out
+
+outputDir = "/".join(outputfile.split("/")[:-1])
+movieDir = os.path.join(outputDir,'movie')
+if not os.path.isdir(movieDir):
+    os.makedirs(movieDir)
+
+makemovie(movieDir, fitsfiles, aper_size = aper_size, sky_in = sky_in, sky_out = sky_out, halfwidth=300)
+shutil.copy(movieDir+"/movie.mpg", outputfile) 

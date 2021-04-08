@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block head %}
+	<title>KPED Observing Portal</title>
+	<style>
+		#toggle-tags . custom-control  {
+			display: inline-block;
+		}
+	</style>
+{% endblock %}
+
+{% block body %}
+	<h2>Object List</h2>
+	<div class=list-group>
+		{% for im in ims %}
+		<p> 
+		<a href={{"http://localhost:8001/obj/" + im.objname + "/"}}>
+			{{ im.objname }}</a>
+		</p>
+		</a>
+		{% endfor %}
+	</ul>
+{% endblock %}

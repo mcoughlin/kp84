@@ -131,6 +131,15 @@ if not os.path.isfile(outputfile):
         #hdulist_hold.data = np.mean(data,axis=2)
         hdulist2 = fits.HDUList(hdus=hdulist_hold)
         hdulist2.writeto(outputfile,output_verify='fix',overwrite=True)
+
+        plotName = outputfile.replace(".fits",".png")
+        fig = plt.figure(figsize=(12,10))
+        f1 = aplpy.FITSFigure(outputfile,figure=fig)
+        f1.show_grayscale(invert=False, vmin=0, vmax=10,
+                          stretch='power')
+        fig.canvas.draw()
+        plt.savefig(plotName)
+        plt.close()
 else:
     print('Using existing %s... run --doOverwrite if unwanted.' % outputfile)
 

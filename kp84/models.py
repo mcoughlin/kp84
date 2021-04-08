@@ -181,15 +181,11 @@ class Image(Base):
         nullable=False,
         comment='Declination of the object')
     
-    test1 = db.Column(
+    dateshort = db.Column(
         db.String,
         nullable=False,
-        comment='test column')
+        comment='Year-Month-Day time')
 
-    test2 =  db.Column(
-        db.String,
-        nullable=False,
-        comment='test column')
 def ingest_images(config, lookback, repeat=False):
 
     lookbackTD = TimeDelta(lookback,format='jd')
@@ -221,8 +217,7 @@ def ingest_images(config, lookback, repeat=False):
             RA = hdul[0].header['RAD']
             Dec = hdul[0].header['DecD']
             exposure_time = (gpstime_end - gpstime_start).sec
-            test1 = 'test'
-            test2 = 'also test'
+            dateshort = str(gpstime_start.datetime)[:10]
 
             db.session().merge(Image(filename=filename,
                                      RA=RA,
@@ -230,8 +225,7 @@ def ingest_images(config, lookback, repeat=False):
                                      objname=objname,
                                      date=gpstime_start.datetime,
                                      exposure_time=exposure_time,
-                                     test1=test1,
-                                     test2=test2))
+                                     dateshort=dateshort))
             print('Ingested filename: %s' % filename)
             db.session().commit()
 

@@ -88,7 +88,8 @@ def human_time(*args, **kwargs):
 def index():
 
     ims = models.db.session.query(models.Image).all()
-
+    objs = []
+    days = []
     for im in ims:
         print(im.filename)
         print(im.objname)
@@ -96,12 +97,27 @@ def index():
         print(im.date)
         print(im.RA)
         print(im.Dec)
-        print(im.test1)
-        print(im.test2)
-    
+        print(im.dateshort)
+        
+        if im.objname in objs:
+            pass
+        else:
+            objs.append(im.objname)
+
+        p = str(im.date)
+        o = p.split()
+        day = o[0]
+
+        if day in days:
+            pass
+        else:
+            days.append(day)
+
     return render_template(
         'index.html',
-        ims=ims)
+        ims=ims,
+        objs=objs,
+        days=days)
 
 
 @app.route('/obj/<objname>/')
@@ -123,4 +139,26 @@ def object(objname):
     return render_template(
             'obj.html',
             ims=ims)
+
+@app.route('/date/<day>/')
+def date(day):
+    
+    query = models.db.session.query(models.Image.dateshort == day)
+
+    try:
+        idxs = query.all()
+    except NoResultFound:
+        abort(404)
+
+    imsall = models.db.session.query(models.Image).all()
+    ims = []
+    for im, idx in zip(imsall, idxs):
+        if idx[0] == False: continue
+        ims.append(im)
+
+    print(im.dateshort)
+
+    return render_template(
+        'date.html',
+        ims=ims)
 

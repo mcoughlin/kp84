@@ -3,19 +3,64 @@
 {% block head %}
     <title>KPED Observing Portal</title>
     <style>
-        #toggle-tags .custom-control {
-            display: inline-block;
+	#toggle-tags .custom-control {
+		display: inline block;
+	}
+	.dropbtn {
+		background-color: #343A40;
+		border: black;
+		color: white;
         }
+	.dropdown {
+		position: relative;
+		display: inline-block;
+	}
+	.dropdown-content {
+		display: none;
+		position: absolute;
+		background-color: #33cccc;
+		box-shadow: 0px 8px 16px 0px rbga(0,0,0,0.2)
+	}
+	.dropdown-content a {
+		color: black;
+		padding: 12px 16px;
+		z-index: 1;
+	}
+	.dropdown:hover .dropdown-content {display: block;}
+	.dropdown-content a:hover {background-color#3399ff;}
     </style>
 {% endblock %}
 
 {% block body %}
+    <div class="dropdown" style="float:right;">
+	<button class="dropbtn">List of Objects</button>
+	<div class="dropdown-content">
+	    {% for obj in objs %}
+	    <p>
+	    <a href={{ "http://localhost:8001/obj/" + obj + "/" }}>{{ obj }}</a>
+	    </p>
+	    {% endfor %}
+	</div>
+    </div>
+    
+    <div class="dropdown" style="float:right;">
+        <button class="dropbtn">List of Dates</button>
+	<div class="dropdown-content">
+	    {%for day in days %}
+	    <p>
+	    <a href={{ "http://localhost:8001/date/" + day + "/" }}>{{ day }}</a>
+	    </p>
+	    {% endfor %}
+	</div>
+    </div>
+
     <h2>Images</h2>
     <div class=list-group>
         {% for im in ims %}
 	<p>{{ "Filename: " + im.filename }}
             <br>
 	    {{ "Object Name: " + im.objname }}
+	    <a href={{ "http://localhost:8001/obj/" + im.objname + "/" }}>More Images of this Object</a>
             <br>
 	    {{ "Exposure Time:" }}
 	    {{ im.exposure_time }}

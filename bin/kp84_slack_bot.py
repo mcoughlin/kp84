@@ -100,11 +100,13 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     else:
         user, message_ts = 'test', thread_ts
         day = Time.now().isot.split("T")[0].replace("-","")
-        day = "20210224"
+        #day = "20210224"
         #todo, objName = 'reduce', '063528_ZTF20acozryr-r'
         #objType = 'transient'
         #day = "20201117"
-        todo, objName = 'reduce', 'all'
+        todo, objName = 'movie', 'all'
+        #todo, objName = 'stack', 'all'
+        #todo, objName = 'reduce', 'all'
         #todo, objName = 'setup', 'all'
         #todo, objName = 'reduce', '090531_ZTFJ15395027'
     
@@ -274,8 +276,9 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
 
             fitsfiles = os.path.join(dataDir,'processing','*.fits')
             fitsstack = os.path.join(baseoutputDir,"stack.fits")
-            if not os.path.isdir(fitsstack):
-                setup_command = "python kp84_stack --inputfiles %s --outputfile %s" % (fitsfiles, fitsstack)
+            pngstack = os.path.join(baseoutputDir,"stack.png")
+            if not os.path.isdir(fitsstack) or not os.path.isdir(pngstack):
+                setup_command = "python kp84_stack --inputfiles '%s' --outputfile %s --doOverwrite" % (fitsfiles, fitsstack)
                 os.system(setup_command)
                 message = []
                 message.append("%s stack complete." % objName)
@@ -289,6 +292,44 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 filename=fitsstack.split("/")[-1],
                 channels=channel_id,
                 text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, fitsstack.split("/")[-1])
+            )
+
+            web_client.files_upload(
+                file=pngstack,
+                filename=pngstack.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, pngstack.split("/")[-1])
+            )
+
+    if todo == "movie":
+        if not objName == "all":
+            objsreduce = [objName]
+        else:
+            objsreduce = objs
+
+        for objName in objsreduce:
+
+            dataDir = os.path.join(setupDir, day, objName)
+            baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
+            outputStackDir = os.path.join(baseoutputDir, "stack")
+            fitsfiles = os.path.join(dataDir,'processing','*.fits')
+
+            moviefile = os.path.join(baseoutputDir,"movie.mpg")
+            if not os.path.isdir(moviefile):
+                setup_command = "python kp84_make_movie --inputfiles '%s' --outputfile %s" % (fitsfiles, moviefile)
+                os.system(setup_command)
+                message = []
+                message.append("%s movie complete." % objName)
+                web_client.chat_postMessage(
+                    channel=channel_id,
+                    text="\n".join(message)
+                )
+
+            web_client.files_upload(
+                file=moviefile,
+                filename=moviefile.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
             )
 
 if __name__ == "__main__":
