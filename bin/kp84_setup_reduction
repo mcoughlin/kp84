@@ -39,12 +39,12 @@ def parse_commandline():
     parser.add_option("--fwhm", default=3.0, type=float)
     parser.add_option("--nstd", default=5.0, type=float)
 
-    parser.add_option("--KPED_data", default="/Data3/data", type=str)
-    parser.add_option("--setupDir", default = "/Data3/archive_kped/data/reductions/")
+    parser.add_option("--KPED_data", default="/Backup/Data", type=str)
+    parser.add_option("--setupDir", default = "/Backup/Data/archive_kped/data/reductions/")
     
     parser.add_option("--doFixRef",  action="store_true", default=False, help="if ture, fix the first extension as reference frame")
    
-    parser.add_option("-l","--object_lists",default="/home/roboao/Michael/object_lists")
+    parser.add_option("-l","--object_lists",default="/home/kped/Michael/object_lists")
  
     opts, args = parser.parse_args()
     return opts
@@ -276,6 +276,8 @@ if calibflag==1:
             print ("  %s.fits"%obj)
 
 targets = load_targets(opts.object_lists)
+objectID_ = [x.split("_")[0] for x in targets["objectID"]]
+targets["objectID_"] = objectID_
 
 print ("")
 print ("===========================")
@@ -288,11 +290,12 @@ for obj in objs:
         continue
     print ("%s"%obj)
 
-    idx = np.where(obj.split("_")[1] == targets["objectID"])[0]
-    if len(idx) == 0:
-        print("%s missing from observation folder, please add."%objName.split("_")[1])
-        exit(0)
-    row = targets[idx][0]
+    try:
+        idx = targets["objectID_"].tolist().index(obj.split("_")[1])
+    except:
+        print("%s missing from observation folder, please add."%obj.split("_")[1])
+        continue
+    row = targets[idx]
     ra, dec, filt = row["ra"], row["dec"], row["filter"]
 
     folderName = "%s/%s"%(outputDir,obj)
@@ -334,11 +337,13 @@ for obj in objs:
         nxdata = HDUList[1].data.shape[0]
         modenum = primaryHeader["MODE_NUM"]
         if nxdata == 512:
-            if modenum <=5 :
+            if modenum >=5 :
                 print ("    Old files MODE_NUM = %d is wrong -- manually change modenum to 9"%modenum)
                 print ("    Do not apply flat field")
                 modenum = 9
                 flatflag = 0
+        if modenum >=13:
+            modenum = 9
         if calibflag==1:
             darkfile = "%s/dark/dark_%d/dark_%d.fits"%(outputDir, modenum, modenum)
             flatfile = "%s/flat/flat_%s/flat_%s.fits"%(outputDir, filtstr, filtstr)

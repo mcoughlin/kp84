@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block head %}
+    <title>KPED Observing Portal</title>
+    <style>
+        #toggle-tags .custom-control {
+            display: inline-block;
+        }
+    </style>
+{% endblock %}
+
+{% block body %}
+    <h2>Images of specified object</h2>
+    <div class=list-group>
+        {% for im in ims %}
+	<p>{{ "Filename: " + im.filename }}
+            <br>
+	    {{ "Object Name: " + im.objname }}
+            <br>
+	    {{ "Exposure Time:" }}
+	    {{ im.exposure_time }}
+            <br>
+	    {{ "Date:" }}
+	    {{ im.date }}
+	    <br>
+	    {{ "Right Ascension:" }}
+	    {{ im.RA }}
+	    <br>
+	    {{ "Declination:" }}
+	    {{ im.Dec }}</p>
+        </a>
+        {% endfor %}
+    </ul>
+{% endblock %}
+

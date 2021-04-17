@@ -100,13 +100,15 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     else:
         user, message_ts = 'test', thread_ts
         day = Time.now().isot.split("T")[0].replace("-","")
-        day = "20201117"
-        todo, objName = 'reduce', '063528_ZTF20acozryr-r'
-        objType = 'transient'
-        day = "20201117"
-        todo, objName = 'reduce', 'all'
-        todo, objName = 'setup', 'redo'
-
+        #day = "20210224"
+        #todo, objName = 'reduce', '063528_ZTF20acozryr-r'
+        #objType = 'transient'
+        #day = "20201117"
+        todo, objName = 'movie', 'all'
+        #todo, objName = 'stack', 'all'
+        #todo, objName = 'reduce', 'all'
+        #todo, objName = 'setup', 'all'
+        #todo, objName = 'reduce', '090531_ZTFJ15395027'
     
 
     message = []
@@ -175,7 +177,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
        
             baseoutputDir = os.path.join(outputDir, day, objNameTmp) # the output directory of this object
             outputProDir = os.path.join(baseoutputDir, "product")
-   
+  
             if not os.path.isdir(outputProDir):
                 if objType == "variable":
                     setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objNameTmp)
@@ -210,7 +212,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                     text="\n".join(message)
                 )
                 continue
-    
+   
+            
             web_client.files_upload(
                 file=finalforcefile,
                 filename=finalforcefile.split("/")[-1],
@@ -273,8 +276,9 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
 
             fitsfiles = os.path.join(dataDir,'processing','*.fits')
             fitsstack = os.path.join(baseoutputDir,"stack.fits")
-            if not os.path.isdir(fitsstack):
-                setup_command = "python kp84_stack --inputfiles %s --outputfile %s" % (fitsfiles, fitsstack)
+            pngstack = os.path.join(baseoutputDir,"stack.png")
+            if not os.path.isdir(fitsstack) or not os.path.isdir(pngstack):
+                setup_command = "python kp84_stack --inputfiles '%s' --outputfile %s --doOverwrite" % (fitsfiles, fitsstack)
                 os.system(setup_command)
                 message = []
                 message.append("%s stack complete." % objName)
@@ -290,6 +294,44 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, fitsstack.split("/")[-1])
             )
 
+            web_client.files_upload(
+                file=pngstack,
+                filename=pngstack.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, pngstack.split("/")[-1])
+            )
+
+    if todo == "movie":
+        if not objName == "all":
+            objsreduce = [objName]
+        else:
+            objsreduce = objs
+
+        for objName in objsreduce:
+
+            dataDir = os.path.join(setupDir, day, objName)
+            baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
+            outputStackDir = os.path.join(baseoutputDir, "stack")
+            fitsfiles = os.path.join(dataDir,'processing','*.fits')
+
+            moviefile = os.path.join(baseoutputDir,"movie.mpg")
+            if not os.path.isdir(moviefile):
+                setup_command = "python kp84_make_movie --inputfiles '%s' --outputfile %s" % (fitsfiles, moviefile)
+                os.system(setup_command)
+                message = []
+                message.append("%s movie complete." % objName)
+                web_client.chat_postMessage(
+                    channel=channel_id,
+                    text="\n".join(message)
+                )
+
+            web_client.files_upload(
+                file=moviefile,
+                filename=moviefile.split("/")[-1],
+                channels=channel_id,
+                text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
+            )
+
 if __name__ == "__main__":
     import argparse
 
@@ -297,8 +339,8 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--channel", type=str, default="reductions")
     parser.add_argument("-d", "--debug", action="store_true", default=False)
     parser.add_argument("-np", "--noplots", action="store_true", default=False)
-    parser.add_argument("--setupDir", default = "/Data3/archive_kped/data/reductions/")
-    parser.add_argument("--outputDir", default = "../output")
+    parser.add_argument("--setupDir", default = "/Backup/Data/archive_kped/data/reductions/")
+    parser.add_argument("--outputDir", default = "/Backup/Data/archive_kped/data/photometry/")
 
     cfg = parser.parse_args()
 

@@ -6,7 +6,7 @@ import astropy.io.ascii as asci
 from astropy.io import fits
 from astropy.table import vstack
 
-from kp84.reduction_utils import stack_images, register_images
+from kp84.reduction_utils import stack_images, register_images, register_image_cubes
 from kp84.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
 from kp84.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
 from kp84.visualize_utils import get_ra_dec_radius
@@ -63,13 +63,13 @@ def parse_commandline():
     
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     
-    parser.add_option("--KPED_data", default="/Data3/data", type=str)
-    parser.add_option("--setupDir", default = "/Data3/archive_kped/data/reductions/")
+    parser.add_option("--KPED_data", default="/Backup/Data", type=str)
+    parser.add_option("--setupDir", default = "/Backup/Data/archive_kped/data/reductions/")
     parser.add_option("--inputDir", default = "../input")
-    parser.add_option("--outputDir", default = "../output")
+    parser.add_option("--outputDir", default = "/Backup/Data/archive_kped/data/photometry")
     parser.add_option("-d","--defaultsDir",default="../defaults")
 
-    parser.add_option("-l","--object_lists",default="/home/roboao/Michael/object_lists")
+    parser.add_option("-l","--object_lists",default="/home/kped/Michael/object_lists")
 
     parser.add_option("--doDynamicAperture",  action="store_true", default=False)
 
@@ -151,11 +151,15 @@ print ("")
 coofile = os.path.join(outputProDir, "coo.reg")
 
 targets = load_targets(opts.object_lists)
-idx = np.where(objName.split("_")[1] == targets["objectID"])[0]
-if len(idx) == 0:
+objectID_ = [x.split("_")[0] for x in targets["objectID"]]
+targets["objectID_"] = objectID_
+
+try:
+    idx = targets["objectID_"].tolist().index(objName.split("_")[1])
+except:
     print("%s missing from observation folder, please add."%objName.split("_")[1])
     exit(0)
-row = targets[idx][0]
+row = targets[idx]
 ra, dec, filt = row["ra"], row["dec"], row["filter"]
 print ("%s, ra=%.5f, dec=%.5f"%(objName.split("_")[1], ra, dec))
 print ("Saving coordinate to %s"%coofile)
@@ -221,9 +225,14 @@ if not doSkipRegis:
             #print (shiftfiles)
             shiftfile = shiftfiles[0]
             refit = operator.not_(doOffRefit)
-            regis2HDU = register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir, 
-                                        maxdist = maxdist, aper_size = aper_size, 
-                                        refit = refit, offtune = doOffTune)
+            if (not opts.xstar == "") and (not opts.ystar == ""):
+                regis2HDU = register_images(fitsfile, shiftfile, xyframe, int(opts.xstar), int(opts.ystar), path_out_dir, 
+                                            maxdist = maxdist, aper_size = aper_size, 
+                                            refit = refit, offtune = doOffTune)
+            else:
+                regis2HDU = register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
+                                            maxdist = maxdist, aper_size = aper_size,
+                                            refit = refit, offtune = doOffTune)
             regisfile = fitsfile.replace("/processing/", "/registration/")
             regisfile = regisfile[:-5]+'_regis.fits'
 
@@ -239,10 +248,34 @@ fitsfiles = sorted(glob.glob(os.path.join(dataDir,'registration','*_regis.fits')
 if day == "20191222" and objName == "ZTFJ0538+1953":
     fitsfiles = sorted(glob.glob(os.path.join(dataDir,'registration','*_073459_*_regis.fits'))) 
 nfiles = len(fitsfiles)
-
 if nfiles == 0:
-    print('No usable files for %s... exiting.' % opts.objName)
-    exit(0)
+    print('No usable registration files for %s... need to reduce manually.' % opts.objName)
+    if doSkipRegis:
+        fitsfiles = sorted(glob.glob(os.path.join(dataDir,'raw','*.fits')))
+        nfiles = len(fitsfiles)
+        if nfiles == 0:
+            print('No raw files for %s... nothing to do.' % opts.objName)
+            exit(0)
+
+if doSkipRegis:
+    registerdir = os.path.join(dataDir,'registration')
+    register_image_cubes(registerdir, fitsfiles)
+
+    fitsfiles = sorted(glob.glob(os.path.join(dataDir,'registration','*.fits')))
+    nfiles = len(fitsfiles)
+    for i in range(nfiles):
+        flag = 1
+        fitsfile = fitsfiles[i]
+        procHDU = fits.open(fitsfile)
+        for j in range(len(procHDU)):
+            procHDU[j].header["X_OBJ"] = int(opts.xstar)
+            procHDU[j].header["Y_OBJ"] = int(opts.ystar)
+            procHDU[j].header["RA_OBJ"] = ra
+            procHDU[j].header["DEC_OBJ"] = dec
+            procHDU[j].header["WCSAUTO"] = 0
+            procHDU[j].header["WCSFRAME"] = 0
+        print ("  Writing to %s"%fitsfile)
+        procHDU.writeto(fitsfile, overwrite=True)
 
 # yyao: This call is to be checked
 if doStack:
@@ -353,12 +386,16 @@ if not doSkipFindRef:
         fitsfileSplit = fitsfile.split("/")[-1].replace("_proc_regis","").replace(".fits","")
         print("%d/%d: %s"%(ii+1, nfiles, fitsfileSplit))
         path_out_dir='%s/%s'%(outputDir, fitsfileSplit)
+        if not os.path.isdir(path_out_dir):
+            os.makedirs(path_out_dir)
 
         catfile = os.path.join(folderName_sextract, _fitsfileSplit.replace(".fits",".cat"))
         backfile = os.path.join(folderName_sextract, _fitsfileSplit.replace(".fits",".background.fits"))
 
         if not os.path.isfile(catfile):
             ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+
+        print(catfile)
 
         cat = np.loadtxt(catfile)
         if not cat.size: 

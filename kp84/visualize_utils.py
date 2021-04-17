@@ -144,8 +144,14 @@ def makemovie(movieDir, fitsfiles, halfwidth=50, moviemode=1, aper_size=10, sky_
                 continue
             header = hdulist[jj].header
             data = hdulist[jj].data
-            xobj = header["X_OBJ"]
-            yobj = header["Y_OBJ"]
+            if "X_OBJ" in header:
+                xobj = header["X_OBJ"]
+            else:
+                xobj = int(data.shape[0]/2)
+            if "Y_OBJ" in header:
+                yobj = header["Y_OBJ"]
+            else:
+                yobj = int(data.shape[1]/2)
             ystart = int(max(0, np.floor(yobj-halfwidth)))
             yend = int(min(data.shape[0], np.ceil(yobj+halfwidth)))
             xstart = int(max(0, np.floor(xobj-halfwidth)))
@@ -192,8 +198,8 @@ def makemovie(movieDir, fitsfiles, halfwidth=50, moviemode=1, aper_size=10, sky_
     ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
     os.system(ffmpeg_command)
 
-    rm_command = "rm %s/*.png" % (movieDir)
-    os.system(rm_command)
+    #rm_command = "rm %s/*.png" % (movieDir)
+    #os.system(rm_command)
     
     """
     print ("Genrating the gif file...")

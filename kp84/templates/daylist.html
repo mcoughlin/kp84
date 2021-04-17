@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block head %}
+    <title>KPED Observing Portal</title>
+    <style>
+        #toggle-tags .custom-control {
+		display: inline-block;
+	}
+    </style>
+{% endblock %}
+
+{% block body %}
+	<h2>Images by Day</h2>
+	<div class=list-group>
+		{% for day in days %}
+		<p>
+		<a href={{ "http://localhost:8001/obj/" + day + "/" }}>{{ day }}</a>
+		</p>
+		</a>
+		{% endfor %}
+	</ul>
+{% endblock %}
+
