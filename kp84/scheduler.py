@@ -150,7 +150,7 @@ def load_kevin_objects(filename):
     targets["programID"] = 1
     targets["priority"] = sigs
     targets["redo"] = 1
-    targets["delta_redo"] = 7
+    targets["delta_redo"] = 0.5
 
     targets.sort("sig")
     targets.reverse()
@@ -270,8 +270,10 @@ def load_variables(filename):
             filts = ["FILTER_SLOAN_G"] 
         elif observation["filter"] == "r":
             filts = ["FILTER_SLOAN_R"]
+        elif observation["filter"] == "V":
+            filts = ["FILTER_JOHNSON_V"]
         for filt in filts:
-            comment = "10000000000000000000_0"
+            comment = "%d_0" % (observation["priority"])
             targets.append(["%s-%s"%(observation["objectID"],filt[-1].lower()),
                             3,
                             "%s-%s"%(observation["objectID"],filt[-1].lower()),
@@ -804,7 +806,8 @@ def load_targets(object_lists):
     
             if not 'redo' in targets.columns:
                 targets['redo'] = np.zeros(targets["ra"].shape)
-    
+                #targets['redo'] = np.ones(targets["ra"].shape)
+ 
             if not 'delta_redo' in targets.columns:
                 targets['delta_redo'] = np.zeros(targets["ra"].shape)
             
