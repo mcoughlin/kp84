@@ -103,11 +103,11 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
         #day = "20210224"
         #todo, objName = 'reduce', '063528_ZTF20acozryr-r'
         #objType = 'transient'
-        #day = "20201117"
-        todo, objName = 'movie', 'all'
+        day = "20210417"
+        #todo, objName = 'movie', 'all'
         #todo, objName = 'stack', 'all'
-        #todo, objName = 'reduce', 'all'
-        #todo, objName = 'setup', 'all'
+        #todo, objName = 'setup_reduce', 'all'
+        todo, objName = 'reduce', 'all'
         #todo, objName = 'reduce', '090531_ZTFJ15395027'
     
 
@@ -122,7 +122,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     )
 
     baseoutputDir = os.path.join(setupDir,day)
-    if todo == "setup":
+ 
+    if "setup" in todo:
         if objName == "redo":
             rm_command = "rm -rf %s" %baseoutputDir
             os.system(rm_command)
@@ -161,7 +162,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
         text="\n".join(message)
     )
 
-    if todo == "reduce":
+    if "reduce" in todo:
         if not objName == "all":
             objsreduce = [objName]
         else:
@@ -174,7 +175,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 objType = "transient"
             else:
                 objType = "variable"
-       
+            objType = "variable"
+
             baseoutputDir = os.path.join(outputDir, day, objNameTmp) # the output directory of this object
             outputProDir = os.path.join(baseoutputDir, "product")
   

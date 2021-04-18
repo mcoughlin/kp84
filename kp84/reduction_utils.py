@@ -36,6 +36,8 @@ def filter2filtstr(myfilter):
         filtstr = "sg"
     elif myfilter == "SDSS r":
         filtstr = "sr"
+    elif myfilter == "JOHNSON V":
+        filtstr = "jv"
     else:
         print ("unknown filter! modify your code")
         exit(0)
@@ -147,7 +149,6 @@ def get_reference_pos(scienceimage, cat, objName, zp=0, passband='sg', xoff=0, y
         magthreshold = zp - 8
         cat = cat[cat[:,4]<magthreshold] # mag
    
-        print(scienceimage) 
         xobjs = np.array([hdu.header["X_OBJ"] for hdu in sciHDU[1:]])
         yobjs = np.array([hdu.header["Y_OBJ"] for hdu in sciHDU[1:]])
         xtolerance = 10#max(xobjs) - min(xobjs)
@@ -362,7 +363,27 @@ def register_image_cubes(registerDir,fitsfiles,registration_size=-1,x=None,y=Non
 
         hdulist2 = fits.HDUList(hdus=hdulist2)
         hdulist2.writeto(scienceimage,output_verify='warn',overwrite=True)
-    
+   
+def register_transients(fitsfile, ra, dec):
+
+    print ("  Initial registration...")
+    procHDU = fits.open(fitsfile)
+    regis1HDU = fits.HDUList()
+    ndata = procHDU[1].data.shape[0]
+    for i in range(len(procHDU)):
+        hdu = procHDU[i]
+        if i==0:
+            regis1HDU.append(hdu)
+        else:
+            wcs_header = hdu.header
+            w = WCS(wcs_header)
+            x, y = w.wcs_world2pix(ra, dec, 1)
+            x, y = np.array([x]), np.array([y])
+            hdu.header["X_OBJ"] = (x[0], "Final decision of the object's x Pixel Coordinate")
+            hdu.header["Y_OBJ"] = (y[0], "Final decision of the object's y Pixel Coordinate")
+            regis1HDU.append(hdu)
+    return regis1HDU
+
 
 def register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
                     maxdist=10., aper_size=10, refit = True, offtune = False):

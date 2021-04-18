@@ -219,6 +219,8 @@ def ingest_images(config, lookback, repeat=False):
             exposure_time = (gpstime_end - gpstime_start).sec
             dateshort = str(gpstime_start.datetime)[:10]
 
+            image_data = fits.getdata(filename, ext=1)
+
             db.session().merge(Image(filename=filename,
                                      RA=RA,
                                      Dec=Dec,
@@ -226,6 +228,7 @@ def ingest_images(config, lookback, repeat=False):
                                      date=gpstime_start.datetime,
                                      exposure_time=exposure_time,
                                      dateshort=dateshort))
+
             print('Ingested filename: %s' % filename)
             db.session().commit()
 

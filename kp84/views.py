@@ -16,6 +16,9 @@ from astropy.table import Table
 import pandas as pd
 import matplotlib.style
 import pkg_resources
+from astropy.utils.data import get_pkg_data_filename
+from astropy.io import fits
+import matplotlib.pyplot as plt
 
 from flask import (
     abort, flash, jsonify, make_response, redirect, render_template, request,
@@ -34,6 +37,8 @@ from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 
 from kp84.config import app
 from kp84 import models
+
+from PIL import Image
 #
 #
 # From http://wtforms-alchemy.readthedocs.io/en/latest/advanced.html#using-wtforms-alchemy-with-flask-wtf  # noqa: E501
@@ -44,6 +49,7 @@ from wtforms_alchemy import model_form_factory
 
 
 BaseModelForm = model_form_factory(FlaskForm)
+
 
 
 class ModelForm(BaseModelForm):
@@ -91,14 +97,22 @@ def index():
     objs = []
     days = []
     for im in ims:
-        print(im.filename)
-        print(im.objname)
-        print(im.exposure_time)
-        print(im.date)
-        print(im.RA)
-        print(im.Dec)
-        print(im.dateshort)
-        
+        #print(im.filename)
+        #print(im.objname)
+        #print(im.exposure_time)
+        #print(im.date)
+        #print(im.RA)
+        #print(im.Dec)
+        #print(im.dateshort)
+
+        img_data = fits.getdata(im.filename, ext=0)
+        plt.imsave('/home/kped/Michael/kp84/kp84/templates/images/' + im.objname + 'pic.png', img_data)
+
+        #img = aplpy.FITSfigure(im.filename, figure=fig)
+        #img.show_grayscale(invert=False)
+        #plt.savefig('/home/kped/Michael/kp84/kp84/images/' + im.objname + 'pic.png')
+        #plt.close()
+
         if im.objname in objs:
             pass
         else:
@@ -112,13 +126,37 @@ def index():
             pass
         else:
             days.append(day)
-
+        
     return render_template(
         'index.html',
         ims=ims,
         objs=objs,
         days=days)
 
+@app.route('/obj/<objname>/zzzexposure.png')
+def objpic():
+    ims = models.db.session.query(models.Image).all()
+    for im in ims:
+        objname=im.objname
+    return redirect(url_for(
+        "object_image", objname=objname))
+
+@app.route('/obj/<objname>/exposure.png')
+def idk_what_this_does(objname):
+    ims = models.db.session.query(models.Image).all()
+    objnames = []
+    imgfiles = []
+    contents = []
+    for im in ims:
+        objname = im.objname
+        imglocation = '/home/kped/Michael/kp84/kp84/templates/images/' + im.objname + 'pic.png'
+        imgfile = Image.open(imglocation)
+        content = imgfile
+        objnames.append(objname)
+        imgfiles.append(imgfile)
+        contents.append(content)
+        imgfile.close()
+    return Response(contents, mimetype='image/png')
 
 @app.route('/obj/<objname>/')
 def object(objname):

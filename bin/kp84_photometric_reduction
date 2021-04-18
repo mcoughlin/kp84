@@ -5,12 +5,15 @@ import numpy as np
 import astropy.io.ascii as asci
 from astropy.io import fits
 from astropy.table import vstack
+import aplpy
 
 from kp84.reduction_utils import stack_images, register_images, register_image_cubes
 from kp84.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
 from kp84.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
+from kp84.reduction_utils import register_transients
 from kp84.visualize_utils import get_ra_dec_radius
 from kp84.visualize_utils import makemovie, make_triplet, plot_triplet
+from kp84.photometry_utils import ps1_query
 from kp84.scheduler import load_targets
 #from astroML.crossmatch import crossmatch_angular
 
@@ -60,7 +63,8 @@ def parse_commandline():
     parser.add_option("--aper_size_ref",default=10.0, type=float, help="aperture size in pixel numbers for ref object")
     parser.add_option("--sky_in_ref",default=30.0, type=float, help="inner sky annulus radius in pixel numbers for ref object")
     parser.add_option("--sky_out_ref",default=50.0, type=float, help="outer sky annulus radius in pixel numbers for ref object")
-    
+    parser.add_option("--halfwidth",default=50, type=int, help="movie halfwidth")
+
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     
     parser.add_option("--KPED_data", default="/Backup/Data", type=str)
@@ -73,6 +77,8 @@ def parse_commandline():
 
     parser.add_option("--doDynamicAperture",  action="store_true", default=False)
 
+    parser.add_option("--doCheckCatalog",  action="store_true", default=False)
+
     # Transient options
     parser.add_option("--doTransient",  action="store_true", default=False)
     parser.add_option("--doSubtraction",  action="store_true", default=False, help="subtract source extractor background from science image before force photometry")
@@ -81,7 +87,7 @@ def parse_commandline():
                       choices=('sdss', 'ps1'), help="source of the reference image")
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("--image_size",default=200,type=int)   
- 
+
     opts, args = parser.parse_args()
     return opts
 
@@ -114,6 +120,7 @@ if opts.doTransient:
     nimages = np.inf
 doOffTune = opts.doOffTune
 doOffRefit = opts.doOffRefit
+doCheckCatalog = opts.doCheckCatalog
 
 aper_size = opts.aper_size
 sky_in = opts.sky_in
@@ -121,6 +128,7 @@ sky_out = opts.sky_out
 aper_size_ref = opts.aper_size_ref
 sky_in_ref = opts.sky_in_ref
 sky_out_ref = opts.sky_out_ref
+halfwidth = opts.halfwidth
 
 doMakeMovie = opts.doMakeMovie
 
@@ -177,7 +185,9 @@ except:
         tmpfilter = "SDSS r"
     elif ("-g" in objName) or (filt == "FILTER_SLOAN_G"):
         tmpfilter = "SDSS g"
-    else:
+    elif ("-v" in objName) or (filt == "FILTER_JOHNSON_V"):
+        tmpfilter = "JOHNSON V"
+else:
         print('Sigh... missing filter data. Assuming SDSS r for now...')
         tmpfilter = 'SDSS r'
 
@@ -211,6 +221,7 @@ if not doSkipRegis:
             flag = 2
         else:
             wcsfiles = glob.glob(os.path.join(dataDir,'wcs', '%s*wcs.fits'%fitsfileSplit))
+            print(wcsfiles)
             if len(wcsfiles)!=0:
                 print ("  Finding it on the wcs file extension...")
                 # The astrometry is successfully found:
@@ -222,7 +233,6 @@ if not doSkipRegis:
                 print ("  Astrometry failed and no wcs specified -- discard %s!"%fitsfileSplit)
         if flag in [1,2]:
             shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s_proc_shift.dat'%fitsfileSplit))
-            #print (shiftfiles)
             shiftfile = shiftfiles[0]
             refit = operator.not_(doOffRefit)
             if (not opts.xstar == "") and (not opts.ystar == ""):
@@ -230,9 +240,8 @@ if not doSkipRegis:
                                             maxdist = maxdist, aper_size = aper_size, 
                                             refit = refit, offtune = doOffTune)
             else:
-                regis2HDU = register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
-                                            maxdist = maxdist, aper_size = aper_size,
-                                            refit = refit, offtune = doOffTune)
+                print(fitsfile)
+                regis2HDU = register_transients(fitsfile, ra, dec) 
             regisfile = fitsfile.replace("/processing/", "/registration/")
             regisfile = regisfile[:-5]+'_regis.fits'
 
@@ -356,6 +365,16 @@ if doStack:
         plotName = '%s/triplet.png'%(outputProDir)
         plt.savefig(plotName)
         plt.close(fig)
+        
+if opts.doCheckCatalog:
+    result = ps1_query(ra, dec, 20.0/60.0, maxmag=16.0,
+                       maxsources=10000)
+    ra_ps1, dec_ps1 = result['RAJ2000'], result['DEJ2000']
+    moviedir = os.path.join(path_out_dir, 'catalog')
+    if not os.path.isdir(moviedir):
+        os.makedirs(moviedir)
+    cnt = 0
+    print(moviedir)
 
 print ("========================")
 print ("Source Extraction!")
@@ -371,8 +390,44 @@ for ii in range(nfiles):
     catfile = os.path.join(folderName_sextract, _fitsfileSplit.replace(".fits",".cat"))
     backfile = os.path.join(folderName_sextract, _fitsfileSplit.replace(".fits",".background.fits"))
 
-    if not os.path.isfile(catfile):
-        ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+    ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+
+    if opts.doCheckCatalog:
+        framenum = 1
+        procHDU = fits.open(fitsfile)
+        for framenum in range(len(procHDU)):
+            if framenum == 0: continue
+
+            figname = os.path.join(moviedir,'image_%04d.png'%cnt)
+            hdu = procHDU[framenum]
+            fig = plt.figure(figsize=(12,10))
+            f1 = aplpy.FITSFigure(hdu, figure=fig)
+            f1.show_grayscale(invert=True)
+    
+            cat = asci.SExtractor().read(catfile)
+            cat = cat[cat['EXT_NUMBER'] == framenum]
+    
+            f1.show_circles(cat['ALPHA_J2000'],cat['DELTA_J2000'],
+                            cat['FWHM_WORLD'],zorder=99,
+                            linestyle='dashed', edgecolor='red')
+            f1.show_circles(ra_ps1,dec_ps1,1.5/3600.0,zorder=99,
+                            linestyle='dashed', edgecolor='green')
+    
+            f1.axis_labels.set_xtext('Right Ascension')
+            f1.axis_labels.set_ytext('Declination')
+    
+            fig.canvas.draw()
+            plt.savefig(figname)
+            plt.close()
+            cnt = cnt + 1
+if opts.doCheckCatalog:
+    print ("Generating the mpg file...")
+    moviefiles = os.path.join(moviedir,"image_%04d.png")
+    filename = os.path.join(moviedir,"movie.mpg")
+    ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
+    os.system(ffmpeg_command)
+
+print(stop)
 
 if not doSkipFindRef:
     print ("")
@@ -402,7 +457,8 @@ if not doSkipFindRef:
             continue
        
         print(fitsfile, cat, objName) 
-        sciHDU = get_reference_pos(fitsfile, cat, objName, zp=0, passband=passband, 
+        sciHDU = get_reference_pos(fitsfile, cat, objName,
+                                   zp=0, passband=passband, 
                                    xoff=xoffref, yoff=yoffref, refmag=refmag)
         sciHDU.writeto(fitsfile, overwrite=True)
     
@@ -620,6 +676,8 @@ if doMakeMovie and not doStack:
     movieDir = os.path.join(outputDir,'movie')
     if not os.path.isdir(movieDir):
         os.makedirs(movieDir)
-    makemovie(movieDir, fitsfiles, aper_size = aper_size, sky_in = sky_in, sky_out = sky_out)
+    makemovie(movieDir, fitsfiles, aper_size = aper_size,
+              sky_in = sky_in, sky_out = sky_out,
+              halfwidth = halfwidth)
     shutil.copy(movieDir+"/movie.mpg", outputProDir+"/movie.mpg")
 
