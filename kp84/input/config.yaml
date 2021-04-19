@@ -5,5 +5,8 @@ port = 5432
 user = kped
 password = kped
 
-[kped]
+[images]
 directory = /Backup/Data 
+
+[reductions]
+directory = /Backup/Data/archive_kped/data/photometry

@@ -16,6 +16,7 @@ from astropy import coordinates
 from astropy import units as u
 from astropy.time import Time, TimeDelta
 from astropy.io import fits
+import astropy.io.ascii as asci
 import pkg_resources
 import numpy as np
 import pandas as pd
@@ -27,6 +28,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session, relationship
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.schema import DropConstraint
 from arrow.arrow import Arrow
 
 from kp84.config import app
@@ -59,7 +61,7 @@ class Encoder(json.JSONEncoder):
         elif isinstance(o, bytes):
             return o.decode('utf-8')
 
-        elif hadbttr(o, '__table__'):  # SQLAlchemy model
+        elif hasattr(o, '__table__'):  # SQLAlchemy model
             return o.to_dict()
 
         elif o is int:
@@ -147,29 +149,14 @@ def init_db(user, database, password=None, host=None, port=None):
     return conn
 
 
-class Image(Base):
-    """Image information"""
-
-    filename = db.Column(
-        db.String,
-        nullable=False,
-        comment='Filename')
+class Object(Base):
+    """Object information"""
 
     objname = db.Column(
         db.String,
         nullable=False,
-        comment='Filename')
-
-    exposure_time = db.Column(
-        db.Float,
-        nullable=False,
-        comment='Exposure Time')
-
-    date = db.Column(
-        db.DateTime,
-        nullable=False,
-        comment='UTC event timestamp',
-        index=True)
+        unique=True,
+        comment='Object Name')
 
     RA = db.Column(
         db.Float,
@@ -180,17 +167,116 @@ class Image(Base):
         db.Float,
         nullable=False,
         comment='Declination of the object')
-    
+
+    exposures = relationship(lambda: Exposure)
+
+class Exposure(Base):
+    """Exposure information"""
+
+    objname = sa.Column(
+        sa.String,
+        sa.ForeignKey(Object.objname),
+        nullable=False,
+        comment='Object Name')
+
+    date = db.Column(
+        db.DateTime,
+        nullable=False,
+        unique=True,
+        comment='UTC event timestamp',
+        index=True)
+
     dateshort = db.Column(
         db.String,
         nullable=False,
         comment='Year-Month-Day time')
 
+    image_id = db.Column(
+        db.BigInteger,
+        nullable=False,
+        unique=True,
+        comment='Image ID')
+
+    cubes = relationship(lambda: Cube)
+    
+    reductions = relationship(lambda: Reduction)
+
+class Cube(Base):
+    """Cube information"""
+
+    objname = sa.Column(
+        sa.String,
+        sa.ForeignKey(Object.objname),
+        nullable=False,
+        comment='Object Name')
+
+    date = db.Column(
+        db.DateTime,
+        nullable=False,
+        comment='UTC event timestamp',
+        index=True)
+
+    image_id = db.Column(
+        sa.ForeignKey(Exposure.image_id),
+        nullable=False,
+        comment='Image ID')
+
+    filename = db.Column(
+        db.String,
+        nullable=False,
+        comment='Filename')
+
+    exposure_time = db.Column(
+        db.Float,
+        nullable=False,
+        comment='Exposure Time')
+
+
+class Reduction(Base):
+    """Reduction information."""
+
+    objname = sa.Column(
+        sa.String,
+        sa.ForeignKey(Object.objname),
+        nullable=False,
+        comment='Object Name')
+
+    image_id = db.Column(
+        sa.ForeignKey(Exposure.image_id),
+        nullable=False,
+        unique=True,
+        comment='Image ID')
+
+    mjd = db.Column(
+        db.ARRAY(db.Float),
+        nullable=False,
+        comment='MJD values')
+
+    mag = db.Column(
+        db.ARRAY(db.Float),
+        nullable=False,
+        comment='magnitude values')
+
+    magerr = db.Column(
+        db.ARRAY(db.Float),
+        nullable=False,
+        comment='magnitude error values')
+
+    flux = db.Column(
+        db.ARRAY(db.Float),
+        nullable=False,
+        comment='flux values')
+
+    fluxerr = db.Column(
+        db.ARRAY(db.Float),
+        nullable=False,
+        comment='flux error values')
+
 def ingest_images(config, lookback, repeat=False):
 
     lookbackTD = TimeDelta(lookback,format='jd')
 
-    folders = glob.glob(os.path.join(config["kped"]["directory"],"20*"))
+    folders = glob.glob(os.path.join(config["images"]["directory"],"20*"))
     for folder in folders:
         folderSplit = folder.split("/")
         yyyymmdd = folderSplit[-1]
@@ -202,48 +288,124 @@ def ingest_images(config, lookback, repeat=False):
 
         if Time.now() - date > lookbackTD: continue
 
-        filenames = glob.glob(os.path.join(folder,"*.fits.fz"))
-        for filename in filenames:
-            hdul = fits.open(filename)
-            filenameSplit = filename.split("/")[-1].split("_")
-            if not filenameSplit[0] == "kped": continue
-            objid = "%s_%s"%(filenameSplit[0], filenameSplit[1])
-            objname = filenameSplit[3]
-           
-            gpstime_start = Time(hdul[1].header['GPS_TIME'],
-                                 format='isot', scale='utc')
-            gpstime_end = Time(hdul[-1].header['GPS_TIME'],
-                               format='isot', scale='utc') 
-            RA = hdul[0].header['RAD']
-            Dec = hdul[0].header['DecD']
-            exposure_time = (gpstime_end - gpstime_start).sec
-            dateshort = str(gpstime_start.datetime)[:10]
+        filenamesall = glob.glob(os.path.join(folder,"*.fits")) + glob.glob(os.path.join(folder,"*.fits.fz"))
+        exposures = []
+        for filename in filenamesall:
+            filenameSplit = filename.split('/')
+            filenameSplit = filenameSplit[-1].split('_')
+            if filenameSplit[0] == "kped":
+                exposure = filenameSplit[3]
+            else:
+                continue
+            if exposure not in exposures:
+                exposures.append(exposure)
 
-            image_data = fits.getdata(filename, ext=1)
+        for exposure in exposures:
+            fitsfiles = sorted(glob.glob('%s/*%s*.fit*'%(folder,exposure)))
+            for filename in fitsfiles:
+                hdul = fits.open(filename)
+                filenameSplit = filename.split("/")[-1].split("_")
+                imgid = int(filenameSplit[1] + filenameSplit[2])
+                objname = filenameSplit[3]
 
-            db.session().merge(Image(filename=filename,
-                                     RA=RA,
-                                     Dec=Dec,
-                                     objname=objname,
-                                     date=gpstime_start.datetime,
-                                     exposure_time=exposure_time,
-                                     dateshort=dateshort))
+                gpstime_start = Time(hdul[1].header['GPS_TIME'],
+                                     format='isot', scale='utc')
+                gpstime_end = Time(hdul[-1].header['GPS_TIME'],
+                                     format='isot', scale='utc') 
+                RA = hdul[0].header['RAD']
+                Dec = hdul[0].header['DecD']
+                exposure_time = (gpstime_end - gpstime_start).sec
+                dateshort = str(gpstime_start.datetime)[:10]
 
-            print('Ingested filename: %s' % filename)
-            db.session().commit()
+                image_data = fits.getdata(filename, ext=1)
 
+                exists = db.session.query(Object.objname).filter_by(objname=objname).first() is not None
+                if not exists:
+                    db.session().merge(Object(RA=RA,
+                                              Dec=Dec,
+                                              objname=objname))
+
+                
+                exists = Exposure.query.filter_by(image_id=imgid,
+                                                  objname=objname).first() is not None
+                if not exists:
+                    print(imgid, objname)
+                    db.session().merge(Exposure(objname=objname,
+                                                image_id=imgid,
+                                                date=gpstime_start.datetime,
+                                                dateshort=dateshort))
+                db.session().merge(Cube(filename=filename,
+                                         image_id=imgid,
+                                         objname=objname,
+                                         date=gpstime_start.datetime,
+                                         exposure_time=exposure_time))
+
+                print('Ingested filename: %s' % filename)
+                db.session().commit()
+
+
+def ingest_reductions(config, lookback, repeat=False):
+
+    lookbackTD = TimeDelta(lookback,format='jd')
+
+    folders = glob.glob(os.path.join(config["reductions"]["directory"],"20*"))
+    for folder in folders:
+        folderSplit = folder.split("/")
+        yyyymmdd = folderSplit[-1]
+
+        date = Time("%s-%s-%sT00:00:00"%(yyyymmdd[:4],
+                                         yyyymmdd[4:6],
+                                         yyyymmdd[6:8]),
+                    format='isot', scale='utc')
+
+        if Time.now() - date > lookbackTD: continue
+
+        objectsall = glob.glob(os.path.join(folder,"*-*"))
+        for objdir in objectsall:
+            productdir = os.path.join(objdir, 'product')
+            lcurve = os.path.join(productdir, 'lightcurve.forced')
+            if not os.path.isfile(lcurve): continue
+
+            objdirSplit = objdir.split("/")
+            imgid = int(objdirSplit[-2] + objdirSplit[-1].split("_")[0])
+            objname = objdirSplit[-1].split("_")[1]
+
+            reduction = Reduction.query.filter_by(image_id=imgid,
+                                                  objname=objname).first()
+            if reduction is not None:
+                continue
+
+            tblforced = asci.read(lcurve)
+            mjd_forced = tblforced['MJD'].data
+            mag_forced, magerr_forced = tblforced['mag'].data, tblforced['magerr'].data
+            flux_forced, fluxerr_forced = tblforced['flux'].data, tblforced['fluxerr'].data
+
+            db.session().merge(Reduction(objname=objname,
+                                         image_id=imgid,
+                                         mjd=mjd_forced,
+                                         mag=mag_forced,
+                                         magerr=magerr_forced,
+                                         flux=flux_forced,
+                                         fluxerr=fluxerr_forced))
+            print('Ingested filename: %s' % lcurve)
+            db.session().commit()            
 
 def run_kped(init_db=False):
 
     if init_db:
         ingest_images(config, args.lookback, repeat=True)
+        ingest_reductions(config, args.lookback, repeat=True)
     else:
-        ingest_images(config, args.lookback)
+        ingest_images(config, args.lookback, repeat=True)
+        ingest_reductions(config, args.lookback)
 
-    ims = Image.query.all()
+    exposures = Exposure.query.all()
+    for exposure in exposures:
+        print(exposure.objname, exposure.date)
 
-    for im in ims:
-        print(im.filename)
+    reductions = Reduction.query.all()
+    for reduction in reductions:
+        print(reduction.objname, reduction.image_id)
 
 if __name__ == "__main__":
 
@@ -272,6 +434,7 @@ if __name__ == "__main__":
 
     if args.init_db:
         print(f'Creating tables on database {conn.url.database}')
+        Base.metadata.reflect()
         Base.metadata.drop_all()
         Base.metadata.create_all()
 

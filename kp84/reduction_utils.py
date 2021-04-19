@@ -166,6 +166,8 @@ def get_reference_pos(scienceimage, cat, objName, zp=0, passband='sg', xoff=0, y
         ind = (cat[:,22]==framenum)&xind&yind
     
         catsub = cat[ind] # in pixel coordinate
+        print(catsub)
+
         hdu = sciHDU[framenum]
         header = hdu.header
         #xguess = header["X_GUESS"]

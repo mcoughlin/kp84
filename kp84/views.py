@@ -93,10 +93,12 @@ def human_time(*args, **kwargs):
 @app.route('/')
 def index():
 
-    ims = models.db.session.query(models.Image).all()
-    objs = []
+    objs = models.db.session.query(models.Object).all()
+    exposures = models.db.session.query(models.Exposure).all()
+
     days = []
-    for im in ims:
+    for exp in exposures:
+        
         #print(im.filename)
         #print(im.objname)
         #print(im.exposure_time)
@@ -105,31 +107,28 @@ def index():
         #print(im.Dec)
         #print(im.dateshort)
 
-        img_data = fits.getdata(im.filename, ext=0)
-        plt.imsave('/home/kped/Michael/kp84/kp84/templates/images/' + im.objname + 'pic.png', img_data)
+        #img_data = fits.getdata(im.filename, ext=0)
+        #plt.imsave('/home/kped/Michael/kp84/kp84/static/images/' + im.objname + 'pic.png', img_data)
 
         #img = aplpy.FITSfigure(im.filename, figure=fig)
         #img.show_grayscale(invert=False)
         #plt.savefig('/home/kped/Michael/kp84/kp84/images/' + im.objname + 'pic.png')
         #plt.close()
 
-        if im.objname in objs:
-            pass
-        else:
-            objs.append(im.objname)
+        #if im.objname in objs:
+        #    pass
+        #else:
+        #    objs.append(im.objname)
 
-        p = str(im.date)
-        o = p.split()
-        day = o[0]
+        #p = str(im.date)
+        #o = p.split()
+        #day = o[0]
 
-        if day in days:
-            pass
-        else:
-            days.append(day)
+        if exp.dateshort not in days:
+            days.append(exp.dateshort)
         
     return render_template(
         'index.html',
-        ims=ims,
         objs=objs,
         days=days)
 

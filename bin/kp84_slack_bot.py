@@ -99,7 +99,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             return
     else:
         user, message_ts = 'test', thread_ts
-        #day = "20210224"
+        #day = "20210410"
         #todo, objName = 'reduce', '063528_ZTF20acozryr-r'
         #objType = 'transient'
         #day = "20210418"

@@ -241,8 +241,12 @@ if not doSkipRegis:
                                             refit = refit, offtune = doOffTune)
             else:
                 print(fitsfile)
-                regis2HDU = register_transients(fitsfile, ra, dec) 
+                regis2HDU = register_transients(fitsfile, ra, dec)
+
             regisfile = fitsfile.replace("/processing/", "/registration/")
+            regisfolder = "/".join(regisfile.split("/")[:-1])
+            if not os.path.isdir(regisfolder):
+                os.makedirs(regisfolder)
             regisfile = regisfile[:-5]+'_regis.fits'
 
             if regis2HDU is not None:

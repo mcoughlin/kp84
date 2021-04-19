@@ -37,7 +37,7 @@
 	<div class="dropdown-content">
 	    {% for obj in objs %}
 	    <p>
-	    <a href={{ "http://localhost:8001/obj/" + obj + "/" }}>{{ obj }}</a>
+	    <a href={{ "http://localhost:8001/obj/" + obj.objname + "/" }}>{{ obj.objname }}</a>
 	    </p>
 	    {% endfor %}
 	</div>
@@ -54,29 +54,5 @@
 	</div>
     </div>
 
-    <h2>Images</h2>
-    <div class=list-group>
-        {% for im in ims %}
-	<p>{{ "Filename: " + im.filename }}
-            <br>
-	    {{ "Object Name: " + im.objname }}
-	    <a href={{ "http://localhost:8001/obj/" + im.objname + "/" }}>More Images of this Object</a>
-            <br>
-	    {{ "Exposure Time:" }}
-	    {{ im.exposure_time }}
-            <br>
-	    {{ "Date:" }}
-	    {{ im.date }}
-	    <br>
-	    {{ "Right Ascension:" }}
-	    {{ im.RA }}
-	    <br>
-	    {{ "Declination:" }}
-	    {{ im.Dec }}</p>
-
-	<img src="{{url_for('images', filename='lightbulb.png')}}"align="middle"/>
-        </a>
-        {% endfor %}
-    </ul>
 {% endblock %}
 
