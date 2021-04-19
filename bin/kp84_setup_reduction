@@ -548,5 +548,4 @@ for obj in objs:
                     hdu[ii].header[key] = header[key] - tb_shift[ii]["yshift"]
                 else:
                     hdu[ii].header[key] = header[key]
-            print(hdu[ii].header["CRPIX1"], hdu[ii].header["CRPIX2"])
         hdu.writeto(fitsfile, overwrite=True)

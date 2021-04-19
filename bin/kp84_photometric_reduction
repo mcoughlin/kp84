@@ -232,10 +232,10 @@ if not doSkipRegis:
                 flag = 0
                 print ("  Astrometry failed and no wcs specified -- discard %s!"%fitsfileSplit)
         if flag in [1,2]:
-            shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s_proc_shift.dat'%fitsfileSplit))
-            shiftfile = shiftfiles[0]
-            refit = operator.not_(doOffRefit)
             if (not opts.xstar == "") and (not opts.ystar == ""):
+                shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s_proc_shift.dat'%fitsfileSplit))
+                shiftfile = shiftfiles[0]
+                refit = operator.not_(doOffRefit)
                 regis2HDU = register_images(fitsfile, shiftfile, xyframe, int(opts.xstar), int(opts.ystar), path_out_dir, 
                                             maxdist = maxdist, aper_size = aper_size, 
                                             refit = refit, offtune = doOffTune)
@@ -412,7 +412,9 @@ for ii in range(nfiles):
                             linestyle='dashed', edgecolor='red')
             f1.show_circles(ra_ps1,dec_ps1,1.5/3600.0,zorder=99,
                             linestyle='dashed', edgecolor='green')
-    
+            f1.show_circles([[ra]],[[dec]],3.0/3600.0,zorder=99,
+                            linestyle='dashed', edgecolor='b')
+
             f1.axis_labels.set_xtext('Right Ascension')
             f1.axis_labels.set_ytext('Declination')
     
@@ -426,8 +428,6 @@ if opts.doCheckCatalog:
     filename = os.path.join(moviedir,"movie.mpg")
     ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
     os.system(ffmpeg_command)
-
-print(stop)
 
 if not doSkipFindRef:
     print ("")

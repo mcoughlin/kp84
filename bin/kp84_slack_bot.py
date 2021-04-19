@@ -42,7 +42,7 @@ def upload_fig(fig, user, filename, channel_id):
     #fig.close()
 
 def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
-                  no_plots=False):
+                  no_plots=False, day=Time.now().isot.split("T")[0].replace("-","")):
 
     thread_ts = time.time()
 
@@ -73,7 +73,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
         if len(payload["messages"]) == 0:
             return
    
-        doReduce, day = False, Time.now().isot.split("T")[0].replace("-","")
+        doReduce = False
         objType, objName = 'variable', 'tmp'
         for mess in payload["messages"]:
             message_ts = float(mess["ts"])
@@ -99,15 +99,14 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             return
     else:
         user, message_ts = 'test', thread_ts
-        day = Time.now().isot.split("T")[0].replace("-","")
         #day = "20210224"
         #todo, objName = 'reduce', '063528_ZTF20acozryr-r'
         #objType = 'transient'
-        day = "20210417"
+        #day = "20210418"
         #todo, objName = 'movie', 'all'
         #todo, objName = 'stack', 'all'
-        #todo, objName = 'setup_reduce', 'all'
-        todo, objName = 'reduce', 'all'
+        todo, objName = 'setup_reduce', 'all'
+        #todo, objName = 'reduce', 'all'
         #todo, objName = 'reduce', '090531_ZTFJ15395027'
     
 
@@ -163,7 +162,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
     )
 
     if "reduce" in todo:
-        if not objName == "all":
+        if not objName in ["all", "redo"]:
             objsreduce = [objName]
         else:
             objsreduce = objs
@@ -182,7 +181,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
   
             if not os.path.isdir(outputProDir):
                 if objType == "variable":
-                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture" % (day, objNameTmp)
+                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --halfwidth 200 --doCheckCatalog" % (day, objNameTmp)
                 elif objType == "transient":
                     setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --doTransient --doSubtraction" % (day, objNameTmp)
                 else:
@@ -343,6 +342,7 @@ if __name__ == "__main__":
     parser.add_argument("-np", "--noplots", action="store_true", default=False)
     parser.add_argument("--setupDir", default = "/Backup/Data/archive_kped/data/reductions/")
     parser.add_argument("--outputDir", default = "/Backup/Data/archive_kped/data/photometry/")
+    parser.add_argument("--day", type=str, default=Time.now().isot.split("T")[0].replace("-",""))
 
     cfg = parser.parse_args()
 
@@ -353,19 +353,19 @@ if __name__ == "__main__":
         exit(0)
 
     if cfg.debug:
-        run_reductions(channel, bypass=True,
-                     no_plots=cfg.noplots,
-                     setupDir=cfg.setupDir,
-                     outputDir=cfg.outputDir)
+        run_reductions(channel, bypass=True, day=cfg.day,
+                       no_plots=cfg.noplots,
+                       setupDir=cfg.setupDir,
+                       outputDir=cfg.outputDir)
         exit(0)
 
     while True:
         #try:
         print('Looking for some reducing to do!')
-        run_reductions(channel, 
-                           no_plots=cfg.noplots,
-                           setupDir=cfg.setupDir,
-                           outputDir=cfg.outputDir)
+        run_reductions(channel, day=cfg.day,
+                       no_plots=cfg.noplots,
+                       setupDir=cfg.setupDir,
+                       outputDir=cfg.outputDir)
         #except:
         #    pass
         time.sleep(15)
