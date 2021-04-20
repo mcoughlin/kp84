@@ -107,8 +107,6 @@ class BaseMixin(object):
         return f"<{type(self).__name__}({', '.join(attr_list)})>"
 
     def to_dict(self):
-        if db.inspection.inspect(self).expired:
-            DBSession().refresh(self)
         return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
 
     @classmethod
@@ -329,16 +327,18 @@ def ingest_images(config, lookback, repeat=False):
                 exists = Exposure.query.filter_by(image_id=imgid,
                                                   objname=objname).first() is not None
                 if not exists:
-                    print(imgid, objname)
                     db.session().merge(Exposure(objname=objname,
                                                 image_id=imgid,
                                                 date=gpstime_start.datetime,
                                                 dateshort=dateshort))
-                db.session().merge(Cube(filename=filename,
-                                         image_id=imgid,
-                                         objname=objname,
-                                         date=gpstime_start.datetime,
-                                         exposure_time=exposure_time))
+
+                exists = Cube.query.filter_by(filename=filename).first() is not None
+                if not exists:
+                    db.session().merge(Cube(filename=filename,
+                                            image_id=imgid,
+                                            objname=objname,
+                                            date=gpstime_start.datetime,
+                                            exposure_time=exposure_time))
 
                 print('Ingested filename: %s' % filename)
                 db.session().commit()

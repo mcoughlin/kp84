@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import io
 import urllib.parse
 import math
 import re
@@ -8,6 +9,7 @@ import requests
 import shutil
 import tempfile
 
+import aplpy
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy import time
@@ -18,7 +20,12 @@ import matplotlib.style
 import pkg_resources
 from astropy.utils.data import get_pkg_data_filename
 from astropy.io import fits
+
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 from flask import (
     abort, flash, jsonify, make_response, redirect, render_template, request,
@@ -98,32 +105,6 @@ def index():
 
     days = []
     for exp in exposures:
-        
-        #print(im.filename)
-        #print(im.objname)
-        #print(im.exposure_time)
-        #print(im.date)
-        #print(im.RA)
-        #print(im.Dec)
-        #print(im.dateshort)
-
-        #img_data = fits.getdata(im.filename, ext=0)
-        #plt.imsave('/home/kped/Michael/kp84/kp84/static/images/' + im.objname + 'pic.png', img_data)
-
-        #img = aplpy.FITSfigure(im.filename, figure=fig)
-        #img.show_grayscale(invert=False)
-        #plt.savefig('/home/kped/Michael/kp84/kp84/images/' + im.objname + 'pic.png')
-        #plt.close()
-
-        #if im.objname in objs:
-        #    pass
-        #else:
-        #    objs.append(im.objname)
-
-        #p = str(im.date)
-        #o = p.split()
-        #day = o[0]
-
         if exp.dateshort not in days:
             days.append(exp.dateshort)
         
@@ -131,14 +112,6 @@ def index():
         'index.html',
         objs=objs,
         days=days)
-
-@app.route('/obj/<objname>/zzzexposure.png')
-def objpic():
-    ims = models.db.session.query(models.Image).all()
-    for im in ims:
-        objname=im.objname
-    return redirect(url_for(
-        "object_image", objname=objname))
 
 @app.route('/obj/<objname>/exposure.png')
 def idk_what_this_does(objname):
@@ -160,22 +133,82 @@ def idk_what_this_does(objname):
 @app.route('/obj/<objname>/')
 def object(objname):
 
-    query = models.db.session.query(models.Image.objname == objname)
+    query = models.db.session.query(models.Object).filter_by(objname=objname)
 
     try:
-        idxs = query.all()
+        obj = query.first()
     except NoResultFound:
         abort(404)
-    
-    imsall = models.db.session.query(models.Image).all()
-    ims = []
-    for im, idx in zip(imsall, idxs):
-        if idx[0] == False: continue
-        ims.append(im)
+    exposures = models.db.session.query(models.Exposure).filter_by(objname=objname).all()
 
     return render_template(
             'obj.html',
-            ims=ims)
+            obj=obj,
+            exposures=exposures)
+
+@app.route('/obj/<objname>/image_id/<int:image_id>/exposure.png')
+def exposure(objname, image_id):
+
+    query = models.db.session.query(models.Cube).filter_by(objname=objname,
+                                                           image_id=image_id)
+
+    try:
+        cubes = query.all()
+    except NoResultFound:
+        abort(404)
+
+    fitsfiles = []
+    for cube in cubes:
+        fitsfiles.append(cube.filename)
+    fitsfiles = sorted(fitsfiles)
+
+    fig = Figure()
+    f1 = aplpy.FITSFigure(fitsfiles[0],figure=fig)
+    f1.show_grayscale(invert=False, stretch='power')
+    fig.canvas.draw()
+
+    output = io.BytesIO()
+    FigureCanvas(fig).print_png(output)
+    return Response(output.getvalue(), mimetype='image/png')
+
+
+@app.route('/obj/<objname>/image_id/<int:image_id>/reduction.png')
+def reduction(objname, image_id):
+
+    query = models.db.session.query(models.Reduction).filter_by(objname=objname,
+                                                                image_id=image_id)
+
+    try:
+        reduction = query.first()
+    except NoResultFound:
+        abort(404)
+    mjd = reduction.mjd
+    mag, magerr = reduction.mag, reduction.magerr
+    flux, fluxerr = reduction.flux, reduction.fluxerr
+
+    mjd = np.array(mjd)
+    mag, magerr = np.array(mag), np.array(magerr)
+    flux, fluxerr = np.array(flux), np.array(fluxerr)
+
+    fig = Figure()
+    ax = fig.add_subplot(1, 1, 1)
+    timetmp = (mjd-mjd[0])*24
+    ax.errorbar(timetmp,mag,magerr,fmt='ko')
+    ax.set_xlabel('Time [hrs]')
+    ax.set_ylabel('Magnitude [ab]')
+    idx = np.where(np.isfinite(mag))[0]
+    ymed = np.nanmedian(mag)
+    y10, y90 = np.nanpercentile(mag[idx],10), np.nanpercentile(mag[idx],90)
+    ystd = np.nanmedian(magerr[idx])
+    ymin = y10 - 3*ystd
+    ymax = y90 + 3*ystd
+    ax.set_ylim([ymin,ymax])
+    ax.set_xlim(min(timetmp), max(timetmp))
+    ax.invert_yaxis()
+
+    output = io.BytesIO()
+    FigureCanvas(fig).print_png(output)
+    return Response(output.getvalue(), mimetype='image/png')
 
 @app.route('/date/<day>/')
 def date(day):
