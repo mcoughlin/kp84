@@ -213,22 +213,20 @@ def reduction(objname, image_id):
 @app.route('/date/<day>/')
 def date(day):
     
-    query = models.db.session.query(models.Image.dateshort == day)
+    query = models.db.session.query(models.Exposure).filter_by(dateshort=day)
 
     try:
-        idxs = query.all()
+        date = query.first()
     except NoResultFound:
         abort(404)
 
-    imsall = models.db.session.query(models.Image).all()
-    ims = []
-    for im, idx in zip(imsall, idxs):
-        if idx[0] == False: continue
-        ims.append(im)
-
-    print(im.dateshort)
+    exposures = models.db.session.query(models.Exposure).filter_by(dateshort=day)
+    objname = exposures.objname
+    obj = models.db.session.query(models.Object).filter_by(objname=objname)
 
     return render_template(
         'date.html',
-        ims=ims)
+        date=date,
+        objs=objs,
+        exposures=exposures)
 

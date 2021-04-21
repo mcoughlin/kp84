@@ -251,12 +251,9 @@ def get_reference_pos(scienceimage, cat, objName, zp=0, passband='sg', xoff=0, y
     if rafield==None:
         ra = sciHDU[0].header["RA_OBJ"]
         dec = sciHDU[0].header["DEC_OBJ"]
-        wcsauto = sciHDU[0].header["WCSAUTO"]
+        wcsauto = "CRPIX1" in sciHDU[0].header
 
-        if "stack" in scienceimage:
-            framenum = 1
-        else:
-            framenum = sciHDU[0].header["WCSFRAME"]
+        framenum = 1
 
         if wcsauto==1:
             w0 = WCS(sciHDU[framenum].header)

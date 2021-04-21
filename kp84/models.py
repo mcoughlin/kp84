@@ -306,6 +306,7 @@ def ingest_images(config, lookback, repeat=False):
                 imgid = int(filenameSplit[1] + filenameSplit[2])
                 objname = filenameSplit[3]
 
+                if len(hdul) < 2: continue
                 gpstime_start = Time(hdul[1].header['GPS_TIME'],
                                      format='isot', scale='utc')
                 gpstime_end = Time(hdul[-1].header['GPS_TIME'],

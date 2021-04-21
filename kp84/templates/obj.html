@@ -29,23 +29,28 @@
             <p>
             {{ "Exposure Date:" }}
             {{ exposure.date }}
-            <br>
+	    <a href={{ "htt://localhost:8001/date/" + exposure.dateshort + "/" }}>{{ "More exposures from this date" }}</a>
+	    <br>
             {{ "Image ID:" }}
             {{ exposure.image_id }}
+
 	    {% for cube in exposure.cubes %}
-   	        <p>
+ 		<br>
 	        {{ "Exposure Time:" }}
 	        {{ cube.exposure_time }}
-	        <br>
+	        
+		<br>
+
 	        {{ "Filename:" }}
 	        {{ cube.filename }}
             <img src={{ "http://localhost:8001/obj/" + exposure.objname + "/image_id/" + exposure.image_id|string + "/exposure.png" }} alt={{ exposure.image_id|string }}>
 	        <br>
             {% endfor %}
             {% for reduction in exposure.reductions %}
-                <p>
+	    	<br>
 		<img src={{ "http://localhost:8001/obj/" + reduction.objname + "/image_id/" + reduction.image_id|string + "/reduction.png" }} alt={{ reduction.image_id|string }}>
-	    {% endfor %} 
+	    	</p>
+		{% endfor %} 
         {% endfor %}
     </ul>
 {% endblock %}

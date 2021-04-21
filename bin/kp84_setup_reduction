@@ -443,17 +443,17 @@ for obj in objs:
     if wcsmode!=2:
         ra, dec, radius = get_ra_dec_radius(obj.split("_")[1], opts.object_lists, wcsmode=wcsmode)
     folderName = "%s/%s"%(outputDir,obj)
-    folderName_raw = "%s/raw"%(folderName)
-    fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_raw)))
     folderName_processing = "%s/processing"%(folderName)
+    fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_processing)))
     folderName_wcs = "%s/wcs"%(folderName)
-    folderName_upload = "%s/upload"%(folderName)
     folderName_sextract = "%s/sextract"%(folderName)
+    folderName_processing_wcs = "%s/processing_wcs"%(folderName)
+    if not os.path.isdir(folderName_processing_wcs):
+        os.makedirs(folderName_processing_wcs)
+
     fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_processing)))
     if not os.path.isdir(folderName_wcs):
         os.makedirs(folderName_wcs)
-    if not os.path.isdir(folderName_upload):
-        os.makedirs(folderName_upload)
     folderName_sextract = "%s/sextract"%(folderName)
     for i in range(len(fitsfiles)):
         fitsfile = fitsfiles[i]
@@ -499,14 +499,16 @@ for obj in objs:
                                        index_xyls=index_xyls,
                                        wcsfile=wcsfile)
 
-        header = fits.open(wcsfile)[0].header
-        w = WCS(header)
+        if os.path.isfile(wcsfile):
+            header = fits.open(wcsfile)[0].header
+            w = WCS(header)
 
-        hdu = fits.open(fitsfile)
-        for key in header.keys():
-            if key in ["COMMENT", "HISTORY", "SIMPLE", "BITPIX", "NAXIS", "EXTEND"]: continue
-            hdu[0].header[key] = header[key]
-        hdu.writeto(fitsfile, overwrite=True)
+            wcsfitsfile = os.path.join(folderName_processing_wcs, fitsfile.split("/")[-1])
+            hdu = fits.open(fitsfile)
+            for key in header.keys():
+                if key in ["COMMENT", "HISTORY", "SIMPLE", "BITPIX", "NAXIS", "EXTEND"]: continue
+                hdu[0].header[key] = header[key]
+            hdu.writeto(wcsfitsfile, overwrite=True)
 
 print ("")
 print ("================================")
@@ -520,11 +522,9 @@ for obj in objs:
         continue
     ra, dec, radius = get_ra_dec_radius(obj.split("_")[1], opts.object_lists)
     folderName = "%s/%s"%(outputDir,obj)
-    folderName_processing = "%s/processing"%(folderName)
+    folderName_processing_wcs = "%s/processing_wcs"%(folderName)
     folderName_registration = "%s/registration"%(folderName)
-    folderName_wcs = "%s/wcs"%(folderName)
-    folderName_upload = "%s/upload"%(folderName)
-    fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_processing)))
+    fitsfiles = sorted(glob.glob('%s/*.fit*'%(folderName_processing_wcs)))
     if not os.path.isdir(folderName_registration):
         os.makedirs(folderName_registration)
     if wcsmode!=2:
@@ -532,6 +532,7 @@ for obj in objs:
     for i in range(len(fitsfiles)):
         fitsfile = fitsfiles[i]
         filename = fitsfile.split("/")[-1].split(".fit")[0]
+        registerfitsfile = os.path.join(folderName_registration, fitsfile.split("/")[-1])
         print ("%s"%filename)
         print ("  Calculating shift w.r.t extension 1...")
         tb_shift, data_stacked = stack_shifted_frames(fitsfile, fix_ref = doFixRef)
@@ -548,4 +549,4 @@ for obj in objs:
                     hdu[ii].header[key] = header[key] - tb_shift[ii]["yshift"]
                 else:
                     hdu[ii].header[key] = header[key]
-        hdu.writeto(fitsfile, overwrite=True)
+        hdu.writeto(registerfitsfile, overwrite=True)

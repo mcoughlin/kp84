@@ -181,7 +181,7 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
   
             if not os.path.isdir(outputProDir):
                 if objType == "variable":
-                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --halfwidth 200 --doCheckCatalog" % (day, objNameTmp)
+                    setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --halfwidth 200" % (day, objNameTmp)
                 elif objType == "transient":
                     setup_command = "python kp84_photometric_reduction --day %s --objName %s --doMakeMovie --doDynamicAperture --doTransient --doSubtraction" % (day, objNameTmp)
                 else:
