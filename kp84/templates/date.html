@@ -12,19 +12,17 @@
 {% block body %}
 <h2>Images from specified date</h2>
 	<div class=list-group>
-		{% for exposure in exposures %}
+		{% for object, exposure in objects|zip(exposures) %}
 		<p>
 		{{ "Object:" }}
 		<a href={{ "http://localhost:8001/obj/" + exposure.objname + "/" }}>{{ exposure.objname }}</a>
 		<br>
-		{% for obj in objs %}
-			{{ "RA:"}}
-			{{ obj.RA }}
-			<br>
-			{{ "Dec:" }}
-			{{ obj.Dec }}
-			<br>
-		{% endfor %}
+		{{ "RA:" }}
+		{{ object.RA }}
+		<br>
+		{{ "Dec:" }}
+		{{ object.Dec }}
+		<br>
 		{% for cube in exposure.cubes %}
 			{{ "Exposure Time:" }}
 			{{ cube.exposure_time }}

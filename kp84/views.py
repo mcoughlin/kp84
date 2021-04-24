@@ -101,34 +101,23 @@ def human_time(*args, **kwargs):
 def index():
 
     objs = models.db.session.query(models.Object).all()
+    objnames = []
+    for obj in objs:
+        objnames.append(obj.objname)
+    objs = [x for _, x in sorted(zip(objnames, objs))]
+
     exposures = models.db.session.query(models.Exposure).all()
 
     days = []
     for exp in exposures:
         if exp.dateshort not in days:
             days.append(exp.dateshort)
-        
+    days = sorted(days)
+
     return render_template(
         'index.html',
         objs=objs,
         days=days)
-
-@app.route('/obj/<objname>/exposure.png')
-def idk_what_this_does(objname):
-    ims = models.db.session.query(models.Image).all()
-    objnames = []
-    imgfiles = []
-    contents = []
-    for im in ims:
-        objname = im.objname
-        imglocation = '/home/kped/Michael/kp84/kp84/templates/images/' + im.objname + 'pic.png'
-        imgfile = Image.open(imglocation)
-        content = imgfile
-        objnames.append(objname)
-        imgfiles.append(imgfile)
-        contents.append(content)
-        imgfile.close()
-    return Response(contents, mimetype='image/png')
 
 @app.route('/obj/<objname>/')
 def object(objname):
@@ -220,13 +209,27 @@ def date(day):
     except NoResultFound:
         abort(404)
 
-    exposures = models.db.session.query(models.Exposure).filter_by(dateshort=day)
-    objname = exposures.objname
-    obj = models.db.session.query(models.Object).filter_by(objname=objname)
+    exposures = models.db.session.query(models.Exposure).filter_by(dateshort=day).all()
+    objects = []
+    for exposure in exposures:
+        objects.append(models.db.session.query(models.Object).filter_by(objname=exposure.objname).one())
 
     return render_template(
         'date.html',
         date=date,
-        objs=objs,
+        objects=objects,
         exposures=exposures)
 
+@app.route('/calendar/')
+def calendar():
+    expall = models.db.session.query(models.Exposure)
+    days=[]
+    for exp in expall:
+        if exp.dateshort not in days:
+            days.append(exp.dateshort)
+    for day in days:
+        objs = models.db.session.query(models.Exposure).filter_by(dateshort=day).first().objname
+    return render_template(
+            'cal.html',
+            days=days,
+            objs=objs)

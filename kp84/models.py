@@ -310,7 +310,8 @@ def ingest_images(config, lookback, repeat=False):
                 gpstime_start = Time(hdul[1].header['GPS_TIME'],
                                      format='isot', scale='utc')
                 gpstime_end = Time(hdul[-1].header['GPS_TIME'],
-                                     format='isot', scale='utc') 
+                                     format='isot', scale='utc')
+                if not 'RAD' in hdul[0].header: continue
                 RA = hdul[0].header['RAD']
                 Dec = hdul[0].header['DecD']
                 exposure_time = (gpstime_end - gpstime_start).sec

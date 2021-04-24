@@ -74,5 +74,6 @@ class DateConverter(BaseConverter):
 
 
 app.url_map.converters['date'] = DateConverter
+app.jinja_env.filters['zip'] = zip
 
 humanize = Humanize(app)
