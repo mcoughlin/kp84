@@ -227,8 +227,13 @@ def calendar():
     for exp in expall:
         if exp.dateshort not in days:
             days.append(exp.dateshort)
+    objs = {}
     for day in days:
-        objs = models.db.session.query(models.Exposure).filter_by(dateshort=day).first().objname
+        objs[day] = []
+        exposures = models.db.session.query(models.Exposure).filter_by(dateshort=day).all()
+        for exp in exposures:
+            objs[day].append(exp.objname)
+        objs[day] = sorted(list(set(objs[day])))
     return render_template(
             'cal.html',
             days=days,
