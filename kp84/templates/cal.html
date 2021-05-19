@@ -12,10 +12,12 @@
 {% block body %}
     {% for day in days %}
         <h1>{{ day }}</h2>
+	<a href={{"http://localhost:8001/date/" + day + "/"}}>"Page for this date"</a>
         {% for obj in objs[day] %}
 	    <br>
-	    <a href={{"http://localhost:8001/" + obj + "/"}}> {{ obj }} </a>
+	    <a href={{"http://localhost:8001/obj/" + obj + "/"}}> {{ obj }} </a>
         {% endfor %}
+	<br>
     {% endfor %}	
 {% endblock %}
 

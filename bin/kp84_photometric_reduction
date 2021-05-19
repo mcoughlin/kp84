@@ -211,6 +211,7 @@ if not doSkipRegis:
         regisfile = fitsfile.replace("/processing/", "/registration/")
         if not os.path.isfile(regisfile):
             shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s_proc_shift.dat'%fitsfileSplit))
+            if len(shiftfiles) == 0: continue
             shiftfile = shiftfiles[0]
             refit = operator.not_(doOffRefit)
             regis2HDU = register_images(fitsfile, shiftfile, xyframe,
@@ -244,6 +245,8 @@ if nfiles == 0:
         if nfiles == 0:
             print('No raw files for %s... nothing to do.' % opts.objName)
             exit(0)
+    else:
+        exit(0)
 
 if doSkipRegis:
     registerdir = os.path.join(dataDir,'registration')

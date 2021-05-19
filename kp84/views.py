@@ -227,6 +227,8 @@ def calendar():
     for exp in expall:
         if exp.dateshort not in days:
             days.append(exp.dateshort)
+    days = sorted(days)
+    days.reverse()
     objs = {}
     for day in days:
         objs[day] = []
