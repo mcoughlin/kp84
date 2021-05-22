@@ -34,10 +34,17 @@ from flask_caching import Cache
 from flask_login import (
     current_user, login_required, login_user, logout_user, LoginManager)
 from wtforms import (
-    BooleanField, FloatField, RadioField, TextField, IntegerField)
+    BooleanField, FloatField, RadioField, TextField, IntegerField, StringField, PasswordField, SubmitField)
 from wtforms_components.fields import (
     DateTimeField, DecimalSliderField, SelectField)
 from wtforms import validators
+from wtforms.validators import (
+    DataRequired,
+    Email,
+    EqualTo,
+    Length,
+    Optional
+)
 from wtforms_alchemy.fields import PhoneNumberField
 from passlib.apache import HtpasswdFile
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
@@ -66,6 +73,14 @@ class ModelForm(BaseModelForm):
 #
 #
 #
+
+try:
+    htpasswd = HtpasswdFile(os.path.join(app.instance_path, 'htpasswd'))
+except FileNotFoundError:
+    htpasswd = HtpasswdFile()
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
 # Server-side cache for rendered view functions.
 cache = Cache(app, config={
@@ -98,6 +113,7 @@ def human_time(*args, **kwargs):
 
 
 @app.route('/')
+@login_required
 def index():
 
     objs = models.db.session.query(models.Object).all()
@@ -240,3 +256,40 @@ def calendar():
             'cal.html',
             days=days,
             objs=objs)
+
+@login_manager.user_loader
+def load_user(user_id):
+    # FIXME: new users will have entries in the htpasswd file but not in
+    # the database. Once the htpasswd file goes away, drop everything after
+    # the `or`.
+    print(user_id)
+    exists = models.db.session.query(models.User).filter_by(name=user_id).first() is not None
+    if not exists:
+        models.db.session().merge(models.User(name=user_id))
+        print('Added username: %s' % user_id)
+        models.db.session().commit()
+    return models.db.session.query(models.User).filter_by(name=user_id).first()
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        if htpasswd.check_password(request.form['user'],
+                                   request.form['password']):
+            login_user(load_user(request.form['user']),
+                       remember=('remember' in request.form))
+            flash('You are now logged in.', 'success')
+
+            next = request.args.get('next')
+            return redirect(next or url_for('index'))
+        else:
+            flash('Invalid username or password.', 'danger')
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
+

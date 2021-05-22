@@ -29,6 +29,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import DropConstraint
+from sqlalchemy_utils import EmailType
 from arrow.arrow import Arrow
 
 from kp84.config import app
@@ -145,6 +146,20 @@ def init_db(user, database, password=None, host=None, port=None):
     Base.metadata.bind = conn
 
     return conn
+
+
+class User(UserMixin, Base):
+    """User account model."""
+
+    name = db.Column(
+        db.String,
+        nullable=False,
+        unique=True,
+        comment='Unique username')
+
+    def get_id(self):
+        """Provide user ID for flask_login."""
+        return self.name
 
 
 class Object(Base):
