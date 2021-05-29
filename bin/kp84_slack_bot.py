@@ -105,8 +105,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
         #day = "20210418"
         #todo, objName = 'movie', 'all'
         #todo, objName = 'stack', 'all'
-        todo, objName = 'setup_reduce', 'all'
-        #todo, objName = 'reduce', 'all'
+        todo, objName = 'setup_reduce_fit', 'all'
+        #todo, objName = 'fit', 'all'
         #todo, objName = 'reduce', '090531_ZTFJ15395027'
     
 
@@ -332,6 +332,44 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                 channels=channel_id,
                 text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, moviefile.split("/")[-1])
             )
+
+    if "fit" in todo:
+        if not objName == "all":
+            objsreduce = [objName]
+        else:
+            objsreduce = objs
+
+        for objName in objsreduce:
+
+            dataDir = os.path.join(setupDir, day, objName)
+            baseoutputDir = os.path.join(outputDir, day, objName) # the output directory of this object
+
+            outputProDir = os.path.join(baseoutputDir, "product")
+            finalforcefile = os.path.join(outputProDir,"lightcurve.forced")
+
+            outputFitDir = os.path.join(baseoutputDir, "ellc")
+            processfile = os.path.join(outputFitDir,"posteriors/2-post_equal_weights.dat")
+
+            if not os.path.isfile(processfile) and os.path.isfile(finalforcefile):
+                setup_command = "python kp84_fit_lightcurve --lightcurve_file %s --outputDir %s" % (finalforcefile, outputFitDir)
+                print(setup_command)
+                os.system(setup_command)
+                message = []
+                message.append("%s fit complete." % objName)
+                web_client.chat_postMessage(
+                    channel=channel_id,
+                    text="\n".join(message)
+                )
+
+            pngfile = os.path.join(outputFitDir,"posteriors/fit.png")
+            if os.path.isdir(pngfile):
+                web_client.files_upload(
+                    file=pngfile,
+                    filename=pngfile.split("/")[-1],
+                    channels=channel_id,
+                    text="<@{0}>, here's the file {1} I've uploaded for you!".format(user, pngfile.split("/")[-1])
+                )
+
 
 if __name__ == "__main__":
     import argparse
