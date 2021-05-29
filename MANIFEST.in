@@ -1,0 +1,3 @@
+include versioneer.py
+include kp84/_version.py
+recursive-include kp84/templates *

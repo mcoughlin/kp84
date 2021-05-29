@@ -64,19 +64,37 @@ setup_requires = [
 ]
 install_requires = [
     'astroml',
+    'aplpy',
+    'arrow',
     'astropy',
     'astroquery',
     'astroplan',
+    'click',
+    'Cython',
+    'flask_caching',
+    'flask_humanize',
+    'flask_login',
+    'flask_sqlalchemy',
+    'flask_wtf',
+    'extension_helpers',
     'h5py',
+    'idna==2.8',
     'image_registration',
     'matplotlib',
     'numpy',
     'pandas',
+    'passlib',
     'photutils',
     'pytest',
+    'redis',
     'scipy',
     'scikit-image',
-    'tables'
+    'simplejson',
+    'tables',
+    'werkzeug',
+    'WTForms',
+    'WTForms-Alchemy',
+    'WTForms-Components'
 ]
 tests_require = [
     'pytest'
