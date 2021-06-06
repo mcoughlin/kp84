@@ -105,8 +105,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
         #day = "20210418"
         #todo, objName = 'movie', 'all'
         #todo, objName = 'stack', 'all'
-        todo, objName = 'setup_reduce_fit', 'all'
-        #todo, objName = 'fit', 'all'
+        #todo, objName = 'setup_reduce_fit', 'all'
+        todo, objName = 'fit', 'all'
         #todo, objName = 'reduce', '090531_ZTFJ15395027'
     
 
@@ -146,6 +146,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
             channel=channel_id,
             text="\n".join(message)
         )       
+
+    dir_path = os.path.dirname(os.path.realpath(__file__))
 
     directories = glob.glob(os.path.join(baseoutputDir,"*_*"))
     objs = []
@@ -349,9 +351,10 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
 
             outputFitDir = os.path.join(baseoutputDir, "ellc")
             processfile = os.path.join(outputFitDir,"posteriors/2-post_equal_weights.dat")
-
+            pngfile = os.path.join(outputFitDir,"fit.png")
+            
             if not os.path.isfile(processfile) and os.path.isfile(finalforcefile):
-                setup_command = "python kp84_fit_lightcurve --lightcurve_file %s --outputDir %s" % (finalforcefile, outputFitDir)
+                setup_command = "cd %s; python %s/kp84_fit_lightcurve --lightcurve_file %s --outputDir ./" % (outputFitDir, dir_path, finalforcefile)
                 print(setup_command)
                 os.system(setup_command)
                 message = []
@@ -361,8 +364,8 @@ def run_reductions(channel_id, setupDir="", outputDir="", bypass=False,
                     text="\n".join(message)
                 )
 
-            pngfile = os.path.join(outputFitDir,"posteriors/fit.png")
-            if os.path.isdir(pngfile):
+            pngfile = os.path.join(outputFitDir,"fit.png")
+            if os.path.isfile(pngfile):
                 web_client.files_upload(
                     file=pngfile,
                     filename=pngfile.split("/")[-1],

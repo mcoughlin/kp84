@@ -96,7 +96,21 @@ This script download the output product to your local computer
 
 ### `kp84_marshal_photometry.py`
 `python kp84_marshal_photometry.py --day 20191117 --objName ZTFJ0538+1953`<br>
-This script upload the light ccurve to [ZTF Variable Marhsal](https://github.com/dmitryduev/ztf-variable-marshal)
+This script upload the light curve to [ZTF Variable Marhsal](https://github.com/dmitryduev/ztf-variable-marshal)
+
+## Reductions and Updating Database
+
+### `kp84_slack_bot.py'
+`source activate kp84`
+`python kp84_slack_bot.py -d` <br>
+This script runs the reductions on the exposures gathered the previous night.
+
+### `models.py`
+`source activate webpage`
+`python models.py -d` <br>
+This script initializes the database for the website.
+
+note: This may be unnecessary to run manually, a cron job is in the works.
 
 - `--program_name hot subdwarf`
 Current programs are: 

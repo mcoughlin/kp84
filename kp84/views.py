@@ -20,6 +20,8 @@ import matplotlib.style
 import pkg_resources
 from astropy.utils.data import get_pkg_data_filename
 from astropy.io import fits
+from astroplan.scheduling import Schedule
+from astroplan.plots import plot_schedule_airmass
 
 import matplotlib
 matplotlib.use('Agg')
@@ -229,7 +231,12 @@ def date(day):
     objects = []
     for exposure in exposures:
         objects.append(models.db.session.query(models.Object).filter_by(objname=exposure.objname).one())
-
+    
+    fig, ax = plt.subplots()
+    for object in objects
+        ax.axvspan(object.starttime, object.endtime, alpha=0.5, color='red')
+        
+    plt.savefig(./timeuseplots)
     return render_template(
         'date.html',
         date=date,

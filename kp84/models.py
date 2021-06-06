@@ -199,6 +199,14 @@ class Exposure(Base):
         comment='UTC event timestamp',
         index=True)
 
+    starttime = db.Column(
+        sa.String,
+        nullable=False)
+
+    endtime = db.Column(
+        sa.String,
+        nullable=False)
+
     dateshort = db.Column(
         db.String,
         nullable=False,
@@ -347,6 +355,8 @@ def ingest_images(config, lookback, repeat=False):
                     db.session().merge(Exposure(objname=objname,
                                                 image_id=imgid,
                                                 date=gpstime_start.datetime,
+                                                starttime=gpstime_start,
+                                                endtime=gpstime_end,
                                                 dateshort=dateshort))
 
                 exists = Cube.query.filter_by(filename=filename).first() is not None
