@@ -147,8 +147,14 @@ if not os.path.isdir(baseplotDir):
 
 data=np.loadtxt(lightcurve_file,skiprows=1,delimiter=' ')
 #data[:,0] = data[:,0] - 1.0/24.0 # daylight savings...
+if data.ndim < 2:
+    print('Needs at least 2 points to fit... exiting.')
+    exit(0)
 idx = np.where(np.isfinite(data[:,3]))[0]
 data=data[idx,:]
+if len(idx) < 2:
+    print('Needs at least 2 points to fit... exiting.')
+    exit(0)
 
 data[:,4] = np.abs(data[:,4])
 #y, dy=Detrending.detrending(data)
