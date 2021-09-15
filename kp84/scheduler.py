@@ -66,6 +66,98 @@ def convert_to_hex(val, delimiter=':', force_sign=False):
         deg_str = '{:02d}'.format(degree * s_factor)
     return '{0:s}{3:s}{1:02d}{3:s}{2:.2f}'.format(deg_str, minute, second, delimiter)
 
+def load_ilaria_objects(filename):
+
+    columns = ['name', 'ra', 'dec', 'duration']
+
+    observations = astropy.io.ascii.read(filename,format='csv',
+                                         data_start=0,
+                                         names = columns,
+                                         delimiter = " ")
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    cnt = 0
+
+    filt = 1
+    program_id = 8
+    program_pi = "caiazzo"
+
+    for ii, observation in enumerate(observations.filled()):
+        name = observation["name"].replace(" ","-")
+        ra, dec = observation["ra"], observation["dec"]
+        duration = observation["duration"]
+
+        if duration > 7200:
+            exposure_time = 7200
+        else:
+            exposure_time = duration
+
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        if filt == 1:
+            filt = "FILTER_SLOAN_G"
+        elif filt == 2:
+            filt = "FILTER_SLOAN_R"
+        elif filt == "3":
+            filt = "FILTER_JOHNSON_I"
+
+        comment = "%.0f_%.5f" % (10, exposure_time)
+
+        targets.append([name,
+                        program_id,
+                        name,
+                        ra_hex, dec_hex, 2000, 0, 0,
+                        0, exposure_time,
+                        filt, 13, program_pi,
+                        comment])
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["priority"] = sigs
+    targets["redo"] = 1
+    targets["delta_redo"] = 100
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    print(targets)
+
+    return targets
+
 def load_kevin_objects(filename):
 
     columns = ['type', 'name', 'ra', 'dec',
@@ -104,17 +196,17 @@ def load_kevin_objects(filename):
         elif filt == "3":
             filt = "FILTER_JOHNSON_I"
 
-        if new == 0:
-            comment = "%.0f_%.5f" % (5, period)
+        if new == '0':
+            comment = "%.0f_%.5f" % (0, period)
         else:
-            comment = "%.0f_%.5f" % (10, period)
+            comment = "%.0f_%.5f" % (1e23, period)
 
         targets.append([name,
                         program_id,
                         name,
                         ra_hex, dec_hex, 2000, 0, 0,
                         0, exposure_time,
-                        filt, 9, program_pi,
+                        filt, 13, program_pi,
                         comment])
 
     targets = Table(rows=targets, names=names)
@@ -771,7 +863,8 @@ def load_targets(object_lists):
                 "jan_objects": 20,
                 "rgd_objects": 1e20,
                 "periodic_time_sensitive": 30,
-                "kevin_objects": 1e15}
+                "kevin_objects": 1e23,
+                "ilaria_objects": 1e24}
 
     for program in programs:
         priority = programs[program]
@@ -796,6 +889,8 @@ def load_targets(object_lists):
                 targets = load_jan_objects(filename)
             elif program == "kevin_objects":
                 targets = load_kevin_objects(filename)
+            elif program == "ilaria_objects":
+                targets = load_ilaria_objects(filename)
             elif program == "rgd_objects":
                 targets = load_rgd_objects(filename)
             else:
@@ -803,7 +898,7 @@ def load_targets(object_lists):
                 exit(0)
             if len(targets) == 0: continue
             targets['priority'] = targets['priority'] + priority 
-    
+   
             if not 'redo' in targets.columns:
                 targets['redo'] = np.zeros(targets["ra"].shape)
                 #targets['redo'] = np.ones(targets["ra"].shape)
