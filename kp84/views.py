@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import io
 import urllib.parse
 import math
 import re
@@ -8,6 +9,7 @@ import requests
 import shutil
 import tempfile
 
+import aplpy
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy import time
@@ -16,6 +18,16 @@ from astropy.table import Table
 import pandas as pd
 import matplotlib.style
 import pkg_resources
+from astropy.utils.data import get_pkg_data_filename
+from astropy.io import fits
+from astroplan.scheduling import Schedule
+from astroplan.plots import plot_schedule_airmass
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 from flask import (
     abort, flash, jsonify, make_response, redirect, render_template, request,
@@ -24,16 +36,25 @@ from flask_caching import Cache
 from flask_login import (
     current_user, login_required, login_user, logout_user, LoginManager)
 from wtforms import (
-    BooleanField, FloatField, RadioField, TextField, IntegerField)
+    BooleanField, FloatField, RadioField, TextField, IntegerField, StringField, PasswordField, SubmitField)
 from wtforms_components.fields import (
     DateTimeField, DecimalSliderField, SelectField)
 from wtforms import validators
+from wtforms.validators import (
+    DataRequired,
+    Email,
+    EqualTo,
+    Length,
+    Optional
+)
 from wtforms_alchemy.fields import PhoneNumberField
 from passlib.apache import HtpasswdFile
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 
 from kp84.config import app
 from kp84 import models
+
+from PIL import Image
 #
 #
 # From http://wtforms-alchemy.readthedocs.io/en/latest/advanced.html#using-wtforms-alchemy-with-flask-wtf  # noqa: E501
@@ -46,6 +67,7 @@ from wtforms_alchemy import model_form_factory
 BaseModelForm = model_form_factory(FlaskForm)
 
 
+
 class ModelForm(BaseModelForm):
     @classmethod
     def get_session(cls):
@@ -53,6 +75,14 @@ class ModelForm(BaseModelForm):
 #
 #
 #
+
+try:
+    htpasswd = HtpasswdFile(os.path.join(app.instance_path, 'htpasswd'))
+except FileNotFoundError:
+    htpasswd = HtpasswdFile()
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
 # Server-side cache for rendered view functions.
 cache = Cache(app, config={
@@ -85,80 +115,188 @@ def human_time(*args, **kwargs):
 
 
 @app.route('/')
+@login_required
 def index():
 
-    ims = models.db.session.query(models.Image).all()
-    objs = []
+    objs = models.db.session.query(models.Object).all()
+    objnames = []
+    for obj in objs:
+        objnames.append(obj.objname)
+    objs = [x for _, x in sorted(zip(objnames, objs))]
+
+    exposures = models.db.session.query(models.Exposure).all()
+
     days = []
-    for im in ims:
-        print(im.filename)
-        print(im.objname)
-        print(im.exposure_time)
-        print(im.date)
-        print(im.RA)
-        print(im.Dec)
-        print(im.dateshort)
-        
-        if im.objname in objs:
-            pass
-        else:
-            objs.append(im.objname)
-
-        p = str(im.date)
-        o = p.split()
-        day = o[0]
-
-        if day in days:
-            pass
-        else:
-            days.append(day)
+    for exp in exposures:
+        if exp.dateshort not in days:
+            days.append(exp.dateshort)
+    days = sorted(days)
 
     return render_template(
         'index.html',
-        ims=ims,
         objs=objs,
         days=days)
-
 
 @app.route('/obj/<objname>/')
 def object(objname):
 
-    query = models.db.session.query(models.Image.objname == objname)
+    query = models.db.session.query(models.Object).filter_by(objname=objname)
 
     try:
-        idxs = query.all()
+        obj = query.first()
     except NoResultFound:
         abort(404)
-    
-    imsall = models.db.session.query(models.Image).all()
-    ims = []
-    for im, idx in zip(imsall, idxs):
-        if idx[0] == False: continue
-        ims.append(im)
+    exposures = models.db.session.query(models.Exposure).filter_by(objname=objname).all()
 
     return render_template(
             'obj.html',
-            ims=ims)
+            obj=obj,
+            exposures=exposures)
+
+@app.route('/obj/<objname>/image_id/<int:image_id>/exposure.png')
+def exposure(objname, image_id):
+
+    query = models.db.session.query(models.Cube).filter_by(objname=objname,
+                                                           image_id=image_id)
+
+    try:
+        cubes = query.all()
+    except NoResultFound:
+        abort(404)
+
+    fitsfiles = []
+    for cube in cubes:
+        fitsfiles.append(cube.filename)
+    fitsfiles = sorted(fitsfiles)
+
+    fig = Figure()
+    f1 = aplpy.FITSFigure(fitsfiles[0],figure=fig)
+    f1.show_grayscale(invert=False, stretch='power')
+    fig.canvas.draw()
+
+    output = io.BytesIO()
+    FigureCanvas(fig).print_png(output)
+    return Response(output.getvalue(), mimetype='image/png')
+
+
+@app.route('/obj/<objname>/image_id/<int:image_id>/reduction.png')
+def reduction(objname, image_id):
+
+    query = models.db.session.query(models.Reduction).filter_by(objname=objname,
+                                                                image_id=image_id)
+
+    try:
+        reduction = query.first()
+    except NoResultFound:
+        abort(404)
+    mjd = reduction.mjd
+    mag, magerr = reduction.mag, reduction.magerr
+    flux, fluxerr = reduction.flux, reduction.fluxerr
+
+    mjd = np.array(mjd)
+    mag, magerr = np.array(mag), np.array(magerr)
+    flux, fluxerr = np.array(flux), np.array(fluxerr)
+
+    fig = Figure()
+    ax = fig.add_subplot(1, 1, 1)
+    timetmp = (mjd-mjd[0])*24
+    ax.errorbar(timetmp,mag,magerr,fmt='ko')
+    ax.set_xlabel('Time [hrs]')
+    ax.set_ylabel('Magnitude [ab]')
+    idx = np.where(np.isfinite(mag))[0]
+    ymed = np.nanmedian(mag)
+    y10, y90 = np.nanpercentile(mag[idx],10), np.nanpercentile(mag[idx],90)
+    ystd = np.nanmedian(magerr[idx])
+    ymin = y10 - 3*ystd
+    ymax = y90 + 3*ystd
+    ax.set_ylim([ymin,ymax])
+    ax.set_xlim(min(timetmp), max(timetmp))
+    ax.invert_yaxis()
+
+    output = io.BytesIO()
+    FigureCanvas(fig).print_png(output)
+    return Response(output.getvalue(), mimetype='image/png')
 
 @app.route('/date/<day>/')
 def date(day):
     
-    query = models.db.session.query(models.Image.dateshort == day)
+    query = models.db.session.query(models.Exposure).filter_by(dateshort=day)
 
     try:
-        idxs = query.all()
+        date = query.first()
     except NoResultFound:
         abort(404)
 
-    imsall = models.db.session.query(models.Image).all()
-    ims = []
-    for im, idx in zip(imsall, idxs):
-        if idx[0] == False: continue
-        ims.append(im)
-
-    print(im.dateshort)
-
+    exposures = models.db.session.query(models.Exposure).filter_by(dateshort=day).all()
+    objects = []
+    for exposure in exposures:
+        objects.append(models.db.session.query(models.Object).filter_by(objname=exposure.objname).one())
+    
+    fig, ax = plt.subplots()
+    for object in objects
+        ax.axvspan(object.starttime, object.endtime, alpha=0.5, color='red')
+        
+    plt.savefig(./timeuseplots)
     return render_template(
         'date.html',
-        ims=ims)
+        date=date,
+        objects=objects,
+        exposures=exposures)
+
+@app.route('/calendar/')
+def calendar():
+    expall = models.db.session.query(models.Exposure)
+    days=[]
+    for exp in expall:
+        if exp.dateshort not in days:
+            days.append(exp.dateshort)
+    days = sorted(days)
+    days.reverse()
+    objs = {}
+    for day in days:
+        objs[day] = []
+        exposures = models.db.session.query(models.Exposure).filter_by(dateshort=day).all()
+        for exp in exposures:
+            objs[day].append(exp.objname)
+        objs[day] = sorted(list(set(objs[day])))
+    return render_template(
+            'cal.html',
+            days=days,
+            objs=objs)
+
+@login_manager.user_loader
+def load_user(user_id):
+    # FIXME: new users will have entries in the htpasswd file but not in
+    # the database. Once the htpasswd file goes away, drop everything after
+    # the `or`.
+    print(user_id)
+    exists = models.db.session.query(models.User).filter_by(name=user_id).first() is not None
+    if not exists:
+        models.db.session().merge(models.User(name=user_id))
+        print('Added username: %s' % user_id)
+        models.db.session().commit()
+    return models.db.session.query(models.User).filter_by(name=user_id).first()
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        if htpasswd.check_password(request.form['user'],
+                                   request.form['password']):
+            login_user(load_user(request.form['user']),
+                       remember=('remember' in request.form))
+            flash('You are now logged in.', 'success')
+
+            next = request.args.get('next')
+            return redirect(next or url_for('index'))
+        else:
+            flash('Invalid username or password.', 'danger')
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
 

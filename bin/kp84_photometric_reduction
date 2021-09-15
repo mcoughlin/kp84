@@ -5,12 +5,15 @@ import numpy as np
 import astropy.io.ascii as asci
 from astropy.io import fits
 from astropy.table import vstack
+import aplpy
 
 from kp84.reduction_utils import stack_images, register_images, register_image_cubes
 from kp84.reduction_utils import get_wcs_xy, update_wcsstatus, forcedphotometry_kp
 from kp84.reduction_utils import get_reference_pos, filter2filtstr, jd2hjd, jd2bjd
+from kp84.reduction_utils import register_transients
 from kp84.visualize_utils import get_ra_dec_radius
 from kp84.visualize_utils import makemovie, make_triplet, plot_triplet
+from kp84.photometry_utils import ps1_query
 from kp84.scheduler import load_targets
 #from astroML.crossmatch import crossmatch_angular
 
@@ -60,7 +63,8 @@ def parse_commandline():
     parser.add_option("--aper_size_ref",default=10.0, type=float, help="aperture size in pixel numbers for ref object")
     parser.add_option("--sky_in_ref",default=30.0, type=float, help="inner sky annulus radius in pixel numbers for ref object")
     parser.add_option("--sky_out_ref",default=50.0, type=float, help="outer sky annulus radius in pixel numbers for ref object")
-    
+    parser.add_option("--halfwidth",default=50, type=int, help="movie halfwidth")
+
     parser.add_option("--doMakeMovie",  action="store_true", default=False)
     
     parser.add_option("--KPED_data", default="/Backup/Data", type=str)
@@ -81,7 +85,7 @@ def parse_commandline():
                       choices=('sdss', 'ps1'), help="source of the reference image")
     parser.add_option("-t","--tmpDir",default="/tmp")
     parser.add_option("--image_size",default=200,type=int)   
- 
+
     opts, args = parser.parse_args()
     return opts
 
@@ -121,6 +125,7 @@ sky_out = opts.sky_out
 aper_size_ref = opts.aper_size_ref
 sky_in_ref = opts.sky_in_ref
 sky_out_ref = opts.sky_out_ref
+halfwidth = opts.halfwidth
 
 doMakeMovie = opts.doMakeMovie
 
@@ -177,7 +182,9 @@ except:
         tmpfilter = "SDSS r"
     elif ("-g" in objName) or (filt == "FILTER_SLOAN_G"):
         tmpfilter = "SDSS g"
-    else:
+    elif ("-v" in objName) or (filt == "FILTER_JOHNSON_V"):
+        tmpfilter = "JOHNSON V"
+else:
         print('Sigh... missing filter data. Assuming SDSS r for now...')
         tmpfilter = 'SDSS r'
 
@@ -201,48 +208,30 @@ if not doSkipRegis:
         if not os.path.isdir(path_out_dir):
             os.makedirs(path_out_dir)
         print("%d/%d: %s"%(i+1, nfiles, fitsfileSplit))
-        if fitsfileSplit[14:] in xyfiles_:
-            index = np.where(xyfiles_ == fitsfileSplit[14:])[0][0]
-            xyframe = int(xyexts_[index])
-            x = int(xs_[index])
-            y = int(ys_[index])
-            update_wcsstatus(fitsfile, xyframe)
-            print ("  Using the specified location: x = %d, y = %d, xyext = %d"%(x, y, xyframe))
-            flag = 2
-        else:
-            wcsfiles = glob.glob(os.path.join(dataDir,'wcs', '%s*wcs.fits'%fitsfileSplit))
-            if len(wcsfiles)!=0:
-                print ("  Finding it on the wcs file extension...")
-                # The astrometry is successfully found:
-                wcsfile = wcsfiles[0]
-                x, y, xyframe = get_wcs_xy(ra, dec, wcsfile, fitsfile, get_distance = True)
-                print ("  Found the location with wcs solution: x = %d, y=%d, xyext = %d"%(x, y, xyframe))
-            else: # astrometry.net solution failed:
-                flag = 0
-                print ("  Astrometry failed and no wcs specified -- discard %s!"%fitsfileSplit)
-        if flag in [1,2]:
+        regisfile = fitsfile.replace("/processing/", "/registration/")
+        if not os.path.isfile(regisfile):
             shiftfiles = glob.glob(os.path.join(dataDir,'registration', '%s_proc_shift.dat'%fitsfileSplit))
-            #print (shiftfiles)
+            if len(shiftfiles) == 0: continue
             shiftfile = shiftfiles[0]
             refit = operator.not_(doOffRefit)
-            if (not opts.xstar == "") and (not opts.ystar == ""):
-                regis2HDU = register_images(fitsfile, shiftfile, xyframe, int(opts.xstar), int(opts.ystar), path_out_dir, 
-                                            maxdist = maxdist, aper_size = aper_size, 
-                                            refit = refit, offtune = doOffTune)
-            else:
-                regis2HDU = register_images(fitsfile, shiftfile, xyframe, x, y, path_out_dir,
-                                            maxdist = maxdist, aper_size = aper_size,
-                                            refit = refit, offtune = doOffTune)
-            regisfile = fitsfile.replace("/processing/", "/registration/")
-            regisfile = regisfile[:-5]+'_regis.fits'
+            regis2HDU = register_images(fitsfile, shiftfile, xyframe,
+                                        int(opts.xstar), int(opts.ystar),
+                                        path_out_dir, 
+                                        maxdist = maxdist,
+                                        aper_size = aper_size, 
+                                        refit = refit, offtune = doOffTune)
+        else:
+            print(fitsfile)
+            regis2HDU = register_transients(regisfile, ra, dec)
 
-            if regis2HDU is not None:
-                regis2HDU[0].header["OBJNAME"] = objName
-                regis2HDU[0].header["RA_OBJ"] = ra
-                regis2HDU[0].header["DEC_OBJ"] = dec
-                print ("  Writing to %s"%regisfile)
-                regis2HDU.writeto(regisfile, overwrite=True)
-                print ("")
+        regisfile = regisfile[:-5]+'_regis.fits'
+        if regis2HDU is not None:
+            regis2HDU[0].header["OBJNAME"] = objName
+            regis2HDU[0].header["RA_OBJ"] = ra
+            regis2HDU[0].header["DEC_OBJ"] = dec
+            print ("  Writing to %s"%regisfile)
+            regis2HDU.writeto(regisfile, overwrite=True)
+            print ("")
 
 fitsfiles = sorted(glob.glob(os.path.join(dataDir,'registration','*_regis.fits'))) 
 if day == "20191222" and objName == "ZTFJ0538+1953":
@@ -256,6 +245,8 @@ if nfiles == 0:
         if nfiles == 0:
             print('No raw files for %s... nothing to do.' % opts.objName)
             exit(0)
+    else:
+        exit(0)
 
 if doSkipRegis:
     registerdir = os.path.join(dataDir,'registration')
@@ -356,6 +347,15 @@ if doStack:
         plotName = '%s/triplet.png'%(outputProDir)
         plt.savefig(plotName)
         plt.close(fig)
+        
+if doMakeMovie:
+    result = ps1_query(ra, dec, 20.0/60.0, maxmag=16.0,
+                       maxsources=10000)
+    ra_ps1, dec_ps1 = result['RAJ2000'], result['DEJ2000']
+    moviedir = os.path.join(path_out_dir, 'catalog')
+    if not os.path.isdir(moviedir):
+        os.makedirs(moviedir)
+    cnt = 0
 
 print ("========================")
 print ("Source Extraction!")
@@ -371,8 +371,45 @@ for ii in range(nfiles):
     catfile = os.path.join(folderName_sextract, _fitsfileSplit.replace(".fits",".cat"))
     backfile = os.path.join(folderName_sextract, _fitsfileSplit.replace(".fits",".background.fits"))
 
-    if not os.path.isfile(catfile):
-        ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+    ztfsub.utils.sextractor(fitsfile,defaultsDir,doSubtractBackground=opts.doSubtractBackground,catfile=catfile,backfile=backfile)
+
+    if doMakeMovie:
+        framenum = 1
+        procHDU = fits.open(fitsfile)
+        for framenum in range(len(procHDU)):
+            if framenum == 0: continue
+
+            figname = os.path.join(moviedir,'image_%04d.png'%cnt)
+            hdu = procHDU[framenum]
+            fig = plt.figure(figsize=(12,10))
+            f1 = aplpy.FITSFigure(hdu, figure=fig)
+            f1.show_grayscale(invert=True)
+    
+            cat = asci.SExtractor().read(catfile)
+            cat = cat[cat['EXT_NUMBER'] == framenum]
+    
+            f1.show_circles(cat['ALPHA_J2000'],cat['DELTA_J2000'],
+                            cat['FWHM_WORLD'],zorder=99,
+                            linestyle='dashed', edgecolor='red')
+            f1.show_circles(ra_ps1,dec_ps1,1.5/3600.0,zorder=99,
+                            linestyle='dashed', edgecolor='green')
+            f1.show_circles([[ra]],[[dec]],3.0/3600.0,zorder=99,
+                            linestyle='dashed', edgecolor='b')
+
+            f1.axis_labels.set_xtext('Right Ascension')
+            f1.axis_labels.set_ytext('Declination')
+    
+            fig.canvas.draw()
+            plt.savefig(figname)
+            plt.close()
+            cnt = cnt + 1
+if doMakeMovie:
+    print ("Generating the mpg file...")
+    moviefiles = os.path.join(moviedir,"image_%04d.png")
+    filename = os.path.join(moviedir,"movie.mpg")
+    ffmpeg_command = 'ffmpeg -an -y -r 20 -i %s -b:v %s %s'%(moviefiles,'5000k',filename)
+    os.system(ffmpeg_command)
+    shutil.copy(moviedir+"/movie.mpg", outputProDir+"/movie.mpg")
 
 if not doSkipFindRef:
     print ("")
@@ -402,7 +439,8 @@ if not doSkipFindRef:
             continue
        
         print(fitsfile, cat, objName) 
-        sciHDU = get_reference_pos(fitsfile, cat, objName, zp=0, passband=passband, 
+        sciHDU = get_reference_pos(fitsfile, cat, objName,
+                                   zp=0, passband=passband, 
                                    xoff=xoffref, yoff=yoffref, refmag=refmag)
         sciHDU.writeto(fitsfile, overwrite=True)
     
@@ -610,16 +648,3 @@ if doSubtractBackground:
     finalsubforcefile = os.path.join(outputProDir,"lightcurve.subtracted.forced")
     plotsubName = os.path.join(outputProDir,'subtracted_mag_forced.pdf')
     save_forced_tb(tblsubforced, finalsubforcefile, plotsubName)
-
-if doMakeMovie and not doStack:
-    print ("")
-    print ("==================")
-    print ("Making the Movie!")
-    print ("==================")
-    print ("")
-    movieDir = os.path.join(outputDir,'movie')
-    if not os.path.isdir(movieDir):
-        os.makedirs(movieDir)
-    makemovie(movieDir, fitsfiles, aper_size = aper_size, sky_in = sky_in, sky_out = sky_out)
-    shutil.copy(movieDir+"/movie.mpg", outputProDir+"/movie.mpg")
-

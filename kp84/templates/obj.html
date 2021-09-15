@@ -10,25 +10,47 @@
 {% endblock %}
 
 {% block body %}
+    <h2>Information on specified object</h2>
+    <div class=list-group>
+        <p>
+            {{ "Object Name: " + obj.objname }}
+            <br>
+            {{ "Right Ascension:" }}
+            {{ obj.RA }}
+            <br>
+            {{ "Declination:" }}
+            {{ obj.Dec }}</p>
+        </a>
+    </ul>
+
     <h2>Images of specified object</h2>
     <div class=list-group>
-        {% for im in ims %}
-	<p>{{ "Filename: " + im.filename }}
-            <br>
-	    {{ "Object Name: " + im.objname }}
-            <br>
-	    {{ "Exposure Time:" }}
-	    {{ im.exposure_time }}
-            <br>
-	    {{ "Date:" }}
-	    {{ im.date }}
+        {% for exposure in exposures %}
+            <p>
+            {{ "Exposure Date:" }}
+            {{ exposure.date }}
+	    <a href={{ "http://localhost:8001/date/" + exposure.dateshort + "/" }}>{{ "More exposures from this date" }}</a>
 	    <br>
-	    {{ "Right Ascension:" }}
-	    {{ im.RA }}
-	    <br>
-	    {{ "Declination:" }}
-	    {{ im.Dec }}</p>
-        </a>
+            {{ "Image ID:" }}
+            {{ exposure.image_id }}
+
+	    {% for cube in exposure.cubes %}
+ 		<br>
+	        {{ "Exposure Time:" }}
+	        {{ cube.exposure_time }}
+	        
+		<br>
+
+	        {{ "Filename:" }}
+	        {{ cube.filename }}
+            <img src={{ "http://localhost:8001/obj/" + exposure.objname + "/image_id/" + exposure.image_id|string + "/exposure.png" }} alt={{ exposure.image_id|string }}>
+	        <br>
+            {% endfor %}
+            {% for reduction in exposure.reductions %}
+	    	<br>
+		<img src={{ "http://localhost:8001/obj/" + reduction.objname + "/image_id/" + reduction.image_id|string + "/reduction.png" }} alt={{ reduction.image_id|string }}>
+	    	</p>
+		{% endfor %} 
         {% endfor %}
     </ul>
 {% endblock %}
