@@ -463,6 +463,9 @@ for obj in objs:
         catfile = os.path.join(folderName_sextract, filename + ".cat")
         framenum = 1
         cat = np.loadtxt(catfile)
+        if cat.shape[0] == 0:
+            continue
+
         idx = np.where(cat[:,22] == framenum)[0]
         cat = cat[idx,:]
         magthresh = np.min(cat[:,4])+8.0
