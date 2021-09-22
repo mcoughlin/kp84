@@ -158,6 +158,99 @@ def load_ilaria_objects(filename):
 
     return targets
 
+def load_outbursters(filename):
+
+    columns = ['name', 'ra', 'dec', 'duration']
+
+    observations = astropy.io.ascii.read(filename,format='csv',
+                                         data_start=0,
+                                         names = columns,
+                                         delimiter = " ")
+
+    names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
+    targets = []
+    cnt = 0
+
+    filt = 1
+    program_id = 20
+    program_pi = "jroestel"
+
+    for ii, observation in enumerate(observations.filled()):
+        name = observation["name"].replace(" ","-")
+        ra, dec = observation["ra"], observation["dec"]
+        duration = observation["duration"]
+
+        if duration > 7200:
+            exposure_time = 7200
+        else:
+            exposure_time = duration
+
+        ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
+
+        if filt == 1:
+            filt = "FILTER_SLOAN_G"
+        elif filt == 2:
+            filt = "FILTER_SLOAN_R"
+        elif filt == "3":
+            filt = "FILTER_JOHNSON_I"
+
+        comment = "%.0f_%.5f" % (10, exposure_time)
+
+        targets.append([name,
+                        program_id,
+                        name,
+                        ra_hex, dec_hex, 2000, 0, 0,
+                        0, exposure_time,
+                        filt, 13, program_pi,
+                        comment])
+
+    targets = Table(rows=targets, names=names)
+
+    sigs, periods = [], []
+    coords, target = [], []
+    ras, decs = [], []
+    for row in targets:
+        comment = row["comment"]
+        commentSplit = comment.split("_")
+        sig, period = float(commentSplit[0]), float(commentSplit[1])
+        sigs.append(sig)
+        periods.append(period)
+
+        ra_hex, dec_hex = row["ra_hex"], row["dec_hex"]
+
+        ra  = Angle(ra_hex, unit=u.hour).deg
+        dec = Angle(dec_hex, unit=u.deg).deg
+
+        coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        tar = FixedTarget(coord=coord, name=row["objectID"])
+        coords.append(coord)
+        target.append(tar)
+        ras.append(ra)
+        decs.append(dec)
+
+    targets["sig"] = sigs
+    targets["periods"] = periods
+    targets["coords"] = coords
+    targets["target"] = target
+    targets["ra"] = ras
+    targets["dec"] = decs
+    targets["programID"] = 1
+    targets["priority"] = sigs
+    targets["redo"] = 1
+    targets["delta_redo"] = 100
+
+    targets.sort("sig")
+    targets.reverse()
+    targets = astropy.table.unique(targets, keys=["objectID"])
+
+    targets['ra_rate'].dtype= np.float64
+    targets['dec_rate'].dtype= np.float64
+
+    print(targets)
+
+    return targets
+
+
 def load_kevin_objects(filename):
 
     columns = ['type', 'name', 'ra', 'dec',
@@ -255,25 +348,30 @@ def load_kevin_objects(filename):
 
 def load_jan_objects(filename):
 
-    observations = astropy.io.ascii.read(filename,format='csv')
+    columns = ['name', 'ra', 'dec', 'duration']
+
+    observations = astropy.io.ascii.read(filename,format='csv',
+                                         data_start=0,
+                                         names = columns,
+                                         delimiter = " ")
 
     names = ["requestID", "programID", "objectID", "ra_hex", "dec_hex", "epoch", "ra_rate", "dec_rate", "mag", "exposure_time", "filter", "mode", "pi", "comment"]
     targets = []
     cnt = 0
 
     filt = 1
-    program_id = 7
-    program_pi = "vanRoestel"
+    program_id = 21
+    program_pi = "jvanroestel"
 
-    for ii, observation in enumerate(observations):
+    for ii, observation in enumerate(observations.filled()):
+        name = observation["name"].replace(" ","-")
+        ra, dec = observation["ra"], observation["dec"]
+        duration = observation["duration"]
 
-        ra, dec = observation["Ra"], observation["Dec"]
-        period = observation["Period (d)"]
-        exposure_time = int(1.1*period*86400)
-        Gmag = observation["G"]
-
-        # only want the bright stuff
-        if Gmag > 18: continue
+        if duration > 7200:
+            exposure_time = 7200
+        else:
+            exposure_time = duration
 
         ra_hex, dec_hex = convert_to_hex(ra*24/360.0,delimiter=':'), convert_to_hex(dec,delimiter=':')
 
@@ -284,13 +382,14 @@ def load_jan_objects(filename):
         elif filt == "3":
             filt = "FILTER_JOHNSON_I"
 
-        comment = "%.0f_0" % (1e15 - Gmag)
-        targets.append([observation['Shortname'],
+        comment = "%.0f_%.5f" % (10, exposure_time)
+
+        targets.append([name,
                         program_id,
-                        observation['Shortname'],
+                        name,
                         ra_hex, dec_hex, 2000, 0, 0,
-                        1e5, exposure_time,
-                        filt, 9, program_pi,
+                        0, exposure_time,
+                        filt, 13, program_pi,
                         comment])
 
     targets = Table(rows=targets, names=names)
@@ -325,6 +424,8 @@ def load_jan_objects(filename):
     targets["dec"] = decs
     targets["programID"] = 1
     targets["priority"] = sigs
+    targets["redo"] = 1
+    targets["delta_redo"] = 100
 
     targets.sort("sig")
     targets.reverse()
@@ -332,6 +433,8 @@ def load_jan_objects(filename):
 
     targets['ra_rate'].dtype= np.float64
     targets['dec_rate'].dtype= np.float64
+
+    print(targets)
 
     return targets
 
@@ -860,13 +963,15 @@ def load_targets(object_lists):
                 "transients": 1e21,
                 "NEO": 10,
                 "time_sensitive": 10000,
-                "jan_objects": 20,
+                "jan_objects": 1e24,
                 "rgd_objects": 1e20,
                 "periodic_time_sensitive": 30,
                 "kevin_objects": 1e23,
-                "ilaria_objects": 1e24}
+                "ilaria_objects": 1e24,
+                "outbursters":1e99}
 
     for program in programs:
+        print('loading program: %s' %program)
         priority = programs[program]
         object_list_dir = os.path.join(object_lists, program)
         filenames = glob.glob(os.path.join(object_list_dir, '*'))
@@ -893,6 +998,8 @@ def load_targets(object_lists):
                 targets = load_ilaria_objects(filename)
             elif program == "rgd_objects":
                 targets = load_rgd_objects(filename)
+            elif program == "outbursters":
+                targets = load_outbursters(filename)
             else:
                 print("How do I load objects from the %s program?" % program)
                 exit(0)
@@ -910,6 +1017,8 @@ def load_targets(object_lists):
             targets_all.append(targets)
     
     targets = vstack(targets_all)
+
+    print('passing %d targets' %np.shape(targets)[0])
 
     return targets
 

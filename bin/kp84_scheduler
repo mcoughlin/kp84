@@ -76,7 +76,7 @@ else:
     tstart = Time.now()
     tend = Time.now() + TimeDelta(12*u.hour)
 
-global_constraints = [AirmassConstraint(max = 2.00, boolean_constraint = False),
+global_constraints = [AirmassConstraint(max = 2.50, boolean_constraint = False),
     AtNightConstraint.twilight_civil(), MoonSeparationConstraint(min = 10.0*u.deg)]
 
 targets = load_targets(opts.object_lists)
@@ -140,7 +140,7 @@ for ii, target in enumerate(targets):
                 continue
 
     if ii < 50:
-        print(target["target"].name, priorities[ii])
+        print(target["target"].name, priorities[ii],target["pi"],target["programID"])
 
     bandpass = target["filter"]
     exposure_time = int(target["exposure_time"]) * u.s
